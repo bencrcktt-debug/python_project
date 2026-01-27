@@ -1,6 +1,6 @@
 # Python Project
 
-A Python project template.
+Streamlit app for exploring the TPPF lobby data.
 
 ## Setup
 
@@ -18,8 +18,17 @@ A Python project template.
    pip install -r requirements.txt
    ```
 
-## Running the project
+## Data configuration
+
+The app expects a parquet file named `TFL Webstite books - combined.parquet`.
+
+Provide the file using one of these options:
+- Set `DATA_PATH` to an absolute path or URL.
+- Add `.streamlit/secrets.toml` with `DATA_PATH = "..."` (recommended for Streamlit Cloud).
+- Place the file at `./data/TFL Webstite books - combined.parquet` in the repo.
+
+## Running the app
 
 ```bash
-python main.py
+streamlit run main.py
 ```

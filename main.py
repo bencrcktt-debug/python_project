@@ -9,13 +9,36 @@ import plotly.express as px
 # =========================================================
 # CONFIG
 # =========================================================
-PATH = r"C:\Users\ben\OneDrive\Documents\TFL Webstite books - combined.parquet"
-_base_path = Path(PATH)
-if not _base_path.exists():
-    _fallback = Path(__file__).resolve().parent.parent / "TFL Webstite books - combined.parquet"
-    if _fallback.exists():
-        _base_path = _fallback
-PATH = str(_base_path)
+DEFAULT_DATA_FILENAME = "TFL Webstite books - combined.parquet"
+
+
+def _is_url(path: str) -> bool:
+    return path.startswith("http://") or path.startswith("https://")
+
+
+def _resolve_data_path() -> str:
+    # Prefer Streamlit secrets, then environment variable.
+    if "DATA_PATH" in st.secrets:
+        secret_path = str(st.secrets["DATA_PATH"]).strip()
+        if secret_path:
+            return secret_path
+    env_path = os.getenv("DATA_PATH", "").strip()
+    if env_path:
+        return env_path
+
+    here = Path(__file__).resolve().parent
+    candidates = [
+        here / DEFAULT_DATA_FILENAME,
+        here / "data" / DEFAULT_DATA_FILENAME,
+        here.parent / DEFAULT_DATA_FILENAME,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return ""
+
+
+PATH = _resolve_data_path()
 
 st.set_page_config(page_title="TPPF Lobby Look-Up", layout="wide")
 
@@ -730,8 +753,15 @@ st.markdown('<div class="big-title">TPPF Lobby Look-Up</div>', unsafe_allow_html
 st.markdown('<div class="subtitle">Search any lobbyist and see clients, witness activity, fiscal impacts, and expenditures.</div>', unsafe_allow_html=True)
 
 # Validate workbook path
-if not os.path.exists(PATH):
-    st.error("Data path not found. Update PATH at the top of main.py.")
+if not PATH:
+    st.error(
+        "Data path not configured. Set DATA_PATH (env var or Streamlit secrets)."
+    )
+    st.stop()
+if not _is_url(PATH) and not os.path.exists(PATH):
+    st.error(
+        "Data path not found. Set DATA_PATH or place the parquet file in ./data."
+    )
     st.stop()
 
 # Load workbook once (cached)
