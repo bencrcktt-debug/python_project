@@ -22,6 +22,3 @@ Thumbs.db
 # Project
 *.log
 .env
-.streamlit/secrets.toml
-data/
-*.parquet
