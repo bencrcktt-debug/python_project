@@ -27,6 +27,7 @@ def _resolve_data_path() -> str:
     candidates = [
         here / DEFAULT_DATA_FILENAME,
         here / "data" / DEFAULT_DATA_FILENAME,
+        here.parent / "data" / DEFAULT_DATA_FILENAME,
         here.parent / DEFAULT_DATA_FILENAME,
     ]
     for candidate in candidates:
