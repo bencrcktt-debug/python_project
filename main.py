@@ -1632,66 +1632,66 @@ with tab_all:
         if not top_lobbyists.empty:
             top_lobbyists = top_lobbyists[top_lobbyists.get("Clients_TFL", 0) > 0].copy()
             top_lobbyists = top_lobbyists.sort_values(["High_TFL", "Low_TFL"], ascending=[False, False]).head(5)
-                lobby_display = (
-                    Lobby_TFL_Client_All[["LobbyShort", "Lobby Name"]]
-                    .dropna()
-                    .drop_duplicates()
-                    .assign(
-                        LobbyShort=lambda df: df["LobbyShort"].astype(str).str.strip(),
-                        LobbyNameClean=lambda df: df["Lobby Name"]
-                        .astype(str)
-                        .str.strip()
-                        .str.replace(r"\s+", " ", regex=True),
+            lobby_display = (
+                Lobby_TFL_Client_All[["LobbyShort", "Lobby Name"]]
+                .dropna()
+                .drop_duplicates()
+                .assign(
+                    LobbyShort=lambda df: df["LobbyShort"].astype(str).str.strip(),
+                    LobbyNameClean=lambda df: df["Lobby Name"]
+                    .astype(str)
+                    .str.strip()
+                    .str.replace(r"\s+", " ", regex=True),
+                )
+            )
+            lobby_display = lobby_display.assign(
+                LobbyNameDisplay=lobby_display["LobbyNameClean"].apply(
+                    lambda x: " ".join(
+                        ([x.split(",", 1)[1].strip(), x.split(",", 1)[0].strip()] if "," in x else [x])
                     )
                 )
-                lobby_display = lobby_display.assign(
-                    LobbyNameDisplay=lobby_display["LobbyNameClean"].apply(
-                        lambda x: " ".join(
-                            ([x.split(",", 1)[1].strip(), x.split(",", 1)[0].strip()] if "," in x else [x])
-                        )
-                    )
-                )
-                lobby_display = lobby_display[["LobbyShort", "LobbyNameDisplay"]].drop_duplicates()
-                top_lobbyists = top_lobbyists.merge(lobby_display, on="LobbyShort", how="left")
-                top_lobbyists["Lobbyist"] = top_lobbyists["LobbyNameDisplay"].fillna(top_lobbyists["LobbyShort"])
-                top_lobbyists["Taxpayer Funded Total"] = top_lobbyists.apply(
-                    lambda r: f"{fmt_usd(r.get('Low_TFL', 0.0))} - {fmt_usd(r.get('High_TFL', 0.0))}", axis=1
-                )
-                st.dataframe(
-                    top_lobbyists[["Lobbyist", "Taxpayer Funded Total"]],
-                    width='stretch',
-                    height=240,
-                    hide_index=True,
-                )
-            else:
-                st.info("No taxpayer funded lobbyists found for the selected scope/session.")
+            )
+            lobby_display = lobby_display[["LobbyShort", "LobbyNameDisplay"]].drop_duplicates()
+            top_lobbyists = top_lobbyists.merge(lobby_display, on="LobbyShort", how="left")
+            top_lobbyist["Lobbyist"] = top_lobbyists["LobbyNameDisplay"].fillna(top_lobbyists["LobbyShort"])
+            top_lobbyists["Taxpayer Funded Total"] = top_lobbyists.apply(
+                lambda r: f"{fmt_usd(r.get('Low_TFL', 0.0))} - {fmt_usd(r.get('High_TFL', 0.0))}", axis=1
+            )
+            st.dataframe(
+                top_lobbyists[["Lobbyist", "Taxpayer Funded Total"]],
+                width='stretch',
+                height=240,
+                hide_index=True,
+            )
+        else:
+            st.info("No taxpayer funded lobbyists found for the selected scope/session.")
 
-        with t2:
-            st.markdown('<div class="section-title">Top 5 Taxpayer Funding<br>Governments/Entities</div>', unsafe_allow_html=True)
-            clients = Lobby_TFL_Client_All.copy()
-            clients["Session"] = clients["Session"].astype(str).str.strip()
-            if st.session_state.scope == "This Session" and tfl_session_val is not None:
-                clients = clients[clients["Session"] == str(tfl_session_val)].copy()
-            clients = ensure_cols(clients, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0})
-            clients = clients[clients["IsTFL"] == 1].copy()
-            if not clients.empty:
-                top_clients = (
-                    clients.groupby("Client", as_index=False)
-                    .agg(Low=("Low_num", "sum"), High=("High_num", "sum"))
-                    .sort_values(["High", "Low"], ascending=[False, False])
-                    .head(5)
-                )
-                top_clients["Taxpayer Funded Total"] = top_clients.apply(
-                    lambda r: f"{fmt_usd(r.get('Low', 0.0))} - {fmt_usd(r.get('High', 0.0))}", axis=1
-                )
-                st.dataframe(
-                    top_clients[["Client", "Taxpayer Funded Total"]],
-                    width='stretch',
-                    height=240,
-                    hide_index=True,
-                )
-            else:
-                st.info("No taxpayer funded clients found for the selected scope/session.")
+        st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Top Taxpayer Funding Governments/Entities</div>', unsafe_allow_html=True)
+        clients = Lobby_TFL_Client_All.copy()
+        clients["Session"] = clients["Session"].astype(str).str.strip()
+        if st.session_state.scope == "This Session" and tfl_session_val is not None:
+            clients = clients[clients["Session"] == str(tfl_session_val)].copy()
+        clients = ensure_cols(clients, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0})
+        clients = clients[clients["IsTFL"] == 1].copy()
+        if not clients.empty:
+            top_clients = (
+                clients.groupby("Client", as_index=False)
+                .agg(Low=("Low_num", "sum"), High=("High_num", "sum"))
+                .sort_values(["High", "Low"], ascending=[False, False])
+                .head(5)
+            )
+            top_clients["Taxpayer Funded Total"] = top_clients.apply(
+                lambda r: f"{fmt_usd(r.get('Low', 0.0))} - {fmt_usd(r.get('High', 0.0))}", axis=1
+            )
+            st.dataframe(
+                top_clients[["Client", "Taxpayer Funded Total"]],
+                width='stretch',
+                height=240,
+                hide_index=True,
+            )
+        else:
+            st.info("No taxpayer funded clients found for the selected scope/session.")
 
         flt = st.text_input("Filter LobbyShort (contains)", value="", placeholder="e.g., Abbott")
         c1, c2 = st.columns(2)
