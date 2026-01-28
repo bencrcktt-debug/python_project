@@ -835,7 +835,7 @@ def load_workbook(path: str) -> dict:
         return {k: _empty_df(v) for k, v in cfg.items()}
     if base.is_dir():
         parquet_map = {
-            "Wit_All": ["Witness_Lists.parquet", "Witness List.parquet", "Witness_List.parquet"],
+        "Wit_All": ["Witness_Lists.parquet", "Witness List.parquet", "Witness_List.parquet", "witnesslist.parquet"],
             "Bill_Status_All": "Bill_Status.parquet",
             "Fiscal_Impact": "Fiscal_Notes.parquet",
             "Bill_Sub_All": "Bill_Sub_All.parquet",
@@ -861,6 +861,20 @@ def load_workbook(path: str) -> dict:
                 continue
             fpath = None
             if isinstance(fname, (list, tuple)):
+                if key == "Wit_All":
+                    frames = []
+                    for cand in fname:
+                        cand_path = base / cand
+                        if cand_path.exists():
+                            try:
+                                frames.append(read_parquet_cols(cand_path, cols))
+                            except Exception:
+                                continue
+                    if frames:
+                        data[key] = pd.concat(frames, ignore_index=True).drop_duplicates()
+                    else:
+                        data[key] = _empty_df(cols)
+                    continue
                 for cand in fname:
                     cand_path = base / cand
                     if cand_path.exists():
