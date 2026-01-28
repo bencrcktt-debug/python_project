@@ -1653,7 +1653,7 @@ with tab_all:
             )
             lobby_display = lobby_display[["LobbyShort", "LobbyNameDisplay"]].drop_duplicates()
             top_lobbyists = top_lobbyists.merge(lobby_display, on="LobbyShort", how="left")
-            top_lobbyist["Lobbyist"] = top_lobbyists["LobbyNameDisplay"].fillna(top_lobbyists["LobbyShort"])
+            top_lobbyists["Lobbyist"] = top_lobbyists["LobbyNameDisplay"].fillna(top_lobbyists["LobbyShort"])
             top_lobbyists["Taxpayer Funded Total"] = top_lobbyists.apply(
                 lambda r: f"{fmt_usd(r.get('Low_TFL', 0.0))} - {fmt_usd(r.get('High_TFL', 0.0))}", axis=1
             )
