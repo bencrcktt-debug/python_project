@@ -268,6 +268,7 @@ def filter_filer_rows(
     name_to_short: dict,
     lobbyist_norms: set[str],
     filerid_to_short: dict | None,
+    loose: bool = False,
 ) -> pd.DataFrame:
     if df.empty:
         return df
@@ -287,6 +288,10 @@ def filter_filer_rows(
 
     filer_name = d.get("filerName", pd.Series([""] * len(d)))
     filer_sort = d.get("filerSort", pd.Series([""] * len(d)))
+    if isinstance(filer_name, pd.DataFrame):
+        filer_name = filer_name.iloc[:, 0]
+    if isinstance(filer_sort, pd.DataFrame):
+        filer_sort = filer_sort.iloc[:, 0]
     filer_clean = clean_filer_name_series(filer_name)
     d["FilerNormRaw"] = norm_name_series(filer_name)
     d["FilerNormClean"] = norm_name_series(filer_clean)
@@ -311,6 +316,39 @@ def filter_filer_rows(
         (d["FilerSortNorm"].isin(lobbyist_norms) if lobbyist_norms else False) |
         (d["FilerIsShort"])
     )
+    if loose and not ok.any():
+        loose_ok = pd.Series(False, index=d.index)
+
+        if lobbyshort_norm and len(lobbyshort_norm) >= 4:
+            loose_ok |= (
+                d["FilerNormRaw"].str.contains(lobbyshort_norm, na=False) |
+                d["FilerNormClean"].str.contains(lobbyshort_norm, na=False) |
+                d["FilerSortNorm"].str.contains(lobbyshort_norm, na=False)
+            )
+
+        if lobbyist_norms:
+            for n in lobbyist_norms:
+                if n and len(n) >= 4:
+                    loose_ok |= (
+                        d["FilerNormRaw"].str.contains(n, na=False) |
+                        d["FilerNormClean"].str.contains(n, na=False) |
+                        d["FilerSortNorm"].str.contains(n, na=False)
+                    )
+
+        target_last = last_name_norm_from_text(lobbyshort)
+        if target_last:
+            last_raw = last_name_norm_series(filer_name)
+            last_sort = last_name_norm_series(filer_sort)
+            loose_ok |= last_raw.eq(target_last) | last_sort.eq(target_last)
+
+        target_init = _last_first_initial_key(lobbyshort)
+        if target_init:
+            init_raw = filer_name.fillna("").astype(str).map(_last_first_initial_key)
+            init_sort = filer_sort.fillna("").astype(str).map(_last_first_initial_key)
+            loose_ok |= init_raw.eq(target_init) | init_sort.eq(target_init)
+
+        ok = loose_ok
+
     return d[ok].copy()
 
 def last_name_norm_from_text(text: str) -> str:
@@ -327,15 +365,34 @@ def last_name_norm_from_text(text: str) -> str:
     return norm_name(last)
 
 def last_name_norm_series(s: pd.Series) -> pd.Series:
+    if isinstance(s, pd.DataFrame):
+        s = s.iloc[:, 0] if s.shape[1] > 0 else pd.Series([], dtype="string")
+    if not isinstance(s, pd.Series):
+        s = pd.Series(s)
     s = (
         s.fillna("")
-         .astype(str)
+         .astype("string")
          .str.replace("\u00A0", " ", regex=False)
          .str.strip()
     )
     comma_mask = s.str.contains(",", na=False)
-    last_from_comma = s.where(comma_mask, "").str.split(",", n=1).str[0].str.strip()
-    last_from_space = s.where(~comma_mask, "").str.split().str[-1].str.strip()
+    last_from_comma = (
+        s.where(comma_mask, "")
+         .astype("string")
+         .str.split(",", n=1)
+         .str[0]
+         .astype("string")
+         .str.strip()
+    )
+    last_from_space = (
+        s.where(~comma_mask, "")
+         .astype("string")
+         .str.split()
+         .str[-1]
+         .fillna("")
+         .astype("string")
+         .str.strip()
+    )
     last = last_from_comma.where(comma_mask, last_from_space).fillna("")
     return norm_name_series(last)
 
@@ -419,26 +476,64 @@ def ensure_cols(df: pd.DataFrame, cols_with_defaults: dict) -> pd.DataFrame:
             out[c] = default
     return out
 
+_SESSION_BASE_YEAR = 2023
+_SESSION_BASE_NUM = 88
+
 def _session_from_year(year_val) -> str:
     try:
         y = int(year_val)
     except Exception:
         return ""
-    # Texas regular sessions: 2011 -> 82R, 2013 -> 83R, etc.
-    session = 82 + ((y - 2011) // 2)
+    # Texas regular sessions map odd/even years to the same session.
+    # Examples: 2023/2024 -> 88R, 2025/2026 -> 89R.
+    session = _SESSION_BASE_NUM + ((y - _SESSION_BASE_YEAR) // 2)
     return f"{session}R"
 
 def _add_session_from_year(df: pd.DataFrame) -> pd.DataFrame:
     if "Session" in df.columns:
         return df
     out = df.copy()
-    if "applicableYear" in out.columns:
-        years = pd.to_numeric(out["applicableYear"], errors="coerce")
+    year_col = None
+    for cand in ["applicableYear", "applicable_year", "ApplicableYear", "year", "Year"]:
+        if cand in out.columns:
+            year_col = cand
+            break
+    if year_col:
+        years = pd.to_numeric(out[year_col], errors="coerce")
         sessions = years.map(_session_from_year)
         out["Session"] = sessions
     else:
         out["Session"] = ""
     return out
+
+def _build_filerid_map(frames: list[tuple[pd.DataFrame, str, str]]) -> dict[int, str]:
+    rows = []
+    for df, fid_col, short_col in frames:
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            continue
+        if fid_col not in df.columns or short_col not in df.columns:
+            continue
+        fid = pd.to_numeric(df[fid_col], errors="coerce")
+        if fid.isna().all():
+            continue
+        short = df[short_col].fillna("").astype(str).str.strip()
+        tmp = pd.DataFrame({"FilerID": fid, "LobbyShort": short})
+        tmp = tmp.dropna(subset=["FilerID"])
+        tmp["FilerID"] = tmp["FilerID"].astype(int)
+        tmp = tmp[tmp["LobbyShort"].astype(str).str.strip() != ""]
+        if not tmp.empty:
+            rows.append(tmp)
+    if not rows:
+        return {}
+    all_rows = pd.concat(rows, ignore_index=True)
+    counts = (
+        all_rows.groupby(["FilerID", "LobbyShort"])
+        .size()
+        .reset_index(name="n")
+        .sort_values(["FilerID", "n"], ascending=[True, False])
+        .drop_duplicates("FilerID")
+    )
+    return dict(zip(counts["FilerID"], counts["LobbyShort"]))
 
 def _tfl_session_for_filter(session_val: str | None, tfl_sessions: set[str]) -> str | None:
     if session_val is None:
@@ -822,17 +917,17 @@ def load_workbook(path: str) -> dict:
         "Lobby_TFL_Client_All": ["Session", "Client", "Lobby Name", "LobbyShort", "IsTFL", "Low", "High", "Amount", "Mid", "FilerID"],
         "Staff_All": ["Session", "session", "Legislator", "member_or_committee", "legislator_name", "Title", "role",
                       "Staffer", "name", "staff_name_last_initial", "lobby name", "source"],
-        "LaFood": ["Session", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst",
+        "LaFood": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst",
                    "restaurantName", "activityDate", "periodStartDt", "activityExactAmount", "activityAmountRangeLow", "activityAmountRangeHigh", "activityAmountCd"],
-        "LaEnt": ["Session", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst",
+        "LaEnt": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst",
                   "entertainmentName", "activityDate", "periodStartDt", "activityExactAmount", "activityAmountRangeLow", "activityAmountRangeHigh", "activityAmountCd"],
-        "LaTran": ["Session", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst",
+        "LaTran": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst",
                    "travelPurpose", "transportationTypeDescr", "departureCity", "arrivalCity", "checkInDt", "checkOutDt", "departureDt", "periodStartDt"],
-        "LaGift": ["Session", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst",
+        "LaGift": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst",
                    "activityDescription", "periodStartDt", "activityExactAmount", "activityAmountRangeLow", "activityAmountRangeHigh", "activityAmountCd"],
-        "LaEvnt": ["Session", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst",
+        "LaEvnt": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst",
                    "activityDescription", "activityDate", "periodStartDt"],
-        "LaAwrd": ["Session", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst",
+        "LaAwrd": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst",
                    "activityDescription", "periodStartDt", "activityExactAmount", "activityAmountRangeLow", "activityAmountRangeHigh", "activityAmountCd"],
         "LaCvr": ["Session", "filerIdent", "filerName", "filerSort", "filedDt", "periodStartDt", "sourceCategoryCd",
                   "subjectMatterMemo", "docketsMemo", "filerNameOrganization"],
@@ -1006,6 +1101,18 @@ def load_workbook(path: str) -> dict:
                 ls = ls.rename(columns={"lobby_short": "LobbyShort"})
         data["Lobby_Sub_All"] = ls
 
+    pf = data.get("Lobbyist_Pol_Funds")
+    if isinstance(pf, pd.DataFrame):
+        pf = pf.copy()
+        if "Session" not in pf.columns and "legislative_session" in pf.columns:
+            pf = pf.rename(columns={"legislative_session": "Session"})
+        if "LobbyShort" not in pf.columns:
+            if "lobbyshort" in pf.columns:
+                pf = pf.rename(columns={"lobbyshort": "LobbyShort"})
+            elif "lobby_short" in pf.columns:
+                pf = pf.rename(columns={"lobby_short": "LobbyShort"})
+        data["Lobbyist_Pol_Funds"] = pf
+
     for key in ["LaFood", "LaEnt", "LaTran", "LaGift", "LaEvnt", "LaAwrd", "LaCvr", "LaDock", "LaI4E", "LaSub"]:
         df = data.get(key)
         if isinstance(df, pd.DataFrame):
@@ -1058,21 +1165,11 @@ def load_workbook(path: str) -> dict:
         known_shorts = set(base["LobbyShort"].dropna().astype(str).str.strip().unique().tolist())
 
         # Map FilerID -> LobbyShort (used for activity matching)
-        if "FilerID" in lt.columns:
-            fid = lt[["FilerID", "LobbyShort"]].dropna().copy()
-            fid["FilerID"] = pd.to_numeric(fid["FilerID"], errors="coerce")
-            fid = fid.dropna(subset=["FilerID"])
-            fid["FilerID"] = fid["FilerID"].astype(int)
-            fid["LobbyShort"] = fid["LobbyShort"].astype(str).str.strip()
-            if not fid.empty:
-                fid_counts = (
-                    fid.groupby(["FilerID", "LobbyShort"])
-                    .size()
-                    .reset_index(name="n")
-                    .sort_values(["FilerID", "n"], ascending=[True, False])
-                    .drop_duplicates("FilerID")
-                )
-                filerid_to_short = dict(zip(fid_counts["FilerID"], fid_counts["LobbyShort"]))
+        filerid_to_short = _build_filerid_map([
+            (lt, "FilerID", "LobbyShort"),
+            (data.get("Lobby_Sub_All"), "FilerID", "LobbyShort"),
+            (data.get("Lobbyist_Pol_Funds"), "FilerID", "LobbyShort"),
+        ])
 
         # Map last name + first initial to LobbyShort (helps when names don't match exactly)
         tmp_short = lt[["LobbyShort"]].dropna().copy()
@@ -1198,6 +1295,7 @@ def build_activities(df_food, df_ent, df_tran, df_gift, df_evnt, df_awrd,
             name_to_short=name_to_short,
             lobbyist_norms=lobbyist_norms,
             filerid_to_short=filerid_to_short,
+            loose=True,
         )
 
     out = []
@@ -1529,6 +1627,9 @@ st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 # Resolve lobbyshort from search (if provided) but do not stop app if missing
 bill_mode = is_bill_query(st.session_state.search_query)
 typed_norms = norm_person_variants(st.session_state.search_query) if not bill_mode else set()
+typed_init_key = _last_first_initial_key(st.session_state.search_query) if not bill_mode else ""
+if typed_init_key:
+    typed_norms.add(typed_init_key)
 resolved_short, suggestions = ("", []) if bill_mode else resolve_lobbyshort(
     st.session_state.search_query,
     lobby_index,
