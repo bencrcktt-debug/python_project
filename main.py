@@ -2018,7 +2018,7 @@ else:
             else:
                 st.session_state.bill_search = st.text_input("Search bills (Bill / Author / Caption)", value=st.session_state.bill_search, placeholder="e.g., HB 4 or Bettencourt or housing")
                 filtered = bills.copy()
-                if st.session_state.st.session_state.bill_search.strip():
+                if st.session_state.bill_search.strip():
                     q = st.session_state.bill_search.strip()
                     filtered = filtered[
                         filtered["Bill"].astype(str).str.contains(q, case=False, na=False) |
