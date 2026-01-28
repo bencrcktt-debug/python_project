@@ -214,6 +214,18 @@ button[kind="primary"]{
 [data-baseweb="popover"] div[role="option"]{
     font-weight: 600;
 }
+
+/* Mobile responsive improvements */
+@media (max-width: 768px) {
+    .block-container { padding-left: 0.5rem; padding-right: 0.5rem; }
+    .section-title { font-size: 1.3rem; min-height: 2.5rem; }
+    .big-title { font-size: 2rem; }
+    .subtitle { font-size: 1rem; }
+    [data-testid="stTextInput"] input { font-size: 16px !important; }
+    [data-testid="stSelectbox"] div[role="combobox"] { font-size: 14px !important; }
+    button { padding: 0.5rem 1rem !important; font-size: 14px !important; }
+    .stTabs [data-baseweb="tab"] { padding: 8px 12px !important; font-size: 13px !important; }
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -1412,7 +1424,7 @@ with st.sidebar.expander("Data health", expanded=False):
 #   - lobbyist name box (optional)
 #   - session selector (All + ordinals)
 # =========================================================
-top1, top2, top3 = st.columns([2.2, 1.2, 1.2])
+top1, top2, top3 = st.columns([1, 1, 1])
 
 with top1:
     st.session_state.search_query = st.text_input(
@@ -1599,33 +1611,27 @@ with tab_all:
     if all_pivot.empty:
         st.info("No Lobby_TFL_Client_All rows found for the selected scope/session.")
     else:
-        a1, a2, a3, a4 = st.columns(4)
+        a1, a2 = st.columns(2)
         with a1:
             kpi_card(
                 "Total Taxpayer Funded",
                 f"{fmt_usd(all_stats.get('tfl_low_total', 0.0))} - {fmt_usd(all_stats.get('tfl_high_total', 0.0))}",
             )
+            kpi_card("Total Lobbyists", f"{all_stats.get('total_lobbyists', 0):,}")
         with a2:
             kpi_card(
                 "Total Private",
                 f"{fmt_usd(all_stats.get('pri_low_total', 0.0))} - {fmt_usd(all_stats.get('pri_high_total', 0.0))}",
             )
-        with a3:
-            kpi_card("Total Lobbyists", f"{all_stats.get('total_lobbyists', 0):,}")
             kpi_card("Lobbyists w/ ≥1 Taxpayer Funded client", f"{all_stats.get('has_tfl', 0):,}")
-        with a4:
-            kpi_card("Only Private", f"{all_stats.get('only_private', 0):,}")
-            kpi_card("Only Taxpayer Funded", f"{all_stats.get('only_tfl', 0):,}", f"Mixed: {all_stats.get('mixed', 0):,}")
 
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
-        t1, t2 = st.columns(2)
-        with t1:
-            st.markdown('<div class="section-title">Top 5 Taxpayer Funded<br>Lobbyists</div>', unsafe_allow_html=True)
-            top_lobbyists = all_pivot.copy()
-            if not top_lobbyists.empty:
-                top_lobbyists = top_lobbyists[top_lobbyists.get("Clients_TFL", 0) > 0].copy()
-                top_lobbyists = top_lobbyists.sort_values(["High_TFL", "Low_TFL"], ascending=[False, False]).head(5)
+        st.markdown('<div class="section-title">Top Taxpayer Funded Lobbyists</div>', unsafe_allow_html=True)
+        top_lobbyists = all_pivot.copy()
+        if not top_lobbyists.empty:
+            top_lobbyists = top_lobbyists[top_lobbyists.get("Clients_TFL", 0) > 0].copy()
+            top_lobbyists = top_lobbyists.sort_values(["High_TFL", "Low_TFL"], ascending=[False, False]).head(5)
                 lobby_display = (
                     Lobby_TFL_Client_All[["LobbyShort", "Lobby Name"]]
                     .dropna()
@@ -1688,12 +1694,11 @@ with tab_all:
                 st.info("No taxpayer funded clients found for the selected scope/session.")
 
         flt = st.text_input("Filter LobbyShort (contains)", value="", placeholder="e.g., Abbott")
-        c1, c2, c3 = st.columns(3)
+        c1, c2 = st.columns(2)
         with c1:
             only_tfl = st.checkbox("Only taxpayer funded", value=False)
-        with c2:
             only_private = st.checkbox("Only private", value=False)
-        with c3:
+        with c2:
             mixed_only = st.checkbox("Mixed only", value=False)
 
         view = all_pivot.copy()
@@ -1967,26 +1972,22 @@ else:
         # ---- Overview tab
         with tab_overview:
             st.markdown('<div class="section-title">Overview</div>', unsafe_allow_html=True)
-            o1, o2, o3, o4 = st.columns(4)
+            o1, o2 = st.columns(2)
             with o1:
                 kpi_card("Session", session, f"Scope: {st.session_state.scope}")
+                kpi_card("Taxpayer Funded Totals", f"{fmt_usd(tfl_low)} - {fmt_usd(tfl_high)}")
             with o2:
                 kpi_card("Lobbyist", lobbyshort, st.session_state.search_query.strip() or "—")
-            with o3:
-                kpi_card("Taxpayer Funded Totals", f"{fmt_usd(tfl_low)} - {fmt_usd(tfl_high)}")
-            with o4:
                 kpi_card("Private Totals", f"{fmt_usd(pri_low)} - {fmt_usd(pri_high)}")
 
             st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
-            s1, s2, s3, s4 = st.columns(4)
+            s1, s2 = st.columns(2)
             with s1:
                 kpi_card("Taxpayer Funded?", "Yes" if has_tfl else "No")
+                kpi_card("Total Bills (Witness Lists)", f"{len(bills):,}")
             with s2:
                 kpi_card("Private Funded?", "Yes" if has_private else "No")
-            with s3:
-                kpi_card("Total Bills (Witness Lists)", f"{len(bills):,}")
-            with s4:
                 passed = int((bills.get("Status", pd.Series(dtype=object)) == "Passed").sum()) if not bills.empty else 0
                 failed = int((bills.get("Status", pd.Series(dtype=object)) == "Failed").sum()) if not bills.empty else 0
                 kpi_card("Passed / Failed", f"{passed:,} / {failed:,}")
@@ -2016,13 +2017,11 @@ else:
                         filtered["Caption"].astype(str).str.contains(q, case=False, na=False)
                     ].copy()
 
-                f1, f2 = st.columns(2)
-                with f1:
-                    status_opts = sorted(filtered.get("Status", pd.Series(dtype=object)).dropna().astype(str).unique().tolist())
-                    status_sel = st.multiselect("Filter by status", status_opts, default=status_opts)
-                with f2:
-                    pos_opts = sorted(filtered.get("Position", pd.Series(dtype=object)).dropna().astype(str).unique().tolist())
-                    pos_sel = st.multiselect("Filter by position", pos_opts, default=pos_opts)
+                status_opts = sorted(filtered.get("Status", pd.Series(dtype=object)).dropna().astype(str).unique().tolist())
+                status_sel = st.multiselect("Filter by status", status_opts, default=status_opts)
+                
+                pos_opts = sorted(filtered.get("Position", pd.Series(dtype=object)).dropna().astype(str).unique().tolist())
+                pos_sel = st.multiselect("Filter by position", pos_opts, default=pos_opts)
 
                 if status_sel:
                     filtered = filtered[filtered["Status"].astype(str).isin(status_sel)].copy()

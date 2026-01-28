@@ -5,6 +5,18 @@ backgroundColor="#071627"
 secondaryBackgroundColor="#0f2139"
 textColor="#ffffff"
 
+[client]
+showErrorDetails = false
+toolbarMode = "minimal"
+
+[logger]
+level = "warning"
+
 [server]
 headless = true
 port = 8501
+maxUploadSize = 200
+enableXsrfProtection = true
+
+[browser]
+serverAddress = "localhost"
