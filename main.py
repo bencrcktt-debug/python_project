@@ -1396,6 +1396,14 @@ if "lobbyshort" not in st.session_state:
     st.session_state.lobbyshort = ""
 if "search_query" not in st.session_state:
     st.session_state.search_query = ""
+if "bill_search" not in st.session_state:
+    st.session_state.bill_search = ""
+if "activity_search" not in st.session_state:
+    st.session_state.activity_search = ""
+if "disclosure_search" not in st.session_state:
+    st.session_state.disclosure_search = ""
+if "filter_lobbyshort" not in st.session_state:
+    st.session_state.filter_lobbyshort = ""
 
 st.sidebar.header("Filters")
 st.session_state.scope = st.sidebar.radio("Overview scope", ["This Session", "All Sessions"], index=0)
@@ -1693,7 +1701,8 @@ with tab_all:
         else:
             st.info("No taxpayer funded clients found for the selected scope/session.")
 
-        flt = st.text_input("Filter LobbyShort (contains)", value="", placeholder="e.g., Abbott")
+        st.session_state.filter_lobbyshort = st.text_input("Filter LobbyShort (contains)", value=st.session_state.filter_lobbyshort, placeholder="e.g., Abbott")
+        flt = st.session_state.filter_lobbyshort
         c1, c2 = st.columns(2)
         with c1:
             only_tfl = st.checkbox("Only taxpayer funded", value=False)
@@ -2007,10 +2016,10 @@ else:
             if bills.empty:
                 st.info("No witness-list rows found for this lobbyist/session in Wit_All.")
             else:
-                bill_search = st.text_input("Search bills (Bill / Author / Caption)", value="", placeholder="e.g., HB 4 or Bettencourt or housing")
+                st.session_state.bill_search = st.text_input("Search bills (Bill / Author / Caption)", value=st.session_state.bill_search, placeholder="e.g., HB 4 or Bettencourt or housing")
                 filtered = bills.copy()
-                if bill_search.strip():
-                    q = bill_search.strip()
+                if st.session_state.st.session_state.bill_search.strip():
+                    q = st.session_state.bill_search.strip()
                     filtered = filtered[
                         filtered["Bill"].astype(str).str.contains(q, case=False, na=False) |
                         filtered["Author"].astype(str).str.contains(q, case=False, na=False) |
@@ -2102,9 +2111,9 @@ else:
                 if sel_types:
                     filt = filt[filt["Type"].isin(sel_types)].copy()
 
-                search_text = st.text_input("Search activities (filer, member, description)", value="")
-                if search_text.strip():
-                    q = search_text.strip()
+                st.session_state.activity_search = st.text_input("Search activities (filer, member, description)", value=st.session_state.activity_search)
+                if st.session_state.activity_search.strip():
+                    q = st.session_state.activity_search.strip()
                     filt = filt[
                         filt["Filer"].astype(str).str.contains(q, case=False, na=False) |
                         filt["Member"].astype(str).str.contains(q, case=False, na=False) |
@@ -2136,9 +2145,9 @@ else:
                 if sel_types:
                     filt = filt[filt["Type"].isin(sel_types)].copy()
 
-                q = st.text_input("Search disclosures (filer, description, entity)", value="")
-                if q.strip():
-                    q = q.strip()
+                st.session_state.disclosure_search = st.text_input("Search disclosures (filer, description, entity)", value=st.session_state.disclosure_search)
+                if st.session_state.disclosure_search.strip():
+                    q = st.session_state.disclosure_search.strip()
                     filt = filt[
                         filt["Filer"].astype(str).str.contains(q, case=False, na=False) |
                         filt["Description"].astype(str).str.contains(q, case=False, na=False) |
