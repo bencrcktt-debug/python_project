@@ -226,6 +226,14 @@ button[kind="primary"]{
     [data-testid="stSelectbox"] div[role="combobox"] { font-size: 14px !important; }
     button { padding: 0.5rem 1rem !important; font-size: 14px !important; }
     .stTabs [data-baseweb="tab"] { padding: 8px 12px !important; font-size: 13px !important; }
+    .stTabs [data-baseweb="tab-list"]{ flex-wrap: wrap; }
+    .card{ padding: 12px 12px 10px 12px; }
+    .kpi-value{ font-size: 1.6rem; }
+    .kpi-sub{ font-size: 0.85rem; }
+    [data-testid="stHorizontalBlock"]{ flex-direction: column; }
+    [data-testid="column"]{ width: 100% !important; flex: 1 1 100% !important; }
+    [data-testid="stDataFrame"]{ overflow-x: auto; }
+    button[kind="primary"]{ width: 100%; }
 }
 </style>
 """,
