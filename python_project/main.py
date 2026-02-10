@@ -805,8 +805,12 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input::placeh
 
 /* Mobile responsive improvements */
 @media (max-width: 768px) {
-    :root{ --nav-h: 132px; --nav-search-w: 100%; }
-    .block-container { padding-left: 0.5rem; padding-right: 0.5rem; }
+    :root{ --nav-h: 108px; --nav-search-w: 100%; }
+    .block-container {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+        padding-top: calc(var(--nav-h) + 3.6rem);
+    }
     .section-title { font-size: 1.3rem; min-height: 2.5rem; }
     .big-title { font-size: 2rem; }
     .subtitle { font-size: 1rem; }
@@ -814,10 +818,21 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input::placeh
     [data-testid="stSelectbox"] div[role="combobox"] { font-size: 14px !important; }
     button { padding: 0.5rem 1rem !important; font-size: 14px !important; }
     .stTabs [data-baseweb="tab"] { padding: 8px 12px !important; font-size: 13px !important; }
-    .stTabs [data-baseweb="tab-list"]{ flex-wrap: wrap; }
-    .card{ padding: 12px 12px 10px 12px; }
-    .kpi-value{ font-size: 1.6rem; }
+    .stTabs [data-baseweb="tab-list"]{
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        gap: 8px;
+        padding-bottom: 6px;
+    }
+    .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar{ display: none; }
+    .stTabs [data-baseweb="tab"]{ flex: 0 0 auto; }
+    .card{ padding: 12px 12px 10px 12px; border-radius: 16px; }
+    .kpi-title{ font-size: 0.78rem; }
+    .kpi-value{ font-size: 1.4rem; }
     .kpi-sub{ font-size: 0.85rem; }
+    .section-sub{ font-size: 0.9rem; }
+    .chip{ font-size: 0.75rem; padding: 4px 8px; margin-right: 4px; }
     [data-testid="stHorizontalBlock"]{ flex-direction: column; }
     [data-testid="column"]{ width: 100% !important; flex: 1 1 100% !important; }
     [data-testid="stDataFrame"]{ overflow-x: auto; }
@@ -829,16 +844,21 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input::placeh
     .custom-nav .nav-inner{
         flex-direction: column;
         align-items: flex-start;
-        gap: 8px;
+        gap: 6px;
         padding-right: 0;
     }
     .custom-nav .nav-links{
-        flex-wrap: wrap;
-        gap: 12px;
+        flex-wrap: nowrap;
+        gap: 14px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
         padding-right: 0;
+        width: 100%;
     }
+    .custom-nav .nav-links::-webkit-scrollbar{ display: none; }
+    .custom-nav .nav-link{ font-size: 0.9rem; padding: 8px 2px; }
     .custom-nav .brand-top{ font-size: 0.8rem; }
-    .custom-nav .brand-bottom{ font-size: 1.1rem; }
+    .custom-nav .brand-bottom{ font-size: 1.2rem; }
     .about-shell{ grid-template-columns: 1fr; }
     .about-hero{ padding: 18px 16px 16px 16px; }
     .about-title{ font-size: 1.6rem; }
@@ -854,7 +874,7 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input::placeh
     .tap-hero-title{ font-size: 1.5rem; }
     .tap-feature-head{ flex-direction: column; align-items: flex-start; }
     div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]){
-        top: calc(var(--nav-h) - 46px);
+        top: calc(var(--nav-h) + 6px);
         left: 12px;
         right: 12px;
         width: auto;
@@ -862,7 +882,9 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input::placeh
     }
     div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input{
         width: 100%;
+        height: 42px !important;
     }
+    div[data-testid="stPlotlyChart"]{ padding: 6px 8px 4px 8px; border-radius: 16px; }
 }
 </style>
 """,
