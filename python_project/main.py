@@ -2925,7 +2925,7 @@ _nav_links = []
 for page, label in _nav_items:
     active = " active" if page == _active_page else ""
     _nav_links.append(
-        f'<a class="nav-link{active}" href="{_nav_href(page)}">{label}</a>'
+        f'<a class="nav-link{active}" href="{_nav_href(page)}" target="_self">{label}</a>'
     )
 
 st.markdown(
