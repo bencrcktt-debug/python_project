@@ -1,8 +1,8 @@
 pandas
 streamlit==1.53.1
 altair==4.2.2
-plotly
+plotly==5.24.1
 openpyxl
 pyarrow
 fpdf2
-kaleido
+kaleido==0.2.1

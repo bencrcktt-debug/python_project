@@ -3675,6 +3675,34 @@ def _pdf_safe_text(text: str) -> str:
         return ""
     return str(text).encode("latin-1", "replace").decode("latin-1")
 
+PDF_CHART_ERROR_KEY = "pdf_chart_error"
+
+def _record_pdf_chart_error(message: str) -> None:
+    if not message:
+        return
+    if PDF_CHART_ERROR_KEY not in st.session_state:
+        st.session_state[PDF_CHART_ERROR_KEY] = message
+
+def _clear_pdf_chart_error() -> None:
+    if PDF_CHART_ERROR_KEY in st.session_state:
+        del st.session_state[PDF_CHART_ERROR_KEY]
+
+def _configure_kaleido_scope() -> bool:
+    try:
+        scope = pio.kaleido.scope
+    except Exception as exc:
+        _record_pdf_chart_error(f"Kaleido unavailable: {exc}")
+        return False
+    if scope is None:
+        _record_pdf_chart_error("Kaleido scope unavailable. Install the kaleido package.")
+        return False
+    try:
+        scope.mathjax = None
+        scope.default_format = "png"
+    except Exception:
+        pass
+    return True
+
 def _wrap_pdf_line(pdf: FPDF, text: str, max_w: float) -> list[str]:
     if text is None:
         return [""]
@@ -3729,11 +3757,28 @@ def _apply_pdf_chart_layout(fig):
     return fig
 
 def _fig_to_png_bytes(fig, width: int = 900, height: int = 500, scale: int = 2) -> bytes | None:
-    try:
-        _apply_pdf_chart_layout(fig)
-        return pio.to_image(fig, format="png", width=width, height=height, scale=scale)
-    except Exception:
+    if fig is None:
         return None
+    if not _configure_kaleido_scope():
+        return None
+    _apply_pdf_chart_layout(fig)
+    last_exc = None
+    scales = [scale] if scale == 1 else [scale, 1]
+    for attempt_scale in scales:
+        try:
+            return pio.to_image(
+                fig,
+                format="png",
+                width=width,
+                height=height,
+                scale=attempt_scale,
+                engine="kaleido",
+            )
+        except Exception as exc:
+            last_exc = exc
+    if last_exc is not None:
+        _record_pdf_chart_error(str(last_exc))
+    return None
 
 def _coerce_pdf_bytes(data) -> bytes | None:
     if data is None:
@@ -6266,6 +6311,7 @@ def _render_pdf_report_section(
             generate_clicked = st.button("Generate report", key=f"{key_prefix}_report_build", use_container_width=True)
             
         if generate_clicked:
+            _clear_pdf_chart_error()
             try:
                 with st.status("Generating PDF...", expanded=False):
                     payload = _build_report_payload(
@@ -6286,6 +6332,13 @@ def _render_pdf_report_section(
                         st.success("Report generated")
             except Exception as e:
                 st.error(f"Report generation failed: {str(e)}")
+
+        if pdf_key in st.session_state and st.session_state.get(PDF_CHART_ERROR_KEY):
+            st.warning(
+                "PDF charts could not be rendered on this host. "
+                "This usually means Plotly's Kaleido engine is missing or failed to start."
+            )
+            st.caption(st.session_state[PDF_CHART_ERROR_KEY])
         
         with c2:
             if pdf_key in st.session_state and isinstance(st.session_state[pdf_key], bytes):
