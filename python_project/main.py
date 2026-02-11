@@ -2,11 +2,15 @@ import os
 import re
 import difflib
 import html
+from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 import pandas as pd
 import streamlit as st
 import plotly.express as px
+import plotly.io as pio
 import altair as alt
+from fpdf import FPDF
 
 # =========================================================
 # CONFIG
@@ -892,14 +896,13 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input::placeh
 )
 
 def _page_about():
-    st.markdown('<div class="section-title">About</div>', unsafe_allow_html=True)
     st.markdown(
         """
 <div class="about-wrap">
   <div class="card about-hero">
     <div class="about-kicker">Overview</div>
-    <div class="about-title">Lobby Look-Up</div>
-    <p class="about-lead">Lobby Look-Up makes Texas lobbying activity easier to understand -- who is
+    <div class="about-title">Texas Lobby Data Center</div>
+    <p class="about-lead">Texas Lobby Data Center makes Texas lobbying activity easier to understand -- who is
     lobbying, for whom, on what issues, and how those efforts appear in the legislative process.</p>
     <p class="about-body">The dashboard brings together lobbyists, clients, compensation ranges, bill activity,
     witness-list positions, policy subjects, and outcomes in one place. The goal is simple:
@@ -958,7 +961,7 @@ def _page_about():
           <span class="about-section-num">01</span>
           <h3>Where the Data Comes From</h3>
         </div>
-        <p class="about-note">All information displayed in Lobby Look-Up is drawn from publicly available
+        <p class="about-note">All information displayed in Texas Lobby Data Center is drawn from publicly available
         government and nonprofit sources, including the following:</p>
         <div class="source-grid">
           <div class="source-item">
@@ -1031,13 +1034,10 @@ def _page_about():
     )
 
 def _page_turn_off_tap():
-    st.markdown('<div class="section-title">Turn off the tap</div>', unsafe_allow_html=True)
-
     st.markdown(
         """
 <div class="card tap-hero">
   <div class="tap-hero-kicker">Video Series</div>
-  <div class="tap-hero-title">Turn off the tap</div>
   <p class="tap-hero-lead">Six short explainers on transparency, lobbying, and reform. Use the selector to play
   in-page or open YouTube for sharing.</p>
 </div>
@@ -1174,7 +1174,6 @@ def _page_turn_off_tap():
         st.markdown(f'<div class="video-grid">{"".join(all_cards)}</div>', unsafe_allow_html=True)
 
 def _page_solutions():
-    st.markdown('<div class="section-title">Solutions</div>', unsafe_allow_html=True)
     st.markdown(
         """
 <div class="about-wrap">
@@ -1407,6 +1406,46 @@ def _page_client_lookup():
     if st.session_state.client_name:
         chips.append(f"Client: {st.session_state.client_name}")
     st.markdown("".join([f'<span class="chip">{c}</span>' for c in chips]), unsafe_allow_html=True)
+
+    focus_label = "All Clients"
+    if st.session_state.client_name:
+        focus_label = f"Client: {st.session_state.client_name}"
+    focus_context = {
+        "type": "client" if st.session_state.client_name else "",
+        "name": st.session_state.client_name,
+        "report_title": "Client Report",
+        "tables": {
+            "Staff_All": Staff_All,
+            "Lobby_Sub_All": Lobby_Sub_All,
+            "LaFood": data.get("LaFood", pd.DataFrame()),
+            "LaEnt": data.get("LaEnt", pd.DataFrame()),
+            "LaTran": data.get("LaTran", pd.DataFrame()),
+            "LaGift": data.get("LaGift", pd.DataFrame()),
+            "LaEvnt": data.get("LaEvnt", pd.DataFrame()),
+            "LaAwrd": data.get("LaAwrd", pd.DataFrame()),
+            "LaCvr": LaCvr,
+            "LaDock": LaDock,
+            "LaI4E": LaI4E,
+            "LaSub": LaSub,
+        },
+        "lookups": {
+            "name_to_short": name_to_short,
+            "short_to_names": short_to_names,
+            "filerid_to_short": data.get("filerid_to_short", {}),
+        },
+    }
+    _ = _render_pdf_report_section(
+        key_prefix="client",
+        session_val=st.session_state.client_session,
+        scope_label=st.session_state.client_scope,
+        focus_label=focus_label,
+        Lobby_TFL_Client_All=Lobby_TFL_Client_All,
+        Wit_All=Wit_All,
+        Bill_Status_All=Bill_Status_All,
+        Bill_Sub_All=Bill_Sub_All,
+        tfl_session_val=tfl_session_val,
+        focus_context=focus_context,
+    )
 
     @st.cache_data(show_spinner=False)
     def build_all_clients_overview(df: pd.DataFrame, session_val: str | None, scope_val: str) -> tuple[pd.DataFrame, dict]:
@@ -1701,7 +1740,7 @@ def _page_client_lookup():
                 height=560,
                 hide_index=True,
             )
-            export_dataframe(view_disp[show_cols], "all_clients_overview.csv", label="Download overview CSV")
+            _ = export_dataframe(view_disp[show_cols], "all_clients_overview.csv", label="Download overview CSV")
 
     def _no_client_msg():
         st.info("Type a client name at the top to view details. The All Clients tab is available without a selection.")
@@ -2049,7 +2088,7 @@ def _page_client_lookup():
             view["High"] = view["High"].astype(float).apply(fmt_usd)
             show_cols = ["Lobbyist", "LobbyShort", "Low", "High"]
             st.dataframe(view[show_cols], use_container_width=True, height=520, hide_index=True)
-            export_dataframe(view[show_cols], "client_lobbyists.csv")
+            _ = export_dataframe(view[show_cols], "client_lobbyists.csv")
 
     with tab_bills:
         st.markdown('<div class="section-title">Bills with Witness-List Activity</div>', unsafe_allow_html=True)
@@ -2075,13 +2114,22 @@ def _page_client_lookup():
 
             f1, f2, f3 = st.columns(3)
             with f1:
-                status_opts = sorted(filtered.get("Status", pd.Series(dtype=object)).dropna().astype(str).unique().tolist())
+                status_opts = _clean_options(
+                    filtered.get("Status", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
+                )
+                status_opts = sorted(status_opts)
                 status_sel = st.multiselect("Filter by status", status_opts, default=status_opts, key="client_status_filter")
             with f2:
-                pos_opts = sorted(filtered.get("Position", pd.Series(dtype=object)).dropna().astype(str).unique().tolist())
+                pos_opts = _clean_options(
+                    filtered.get("Position", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
+                )
+                pos_opts = sorted(pos_opts)
                 pos_sel = st.multiselect("Filter by position", pos_opts, default=pos_opts, key="client_position_filter")
             with f3:
-                lobby_opts = sorted(filtered.get("Lobbyist", pd.Series(dtype=object)).dropna().astype(str).unique().tolist())
+                lobby_opts = _clean_options(
+                    filtered.get("Lobbyist", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
+                )
+                lobby_opts = sorted(lobby_opts)
                 lobby_sel = st.multiselect("Filter by lobbyist", lobby_opts, default=lobby_opts, key="client_lobbyist_filter")
 
             if status_sel:
@@ -2098,7 +2146,7 @@ def _page_client_lookup():
             show_cols = ["Bill", "Lobbyist", "Organization", "Position", "Author", "Caption", "Fiscal Impact H", "Fiscal Impact S", "Status"]
             show_cols = [c for c in show_cols if c in filtered.columns]
             st.dataframe(filtered[show_cols].sort_values(["Bill", "Lobbyist"]), use_container_width=True, height=520, hide_index=True)
-            export_dataframe(filtered[show_cols], "client_bills.csv")
+            _ = export_dataframe(filtered[show_cols], "client_bills.csv")
 
     with tab_policy:
         st.markdown('<div class="section-title">Policy Areas</div>', unsafe_allow_html=True)
@@ -2154,7 +2202,7 @@ def _page_client_lookup():
             m2["Share"] = (m2["Share"] * 100).round(0).astype("Int64").astype(str) + "%"
             m2 = m2.rename(columns={"Subject": "Policy Area"})
             st.dataframe(m2[["Policy Area", "Mentions", "Share"]], use_container_width=True, height=520, hide_index=True)
-            export_dataframe(m2, "client_policy_areas.csv")
+            _ = export_dataframe(m2, "client_policy_areas.csv")
 
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
         st.subheader("Reported Subject Matters (Lobby_Sub_All)")
@@ -2201,7 +2249,7 @@ def _page_client_lookup():
                 height=420,
                 hide_index=True,
             )
-            export_dataframe(lobby_sub_counts, "client_reported_subject_matters.csv")
+            _ = export_dataframe(lobby_sub_counts, "client_reported_subject_matters.csv")
 
     with tab_staff:
         st.markdown('<div class="section-title">Legislative Staffer History</div>', unsafe_allow_html=True)
@@ -2216,7 +2264,7 @@ def _page_client_lookup():
             if sort_cols:
                 staff_view = staff_view.sort_values(sort_cols)
             st.dataframe(staff_view, use_container_width=True, height=380, hide_index=True)
-            export_dataframe(staff_view, "client_staff_history.csv")
+            _ = export_dataframe(staff_view, "client_staff_history.csv")
 
         if staff_pick_session.empty:
             st.caption("Session-specific staff metrics are not shown because there are no matches for the selected session.")
@@ -2228,7 +2276,7 @@ def _page_client_lookup():
                 s2[col] = pd.to_numeric(s2[col], errors="coerce")
                 s2[col] = (s2[col] * 100).round(0)
             st.dataframe(s2, use_container_width=True, height=320, hide_index=True)
-            export_dataframe(s2, "client_staff_stats.csv")
+            _ = export_dataframe(s2, "client_staff_stats.csv")
 
     with tab_activities:
         st.markdown('<div class="section-title">Lobbying Expenditures / Activity</div>', unsafe_allow_html=True)
@@ -2236,12 +2284,14 @@ def _page_client_lookup():
             st.info("No activity rows found for lobbyists tied to this client/session.")
         else:
             filt = activities.copy()
-            t_opts = sorted(filt["Type"].dropna().astype(str).unique().tolist())
+            t_opts = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
+            t_opts = sorted(t_opts)
             sel_types = st.multiselect("Filter by activity type", t_opts, default=t_opts, key="client_activity_types")
             if sel_types:
                 filt = filt[filt["Type"].isin(sel_types)].copy()
 
-            lobby_opts = sorted(filt["Lobbyist"].dropna().astype(str).unique().tolist())
+            lobby_opts = _clean_options(filt["Lobbyist"].dropna().astype(str).unique().tolist())
+            lobby_opts = sorted(lobby_opts)
             sel_lobby = st.multiselect("Filter by lobbyist", lobby_opts, default=lobby_opts, key="client_activity_lobbyist")
             if sel_lobby:
                 filt = filt[filt["Lobbyist"].isin(sel_lobby)].copy()
@@ -2271,7 +2321,7 @@ def _page_client_lookup():
 
             st.caption(f"{len(filt):,} rows")
             st.dataframe(filt, use_container_width=True, height=560, hide_index=True)
-            export_dataframe(filt, "client_activities.csv")
+            _ = export_dataframe(filt, "client_activities.csv")
 
     with tab_disclosures:
         st.markdown('<div class="section-title">Disclosures & Subject Matter Filings</div>', unsafe_allow_html=True)
@@ -2279,12 +2329,14 @@ def _page_client_lookup():
             st.info("No disclosure rows found for lobbyists tied to this client/session.")
         else:
             filt = disclosures.copy()
-            d_types = sorted(filt["Type"].dropna().astype(str).unique().tolist())
+            d_types = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
+            d_types = sorted(d_types)
             sel_types = st.multiselect("Filter by disclosure type", d_types, default=d_types, key="client_disclosure_types")
             if sel_types:
                 filt = filt[filt["Type"].isin(sel_types)].copy()
 
-            lobby_opts = sorted(filt["Lobbyist"].dropna().astype(str).unique().tolist())
+            lobby_opts = _clean_options(filt["Lobbyist"].dropna().astype(str).unique().tolist())
+            lobby_opts = sorted(lobby_opts)
             sel_lobby = st.multiselect("Filter by lobbyist", lobby_opts, default=lobby_opts, key="client_disclosure_lobbyist")
             if sel_lobby:
                 filt = filt[filt["Lobbyist"].isin(sel_lobby)].copy()
@@ -2314,7 +2366,7 @@ def _page_client_lookup():
 
             st.caption(f"{len(filt):,} rows")
             st.dataframe(filt, use_container_width=True, height=560, hide_index=True)
-            export_dataframe(filt, "client_disclosures.csv")
+            _ = export_dataframe(filt, "client_disclosures.csv")
 
     st.markdown(
         """
@@ -2346,6 +2398,7 @@ def _page_member_lookup():
 
     Wit_All = data["Wit_All"]
     Bill_Status_All = data["Bill_Status_All"]
+    Bill_Sub_All = data.get("Bill_Sub_All", pd.DataFrame())
     Lobby_TFL_Client_All = data["Lobby_TFL_Client_All"]
     Staff_All = data["Staff_All"]
     LaCvr = data["LaCvr"]
@@ -2463,6 +2516,45 @@ def _page_member_lookup():
     if st.session_state.member_name:
         chips.append(f"Member: {st.session_state.member_name}")
     st.markdown("".join([f'<span class="chip">{c}</span>' for c in chips]), unsafe_allow_html=True)
+
+    focus_label = "All Legislators"
+    if st.session_state.member_name:
+        focus_label = f"Legislator: {st.session_state.member_name}"
+    focus_context = {
+        "type": "legislator" if st.session_state.member_name else "",
+        "name": st.session_state.member_name,
+        "report_title": "Legislator Report",
+        "tables": {
+            "Staff_All": Staff_All,
+            "LaFood": data.get("LaFood", pd.DataFrame()),
+            "LaEnt": data.get("LaEnt", pd.DataFrame()),
+            "LaTran": data.get("LaTran", pd.DataFrame()),
+            "LaGift": data.get("LaGift", pd.DataFrame()),
+            "LaEvnt": data.get("LaEvnt", pd.DataFrame()),
+            "LaAwrd": data.get("LaAwrd", pd.DataFrame()),
+            "LaCvr": LaCvr,
+            "LaDock": LaDock,
+            "LaI4E": LaI4E,
+            "LaSub": LaSub,
+        },
+        "lookups": {
+            "name_to_short": name_to_short,
+            "short_to_names": short_to_names,
+            "filerid_to_short": data.get("filerid_to_short", {}),
+        },
+    }
+    _ = _render_pdf_report_section(
+        key_prefix="member",
+        session_val=st.session_state.member_session,
+        scope_label="Selected Session",
+        focus_label=focus_label,
+        Lobby_TFL_Client_All=Lobby_TFL_Client_All,
+        Wit_All=Wit_All,
+        Bill_Status_All=Bill_Status_All,
+        Bill_Sub_All=Bill_Sub_All,
+        tfl_session_val=tfl_session_val,
+        focus_context=focus_context,
+    )
 
     tab_overview, tab_bills, tab_witness, tab_activities, tab_staff = st.tabs(
         ["Overview", "Bills", "Witness Lists", "Activities", "Staff to Lobbyist"]
@@ -2762,7 +2854,7 @@ def _page_member_lookup():
                     height=520,
                     hide_index=True,
                 )
-                export_dataframe(bill_view[show_cols], "member_bills.csv")
+                _ = export_dataframe(bill_view[show_cols], "member_bills.csv")
 
     with tab_witness:
         st.markdown('<div class="section-title">Witness Lists: Lobbyists and Organizations</div>', unsafe_allow_html=True)
@@ -2786,13 +2878,22 @@ def _page_member_lookup():
 
             f1, f2, f3 = st.columns(3)
             with f1:
-                pos_opts = sorted(witness_view.get("Position", pd.Series(dtype=object)).dropna().astype(str).unique().tolist())
+                pos_opts = _clean_options(
+                    witness_view.get("Position", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
+                )
+                pos_opts = sorted(pos_opts)
                 pos_sel = st.multiselect("Filter by position", pos_opts, default=pos_opts, key="member_pos_filter")
             with f2:
-                tfl_opts = sorted(witness_view.get("Has TFL Client", pd.Series(dtype=object)).dropna().astype(str).unique().tolist())
+                tfl_opts = _clean_options(
+                    witness_view.get("Has TFL Client", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
+                )
+                tfl_opts = sorted(tfl_opts)
                 tfl_sel = st.multiselect("Filter by TFL", tfl_opts, default=tfl_opts, key="member_tfl_filter")
             with f3:
-                lob_opts = sorted(witness_view.get("Lobbyist", pd.Series(dtype=object)).dropna().astype(str).unique().tolist())
+                lob_opts = _clean_options(
+                    witness_view.get("Lobbyist", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
+                )
+                lob_opts = sorted(lob_opts)
                 lob_sel = st.multiselect("Filter by lobbyist", lob_opts, default=lob_opts, key="member_lobbyist_filter")
 
             if pos_sel:
@@ -2819,7 +2920,7 @@ def _page_member_lookup():
                 height=560,
                 hide_index=True,
             )
-            export_dataframe(witness_view[show_cols], "member_witness_lists.csv")
+            _ = export_dataframe(witness_view[show_cols], "member_witness_lists.csv")
 
     with tab_activities:
         st.markdown('<div class="section-title">Lobbyist Activity Benefiting the Member</div>', unsafe_allow_html=True)
@@ -2827,12 +2928,14 @@ def _page_member_lookup():
             st.info("No activity rows found where this legislator is the recipient.")
         else:
             filt = activities.copy()
-            t_opts = sorted(filt["Type"].dropna().astype(str).unique().tolist())
+            t_opts = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
+            t_opts = sorted(t_opts)
             sel_types = st.multiselect("Filter by activity type", t_opts, default=t_opts, key="member_activity_types")
             if sel_types:
                 filt = filt[filt["Type"].isin(sel_types)].copy()
 
-            lobby_opts = sorted(filt["Lobbyist"].dropna().astype(str).unique().tolist())
+            lobby_opts = _clean_options(filt["Lobbyist"].dropna().astype(str).unique().tolist())
+            lobby_opts = sorted(lobby_opts)
             sel_lobby = st.multiselect("Filter by lobbyist", lobby_opts, default=lobby_opts, key="member_activity_lobbyist")
             if sel_lobby:
                 filt = filt[filt["Lobbyist"].isin(sel_lobby)].copy()
@@ -2863,7 +2966,7 @@ def _page_member_lookup():
             show_cols = [c for c in show_cols if c in filt.columns]
             st.caption(f"{len(filt):,} rows")
             st.dataframe(filt[show_cols], use_container_width=True, height=560, hide_index=True)
-            export_dataframe(filt[show_cols], "member_activities.csv")
+            _ = export_dataframe(filt[show_cols], "member_activities.csv")
 
     with tab_staff:
         st.markdown('<div class="section-title">Staff Who Became Lobbyists</div>', unsafe_allow_html=True)
@@ -2877,7 +2980,7 @@ def _page_member_lookup():
             if sort_cols:
                 staff_view = staff_view.sort_values(sort_cols)
             st.dataframe(staff_view, use_container_width=True, height=420, hide_index=True)
-            export_dataframe(staff_view, "member_staff_to_lobbyists.csv")
+            _ = export_dataframe(staff_view, "member_staff_to_lobbyists.csv")
 
     st.markdown(
         """
@@ -2897,7 +3000,7 @@ _lobby_page = st.Page(_page_lobby_lookup, title="Lobby Look-Up", url_path="lobby
 _client_page = st.Page(_page_client_lookup, title="Client Look-Up", url_path="clients")
 _member_page = st.Page(_page_member_lookup, title="Legislators", url_path="legislators")
 _about_page = st.Page(_page_about, title="About", url_path="about")
-_tap_page = st.Page(_page_turn_off_tap, title="Turn off the tap", url_path="turn-off-the-tap")
+_tap_page = st.Page(_page_turn_off_tap, title="Multimedia", url_path="multimedia")
 _solutions_page = st.Page(_page_solutions, title="Solutions", url_path="solutions")
 _pages = [
     _lobby_page,
@@ -2914,11 +3017,11 @@ def _nav_href(page) -> str:
     return "./" if url_path == "" else f"./{url_path}"
 
 _nav_items = [
+    (_about_page, "About"),
     (_lobby_page, "Lobbyists"),
     (_client_page, "Clients"),
     (_member_page, "Legislators"),
-    (_about_page, "About"),
-    (_tap_page, "Turn off the tap"),
+    (_tap_page, "Multimedia"),
     (_solutions_page, "Solutions"),
 ]
 _nav_links = []
@@ -2933,8 +3036,8 @@ st.markdown(
 <div class="custom-nav">
   <div class="nav-inner">
     <div class="brand">
-      <div class="brand-top">TPPF</div>
-      <div class="brand-bottom">Lobby Look-Up</div>
+      <div class="brand-top">Texas</div>
+      <div class="brand-bottom">Lobby Data Center</div>
     </div>
     <div class="nav-links">
       {''.join(_nav_links)}
@@ -3475,7 +3578,8 @@ def fmt_usd(x: float, decimals: int = 0) -> str:
         return "$0"
 
 def export_dataframe(df: pd.DataFrame, filename: str, label: str = "Download CSV"):
-    st.download_button(label=label, data=df.to_csv(index=False), file_name=filename, mime="text/csv")
+    _ = st.download_button(label=label, data=df.to_csv(index=False), file_name=filename, mime="text/csv")
+    return ""
 
 def _ordinal(n: int) -> str:
     if 10 <= (n % 100) <= 20:
@@ -3486,8 +3590,8 @@ def _ordinal(n: int) -> str:
 
 def _session_label(session_val: str) -> str:
     s = str(session_val).strip()
-    if not s:
-        return s
+    if not s or s.lower() in {"none", "nan", "null"}:
+        return ""
     # Special sessions encoded like 891 -> "89R / 1st Special".
     if s.isdigit():
         if len(s) >= 3:
@@ -3497,6 +3601,38 @@ def _session_label(session_val: str) -> str:
                 return f"{base}R / {_ordinal(int(special))} Special"
         return _ordinal(int(s))
     return s
+
+def _session_long_label(session_val: str | None) -> str:
+    s = str(session_val or "").strip()
+    if not s or s.lower() in {"none", "nan", "null"}:
+        return ""
+    if s.isdigit() and len(s) >= 3:
+        base = s[:-1]
+        special = s[-1]
+        if base.isdigit() and special.isdigit():
+            return f"{_ordinal(int(base))} {_ordinal(int(special))} Special Session"
+    m = re.match(r"^(\d+)\s*R$", s, flags=re.IGNORECASE)
+    if m:
+        return f"{_ordinal(int(m.group(1)))} Regular Session"
+    if s.isdigit():
+        return f"{_ordinal(int(s))} Regular Session"
+    m = re.search(r"(\d+).*(\d+)(?:st|nd|rd|th)?\s*Special", s, flags=re.IGNORECASE)
+    if m:
+        return f"{_ordinal(int(m.group(1)))} {_ordinal(int(m.group(2)))} Special Session"
+    return s
+
+def _session_range_label(series: pd.Series) -> str:
+    if series is None or series.empty:
+        return "All Sessions"
+    base_nums = _session_base_number_series(series)
+    base_nums = base_nums.dropna().astype(int)
+    if base_nums.empty:
+        return "All Sessions"
+    min_base = int(base_nums.min())
+    max_base = int(base_nums.max())
+    if min_base == max_base:
+        return f"{_ordinal(min_base)} Regular Session"
+    return f"{_ordinal(min_base)} to {_ordinal(max_base)} Sessions"
 
 def _session_sort_key(session_val: str) -> tuple[int, int, int]:
     s = str(session_val).strip()
@@ -3520,6 +3656,2647 @@ def _default_session_from_list(sessions: list[str]) -> str:
     if regular:
         return sorted(regular, key=_session_sort_key)[-1]
     return sorted(sessions, key=_session_sort_key)[-1]
+
+def _slugify(value: str, default: str = "report") -> str:
+    s = re.sub(r"[^A-Za-z0-9]+", "-", str(value or "")).strip("-").lower()
+    return s or default
+
+def _clean_options(options: list[str]) -> list[str]:
+    clean = []
+    for opt in options:
+        s = str(opt).strip()
+        if not s or s.lower() in {"none", "nan", "null"}:
+            continue
+        clean.append(s)
+    return clean
+
+def _pdf_safe_text(text: str) -> str:
+    if text is None:
+        return ""
+    return str(text).encode("latin-1", "replace").decode("latin-1")
+
+def _wrap_pdf_line(pdf: FPDF, text: str, max_w: float) -> list[str]:
+    if text is None:
+        return [""]
+    safe_text = _pdf_safe_text(text)
+    if max_w <= 0:
+        return [safe_text]
+    words = safe_text.split(" ")
+    if not words:
+        return [""]
+
+    lines = []
+    current = ""
+    for word in words:
+        if word == "":
+            continue
+        candidate = word if not current else f"{current} {word}"
+        if pdf.get_string_width(candidate) <= max_w:
+            current = candidate
+            continue
+
+        if current:
+            lines.append(current)
+            current = ""
+
+        if pdf.get_string_width(word) <= max_w:
+            current = word
+            continue
+
+        chunk = ""
+        for ch in word:
+            if not chunk or pdf.get_string_width(chunk + ch) <= max_w:
+                chunk += ch
+            else:
+                lines.append(chunk)
+                chunk = ch
+        current = chunk
+
+    if current:
+        lines.append(current)
+    return lines if lines else [safe_text]
+
+def _apply_pdf_chart_layout(fig):
+    if fig is None:
+        return fig
+    fig.update_layout(
+        font=dict(family="Helvetica", size=11, color="#1f2933"),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+    )
+    fig.update_xaxes(automargin=True)
+    fig.update_yaxes(automargin=True)
+    return fig
+
+def _fig_to_png_bytes(fig, width: int = 900, height: int = 500, scale: int = 2) -> bytes | None:
+    try:
+        _apply_pdf_chart_layout(fig)
+        return pio.to_image(fig, format="png", width=width, height=height, scale=scale)
+    except Exception:
+        return None
+
+def _coerce_pdf_bytes(data) -> bytes | None:
+    if data is None:
+        return None
+    if isinstance(data, (bytes, bytearray)):
+        return bytes(data)
+    if isinstance(data, str):
+        return data.encode("latin-1", errors="replace")
+    if hasattr(data, "getvalue"):
+        try:
+            return data.getvalue()
+        except Exception:
+            return None
+    try:
+        return bytes(data)
+    except Exception:
+        return None
+
+def _pdf_add_rule(pdf: FPDF) -> None:
+    y = pdf.get_y()
+    pdf.set_draw_color(180, 180, 180)
+    pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
+    pdf.ln(4)
+
+def _pdf_add_heading(pdf: FPDF, text: str, size: int = 13) -> None:
+    pdf.set_font("Helvetica", "B", size)
+    max_w = pdf.w - pdf.l_margin - pdf.r_margin
+    for line in _wrap_pdf_line(pdf, text, max_w):
+        pdf.cell(0, 7, line, ln=1)
+    pdf.ln(1)
+
+def _pdf_add_subheading(pdf: FPDF, text: str, size: int = 11) -> None:
+    pdf.set_font("Helvetica", "B", size)
+    max_w = pdf.w - pdf.l_margin - pdf.r_margin
+    for line in _wrap_pdf_line(pdf, text, max_w):
+        pdf.cell(0, 6, line, ln=1)
+    pdf.ln(1)
+
+def _pdf_add_paragraph(pdf: FPDF, text: str, size: int = 11, line_h: int = 6) -> None:
+    pdf.set_font("Helvetica", "", size)
+    max_w = pdf.w - pdf.l_margin - pdf.r_margin
+    for line in _wrap_pdf_line(pdf, text, max_w):
+        pdf.cell(0, line_h, line, ln=1)
+    pdf.ln(2)
+
+def _pdf_add_bullets(pdf: FPDF, bullets: list[str], size: int = 10, line_h: int = 5) -> None:
+    pdf.set_font("Helvetica", "", size)
+    max_w = pdf.w - pdf.l_margin - pdf.r_margin - 6
+    for bullet in bullets:
+        pdf.cell(4, line_h, "-", ln=0)
+        lines = _wrap_pdf_line(pdf, bullet, max_w)
+        if lines:
+            pdf.cell(0, line_h, lines[0], ln=1)
+            for cont in lines[1:]:
+                pdf.cell(4, line_h, "", ln=0)
+                pdf.cell(0, line_h, cont, ln=1)
+        else:
+            pdf.ln(line_h)
+    pdf.ln(2)
+
+def _pdf_add_kpi_table(pdf: FPDF, rows: list[tuple[str, str]], size: int = 10) -> None:
+    if not rows:
+        return
+    label_w = 60
+    value_w = pdf.w - pdf.l_margin - pdf.r_margin - label_w
+    fill = False
+    for label, value in rows:
+        pdf.set_fill_color(245, 246, 248) if fill else pdf.set_fill_color(255, 255, 255)
+        pdf.set_font("Helvetica", "B", size)
+        pdf.cell(label_w, 6, _pdf_safe_text(label), ln=0, fill=fill)
+        pdf.set_font("Helvetica", "", size)
+        pdf.cell(value_w, 6, _pdf_safe_text(value), ln=1, fill=fill)
+        fill = not fill
+    pdf.ln(2)
+
+def _pdf_ensure_space(pdf: FPDF, height_needed: float) -> None:
+    if pdf.get_y() + height_needed > pdf.h - pdf.b_margin:
+        pdf.add_page()
+
+def _pdf_add_chart(pdf: FPDF, fig, caption: str, width_px: int = 900, height_px: int = 500) -> None:
+    png = _fig_to_png_bytes(fig, width=width_px, height=height_px, scale=2)
+    if not png:
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.cell(0, 5, _pdf_safe_text(f"{caption} (chart unavailable)"), ln=1)
+        pdf.ln(2)
+        return
+    img_w = pdf.w - pdf.l_margin - pdf.r_margin
+    img_h = img_w * (height_px / width_px)
+    _pdf_ensure_space(pdf, img_h + 12)
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.cell(0, 5, _pdf_safe_text(caption), ln=1)
+    pdf.image(BytesIO(png), x=pdf.l_margin, w=img_w, h=img_h, type="PNG")
+    pdf.ln(4)
+
+def _pdf_add_section_title(pdf: FPDF, text: str) -> None:
+    pdf.set_fill_color(230, 238, 246)
+    pdf.set_text_color(16, 35, 58)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, _pdf_safe_text(text), ln=1, fill=True)
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(2)
+
+def _build_focus_chart(chart: dict):
+    kind = str(chart.get("kind", "")).strip().lower()
+    if kind == "bar":
+        df = pd.DataFrame(chart.get("data", []))
+        if df.empty or "label" not in df.columns or "value" not in df.columns:
+            return None
+        orientation = str(chart.get("orientation", "h")).strip().lower()
+        if orientation == "v":
+            fig = px.bar(
+                df,
+                x="label",
+                y="value",
+                text="value",
+                color_discrete_sequence=["#4c78a8"],
+            )
+            fig.update_traces(textposition="outside", cliponaxis=False)
+            fig.update_layout(
+                template="plotly_white",
+                title=chart.get("title", ""),
+                xaxis_title="",
+                yaxis_title="",
+                margin=dict(l=40, r=20, t=50, b=40),
+            )
+            fig.update_yaxes(tickformat="~s")
+        else:
+            fig = px.bar(
+                df.sort_values("value"),
+                x="value",
+                y="label",
+                orientation="h",
+                text="value",
+                color_discrete_sequence=["#4c78a8"],
+            )
+            fig.update_traces(textposition="outside", cliponaxis=False)
+            fig.update_layout(
+                template="plotly_white",
+                title=chart.get("title", ""),
+                xaxis_title="",
+                yaxis_title="",
+                margin=dict(l=40, r=20, t=50, b=30),
+            )
+            fig.update_xaxes(tickformat="~s")
+        return fig
+
+    if kind == "grouped_bar":
+        df = pd.DataFrame(chart.get("data", []))
+        if df.empty or not {"Position", "Funding", "Count"}.issubset(df.columns):
+            return None
+        fig = px.bar(
+            df,
+            x="Position",
+            y="Count",
+            color="Funding",
+            barmode="group",
+            text="Count",
+            color_discrete_map={"Taxpayer Funded": "#d14b4b", "Private": "#4c78a8"},
+        )
+        fig.update_traces(textposition="outside", cliponaxis=False)
+        fig.update_layout(
+            template="plotly_white",
+            title=chart.get("title", ""),
+            xaxis_title="",
+            yaxis_title="",
+            margin=dict(l=40, r=20, t=50, b=30),
+        )
+        fig.update_yaxes(tickformat="~s")
+        return fig
+
+    return None
+
+def _calc_share_range(tfl_low: float, tfl_high: float, total_low: float, total_high: float) -> tuple[float, float]:
+    if total_low <= 0 or total_high <= 0:
+        return 0.0, 0.0
+    low = tfl_low / total_high if total_high else 0.0
+    high = tfl_high / total_low if total_low else 0.0
+    low = min(max(low, 0.0), 1.0)
+    high = min(max(high, 0.0), 1.0)
+    return low * 100, high * 100
+
+def _chart_lines(rows: list[tuple[str, str]]) -> str:
+    return "\n".join([f"{label}: {value}" for label, value in rows if label])
+
+def _build_report_payload(
+    *,
+    session_val: str | None,
+    scope_label: str,
+    focus_label: str,
+    Lobby_TFL_Client_All: pd.DataFrame,
+    Wit_All: pd.DataFrame,
+    Bill_Status_All: pd.DataFrame,
+    Bill_Sub_All: pd.DataFrame,
+    tfl_session_val: str | None,
+    focus_context: dict | None = None,
+) -> dict:
+    session_label = _session_label(session_val) if session_val else "Selected Session"
+    generated_date = datetime.now().strftime("%B %d, %Y")
+    scope_label = scope_label or "Selected Session"
+    focus_label = focus_label or "All"
+
+    scope_all = scope_label.strip().lower().startswith("all")
+    tfl_session = str(tfl_session_val) if tfl_session_val is not None else str(session_val or "")
+
+    base = ensure_cols(
+        Lobby_TFL_Client_All,
+        {"IsTFL": 0, "Low_num": 0.0, "High_num": 0.0, "Client": "", "LobbyShort": ""},
+    ).copy()
+    if "Session" in base.columns:
+        base["Session"] = base["Session"].astype(str).str.strip()
+        if not scope_all and tfl_session:
+            base = base[base["Session"] == tfl_session].copy()
+
+    base["IsTFL"] = pd.to_numeric(base.get("IsTFL", 0), errors="coerce").fillna(0).astype(int)
+    base["Low_num"] = pd.to_numeric(base.get("Low_num", 0), errors="coerce").fillna(0.0)
+    base["High_num"] = pd.to_numeric(base.get("High_num", 0), errors="coerce").fillna(0.0)
+
+    scope_session_label = ""
+    if scope_all:
+        if "Session" in base.columns:
+            scope_session_label = _session_range_label(base["Session"])
+        else:
+            scope_session_label = "All Sessions"
+    else:
+        scope_session_label = _session_long_label(session_val)
+    if not scope_session_label:
+        scope_session_label = scope_label or "Selected Session"
+
+    total_low = float(base["Low_num"].sum()) if not base.empty else 0.0
+    total_high = float(base["High_num"].sum()) if not base.empty else 0.0
+    tfl_low = float(base.loc[base["IsTFL"] == 1, "Low_num"].sum()) if not base.empty else 0.0
+    tfl_high = float(base.loc[base["IsTFL"] == 1, "High_num"].sum()) if not base.empty else 0.0
+    private_low = float(base.loc[base["IsTFL"] == 0, "Low_num"].sum()) if not base.empty else 0.0
+    private_high = float(base.loc[base["IsTFL"] == 0, "High_num"].sum()) if not base.empty else 0.0
+
+    tfl_share_low_pct, tfl_share_high_pct = _calc_share_range(tfl_low, tfl_high, total_low, total_high)
+    private_share_low_pct, private_share_high_pct = _calc_share_range(
+        private_low, private_high, total_low, total_high
+    )
+
+    def _series_from(df: pd.DataFrame, col: str) -> pd.Series:
+        s = df.get(col, pd.Series(dtype=object))
+        if isinstance(s, pd.DataFrame):
+            s = s.iloc[:, 0]
+        return s
+
+    def _unique_count(s: pd.Series) -> int:
+        if s is None or s.empty:
+            return 0
+        v = s.dropna().astype(str).str.strip()
+        v = v[(v != "") & (~v.str.lower().isin(["nan", "none", "null"]))]
+        return int(v.nunique())
+
+    unique_lobbyists_total = _unique_count(_series_from(base, "LobbyShort"))
+    unique_lobbyists_tfl = _unique_count(_series_from(base.loc[base["IsTFL"] == 1], "LobbyShort"))
+    unique_clients_total = _unique_count(_series_from(base, "Client"))
+    unique_clients_tfl = _unique_count(_series_from(base.loc[base["IsTFL"] == 1], "Client"))
+
+    chart_compensation_bar = _chart_lines(
+        [
+            ("Taxpayer Funded", f"{fmt_usd(tfl_low)} - {fmt_usd(tfl_high)}"),
+            ("Private", f"{fmt_usd(private_low)} - {fmt_usd(private_high)}"),
+            ("Total", f"{fmt_usd(total_low)} - {fmt_usd(total_high)}"),
+        ]
+    )
+    chart_share = _chart_lines(
+        [
+            ("Taxpayer Funded share", f"{tfl_share_low_pct:.1f}% - {tfl_share_high_pct:.1f}%"),
+            ("Private share", f"{private_share_low_pct:.1f}% - {private_share_high_pct:.1f}%"),
+        ]
+    )
+
+    chart_entity_types = "No taxpayer-funded clients found."
+    entity_type_counts = []
+    tfl_clients = base[base["IsTFL"] == 1].copy()
+    if not tfl_clients.empty:
+        clients = _series_from(tfl_clients, "Client").dropna().astype(str).str.strip()
+        clients = clients[(clients != "") & (~clients.str.lower().isin(["nan", "none", "null"]))].drop_duplicates()
+        if not clients.empty:
+            type_counts = clients.map(lambda x: match_entity_type(x)[0]).value_counts().head(5)
+            chart_entity_types = "\n".join(
+                [f"{name}: {count} clients" for name, count in type_counts.items()]
+            )
+            entity_type_counts = [
+                {"type": name, "count": int(count)} for name, count in type_counts.items()
+            ]
+
+    tfl_flag = pd.DataFrame(columns=["LobbyShort", "IsTFL"])
+    if not base.empty and "LobbyShort" in base.columns:
+        tfl_flag = (
+            base.groupby("LobbyShort", as_index=False)["IsTFL"]
+            .max()
+            .rename(columns={"IsTFL": "IsTFL"})
+        )
+
+    witness_summary = "No witness-list data available for this scope/session."
+    chart_witness_positions = "No witness-list data available."
+    witness_counts = {
+        "tfl": {"Against": 0, "For": 0, "On": 0},
+        "private": {"Against": 0, "For": 0, "On": 0},
+    }
+    against = pd.DataFrame()
+
+    wit = Wit_All if isinstance(Wit_All, pd.DataFrame) else pd.DataFrame()
+    if not wit.empty and "LobbyShort" in wit.columns:
+        if session_val is not None and "Session" in wit.columns:
+            wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)].copy()
+        if not wit.empty:
+            pos = bill_position_from_flags(wit)
+            if not pos.empty:
+                pos = pos.merge(tfl_flag, on="LobbyShort", how="left")
+                pos["IsTFL"] = pd.to_numeric(pos.get("IsTFL", 0), errors="coerce").fillna(0).astype(int)
+
+                def _pos_counts(df: pd.DataFrame) -> dict:
+                    return {
+                        "Against": int(df["Position"].astype(str).str.contains("Against", case=False, na=False).sum()),
+                        "For": int(df["Position"].astype(str).str.contains(r"\bFor\b", case=False, na=False).sum()),
+                        "On": int(df["Position"].astype(str).str.contains(r"\bOn\b", case=False, na=False).sum()),
+                    }
+
+                tfl_counts = _pos_counts(pos[pos["IsTFL"] == 1])
+                pri_counts = _pos_counts(pos[pos["IsTFL"] != 1])
+                witness_counts = {"tfl": tfl_counts, "private": pri_counts}
+
+                witness_summary = (
+                    "Taxpayer-funded lobbyists recorded "
+                    f"{tfl_counts['Against']:,} against, {tfl_counts['For']:,} for, "
+                    f"and {tfl_counts['On']:,} on positions; private lobbyists recorded "
+                    f"{pri_counts['Against']:,} against, {pri_counts['For']:,} for, "
+                    f"and {pri_counts['On']:,} on positions."
+                )
+                chart_witness_positions = _chart_lines(
+                    [
+                        (
+                            "Taxpayer Funded",
+                            f"Against {tfl_counts['Against']:,}, For {tfl_counts['For']:,}, On {tfl_counts['On']:,}",
+                        ),
+                        (
+                            "Private",
+                            f"Against {pri_counts['Against']:,}, For {pri_counts['For']:,}, On {pri_counts['On']:,}",
+                        ),
+                    ]
+                )
+                against = pos[pos["Position"].astype(str).str.contains("Against", case=False, na=False)].copy()
+
+    top_bills = []
+    if not against.empty:
+        counts = (
+            against.groupby(["Bill", "IsTFL"])
+            .size()
+            .unstack(fill_value=0)
+            .reset_index()
+        )
+        counts["tfl"] = counts.get(1, 0)
+        counts["private"] = counts.get(0, 0)
+        counts = counts.sort_values(["tfl", "private", "Bill"], ascending=[False, False, True]).head(5)
+
+        bill_info = Bill_Status_All if isinstance(Bill_Status_All, pd.DataFrame) else pd.DataFrame()
+        if not bill_info.empty and "Session" in bill_info.columns and session_val is not None:
+            bill_info = bill_info[bill_info["Session"].astype(str).str.strip() == str(session_val)].copy()
+        keep_cols = [c for c in ["Bill", "Caption", "Status"] if c in bill_info.columns]
+        if keep_cols:
+            bill_info = bill_info[keep_cols].drop_duplicates(subset=["Bill"])
+        counts = counts.merge(bill_info, on="Bill", how="left") if keep_cols else counts
+
+        for _, row in counts.iterrows():
+            bill_id = str(row.get("Bill", "")).strip() or "-"
+            caption = str(row.get("Caption", "")).strip() or "-"
+            status = str(row.get("Status", "")).strip()
+            summary = f"Status: {status}" if status else "Status: Unknown"
+            top_bills.append(
+                {
+                    "id": bill_id,
+                    "caption": caption,
+                    "tfl": int(row.get("tfl", 0) or 0),
+                    "private": int(row.get("private", 0) or 0),
+                    "summary": summary,
+                }
+            )
+
+    chart_top_bills = (
+        "\n".join(
+            [
+                f"{i + 1}. {b['id']} - TFL {b['tfl']:,}, Private {b['private']:,}"
+                for i, b in enumerate(top_bills)
+            ]
+        )
+        if top_bills
+        else "No bill-level opposition data available."
+    )
+
+    top_subjects = []
+    bill_sub = Bill_Sub_All if isinstance(Bill_Sub_All, pd.DataFrame) else pd.DataFrame()
+    if not against.empty and not bill_sub.empty and {"Bill", "Subject"}.issubset(bill_sub.columns):
+        if "Session" in bill_sub.columns and session_val is not None:
+            bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+        merged = against[["Bill"]].merge(bill_sub[["Bill", "Subject"]], on="Bill", how="left")
+        merged["Subject"] = merged["Subject"].fillna("").astype(str).str.strip()
+        merged = merged[merged["Subject"] != ""].copy()
+        if not merged.empty:
+            subject_counts = (
+                merged.groupby("Subject")
+                .size()
+                .reset_index(name="Oppositions")
+                .sort_values("Oppositions", ascending=False)
+                .head(5)
+            )
+            top_subjects = subject_counts.to_dict("records")
+
+    chart_top_subjects = (
+        "\n".join(
+            [
+                f"{i + 1}. {s['Subject']} - {int(s['Oppositions']):,} oppositions"
+                for i, s in enumerate(top_subjects)
+            ]
+        )
+        if top_subjects
+        else "No subject-level opposition data available."
+    )
+
+    scope_note = ""
+    if scope_all:
+        scope_note = (
+            f"Totals reflect all available sessions. Bill-level sections reflect {session_label}."
+        )
+
+    existing_law_gap_summary = (
+        "Texas law restricts state agencies from hiring lobbyists with public funds, "
+        "but political subdivisions are not uniformly covered, creating a parity gap."
+    )
+    recommended_fix_statute = (
+        "Amend Texas Government Code Section 556.005 to include political subdivisions and "
+        "prohibit direct or indirect use of public funds for lobbying."
+    )
+    implementation_notes = (
+        "Define political subdivision and public funds clearly, cover dues and assessments, "
+        "and provide enforceable remedies for violations."
+    )
+    data_sources_bullets = "\n".join(
+        [
+            "- Texas Ethics Commission: lobby registrations, compensation ranges, and activity reports.",
+            "- Texas Legislature Online: bill status, witness lists, and subject classifications.",
+            "- Lobby Look-Up compiled dataset.",
+        ]
+    )
+    disclaimer_note = (
+        "Disclaimer: Figures are based on reported ranges and should be read as conservative estimates."
+    )
+
+    focus_section = None
+    fc = focus_context or {}
+    focus_type = str(fc.get("type", "")).strip().lower()
+    tables = fc.get("tables", {}) if isinstance(fc, dict) else {}
+    lookups = fc.get("lookups", {}) if isinstance(fc, dict) else {}
+    if not isinstance(tables, dict):
+        tables = {}
+    if not isinstance(lookups, dict):
+        lookups = {}
+
+    staff_all = tables.get("Staff_All", pd.DataFrame())
+    lobby_sub_all = tables.get("Lobby_Sub_All", pd.DataFrame())
+    la_food = tables.get("LaFood", pd.DataFrame())
+    la_ent = tables.get("LaEnt", pd.DataFrame())
+    la_tran = tables.get("LaTran", pd.DataFrame())
+    la_gift = tables.get("LaGift", pd.DataFrame())
+    la_evnt = tables.get("LaEvnt", pd.DataFrame())
+    la_awrd = tables.get("LaAwrd", pd.DataFrame())
+    la_cvr = tables.get("LaCvr", pd.DataFrame())
+    la_dock = tables.get("LaDock", pd.DataFrame())
+    la_i4e = tables.get("LaI4E", pd.DataFrame())
+    la_sub = tables.get("LaSub", pd.DataFrame())
+
+    name_to_short = lookups.get("name_to_short", {})
+    short_to_names = lookups.get("short_to_names", {})
+    filerid_to_short = lookups.get("filerid_to_short", {})
+    if not isinstance(name_to_short, dict):
+        name_to_short = {}
+    if not isinstance(short_to_names, dict):
+        short_to_names = {}
+    if not isinstance(filerid_to_short, dict):
+        filerid_to_short = {}
+
+    report_title = str(fc.get("report_title", "")).strip()
+    if not report_title:
+        if focus_type == "client":
+            report_title = "Client Report"
+        elif focus_type == "legislator":
+            report_title = "Legislator Report"
+        elif focus_type == "lobbyist":
+            report_title = "Lobbyist Report"
+        elif focus_type == "bill":
+            report_title = "Bill Report"
+        else:
+            report_title = "Lobby Look-Up Report"
+
+    def _truncate_text(text: str, max_len: int = 80) -> str:
+        s = str(text or "").strip()
+        if len(s) <= max_len:
+            return s
+        return s[: max_len - 3].rstrip() + "..."
+
+    def _join_top(items: list[str], fallback: str = "Not available") -> str:
+        clean = [s for s in items if str(s).strip()]
+        return ", ".join(clean) if clean else fallback
+
+    def _amount_mid_sum(series: pd.Series) -> float:
+        if series is None or series.empty:
+            return 0.0
+        s = series.fillna("").astype(str).str.strip()
+        s_clean = s.str.replace("$", "", regex=False).str.replace(",", "", regex=False)
+        rng = s_clean.str.extract(_MONEY_RANGE)
+        rng_lo = pd.to_numeric(rng[0], errors="coerce")
+        rng_hi = pd.to_numeric(rng[1], errors="coerce")
+        mid = (rng_lo + rng_hi) / 2
+        single = pd.to_numeric(s_clean.str.extract(r"(-?\d+(?:\.\d+)?)")[0], errors="coerce")
+        val = mid.where(mid.notna(), single).fillna(0.0)
+        return float(val.sum())
+
+    def _top_counts(series: pd.Series, limit: int = 5) -> list[tuple[str, int]]:
+        if series is None or series.empty:
+            return []
+        clean = series.dropna().astype(str).str.strip()
+        clean = clean[clean != ""]
+        if clean.empty:
+            return []
+        counts = clean.value_counts().head(limit)
+        return [(idx, int(val)) for idx, val in counts.items()]
+
+    lobbyshort_to_name = {}
+    if isinstance(short_to_names, dict) and short_to_names:
+        lobbyshort_to_name = {k: (v[0] if v else k) for k, v in short_to_names.items()}
+    if not lobbyshort_to_name and isinstance(Lobby_TFL_Client_All, pd.DataFrame) and not Lobby_TFL_Client_All.empty:
+        tmp = Lobby_TFL_Client_All[["LobbyShort", "Lobby Name"]].dropna().copy()
+        tmp["LobbyShort"] = tmp["LobbyShort"].astype(str).str.strip()
+        tmp["Lobby Name"] = tmp["Lobby Name"].astype(str).str.strip()
+        lobbyshort_to_name = (
+            tmp.groupby("LobbyShort")["Lobby Name"]
+            .agg(lambda s: s.dropna().astype(str).iloc[0] if len(s) else "")
+            .to_dict()
+        )
+
+    def _pos_counts_from_positions(df: pd.DataFrame) -> dict:
+        if df.empty:
+            return {"Against": 0, "For": 0, "On": 0}
+        return {
+            "Against": int(df["Position"].astype(str).str.contains("Against", case=False, na=False).sum()),
+            "For": int(df["Position"].astype(str).str.contains(r"\bFor\b", case=False, na=False).sum()),
+            "On": int(df["Position"].astype(str).str.contains(r"\bOn\b", case=False, na=False).sum()),
+        }
+
+    if focus_type == "client":
+        client_name = str(fc.get("name", "")).strip()
+        if client_name:
+            client_rows = ensure_cols(
+                base,
+                {"Client": "", "LobbyShort": "", "Low_num": 0.0, "High_num": 0.0, "IsTFL": 0, "Lobby Name": ""},
+            ).copy()
+            client_rows["ClientNorm"] = client_rows["Client"].map(norm_name)
+            client_rows = client_rows[client_rows["ClientNorm"] == norm_name(client_name)].copy()
+
+            focus_section = {"title": f"Client - {client_name}", "summary": "", "metrics": [], "bullets": [], "charts": []}
+            if client_rows.empty:
+                focus_section["summary"] = "No client rows were found for the selected scope."
+            else:
+                client_rows["Mid"] = (client_rows["Low_num"] + client_rows["High_num"]) / 2
+                c_total_low = float(client_rows["Low_num"].sum())
+                c_total_high = float(client_rows["High_num"].sum())
+                c_tfl_low = float(client_rows.loc[client_rows["IsTFL"] == 1, "Low_num"].sum())
+                c_tfl_high = float(client_rows.loc[client_rows["IsTFL"] == 1, "High_num"].sum())
+                c_pri_low = float(client_rows.loc[client_rows["IsTFL"] == 0, "Low_num"].sum())
+                c_pri_high = float(client_rows.loc[client_rows["IsTFL"] == 0, "High_num"].sum())
+                lobbyist_count = _unique_count(_series_from(client_rows, "LobbyShort"))
+                session_count = _unique_count(_series_from(client_rows, "Session")) if "Session" in client_rows.columns else 0
+                is_tfl_client = "Yes" if (client_rows["IsTFL"] == 1).any() else "No"
+
+                focus_section["summary"] = (
+                    f"{client_name} is associated with {lobbyist_count:,} lobbyists in this scope "
+                    f"and reported compensation ranging from {fmt_usd(c_total_low)} to {fmt_usd(c_total_high)}."
+                )
+                focus_section["metrics"] = [
+                    ("Client", client_name),
+                    ("Taxpayer funded", is_tfl_client),
+                    ("Lobbyists", f"{lobbyist_count:,}"),
+                    ("Total range", f"{fmt_usd(c_total_low)} - {fmt_usd(c_total_high)}"),
+                    ("Taxpayer-funded range", f"{fmt_usd(c_tfl_low)} - {fmt_usd(c_tfl_high)}"),
+                    ("Private range", f"{fmt_usd(c_pri_low)} - {fmt_usd(c_pri_high)}"),
+                ]
+                if scope_all and session_count:
+                    focus_section["bullets"].append(f"Sessions observed: {session_count:,}")
+
+                lobbyshorts = (
+                    client_rows["LobbyShort"].dropna().astype(str).str.strip().unique().tolist()
+                )
+                lobbyshort_norms = {norm_name(s) for s in lobbyshorts if s}
+                lobbyist_names = [
+                    lobbyshort_to_name.get(s, s) for s in lobbyshorts
+                ]
+                lobbyist_norms = set()
+                for name in lobbyist_names + lobbyshorts:
+                    lobbyist_norms |= norm_person_variants(name)
+                    init_key = _last_first_initial_key(name)
+                    if init_key:
+                        lobbyist_norms.add(init_key)
+                lobbyist_norms_tuple = tuple(sorted(lobbyist_norms))
+
+                wit = Wit_All if isinstance(Wit_All, pd.DataFrame) else pd.DataFrame()
+                bill_count = 0
+                policy_count = 0
+                top_bill_lines = []
+                top_subject_lines = []
+                status_counts = []
+                bill_list_all = []
+                sub_counts = pd.DataFrame()
+                if lobbyshorts and not wit.empty and "LobbyShort" in wit.columns:
+                    wit = wit[wit["LobbyShort"].astype(str).str.strip().isin(lobbyshorts)].copy()
+                    if session_val is not None and "Session" in wit.columns:
+                        wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)].copy()
+                    if not wit.empty:
+                        pos = bill_position_from_flags(wit)
+                        bill_count = int(pos["Bill"].nunique()) if not pos.empty else 0
+                        bill_list_all = pos["Bill"].dropna().astype(str).unique().tolist() if not pos.empty else []
+                        pos_counts = _pos_counts_from_positions(pos)
+                        focus_section["bullets"].append(
+                            f"Bills with witness activity (selected session): {bill_count:,}"
+                        )
+                        focus_section["bullets"].append(
+                            f"Witness positions - Against {pos_counts['Against']:,}, For {pos_counts['For']:,}, On {pos_counts['On']:,}."
+                        )
+
+                        bs = Bill_Status_All if isinstance(Bill_Status_All, pd.DataFrame) else pd.DataFrame()
+                        if not bs.empty and "Session" in bs.columns and session_val is not None:
+                            bs = bs[bs["Session"].astype(str).str.strip() == str(session_val)].copy()
+                        if bill_list_all and not bs.empty and "Bill" in bs.columns:
+                            status_counts = _top_counts(
+                                bs[bs["Bill"].astype(str).isin(bill_list_all)].get(
+                                    "Status", pd.Series(dtype=object)
+                                ),
+                                4,
+                            )
+
+                        if "Bill" in wit.columns:
+                            bill_counts = (
+                                wit.groupby("Bill").size().reset_index(name="Witness Rows")
+                                .sort_values("Witness Rows", ascending=False)
+                                .head(5)
+                            )
+                            if not bill_counts.empty:
+                                if not bs.empty and "Bill" in bs.columns:
+                                    bs_short = bs.drop_duplicates(subset=["Bill"])
+                                    bill_counts = bill_counts.merge(
+                                        bs_short[["Bill", "Caption", "Status"]],
+                                        on="Bill",
+                                        how="left",
+                                    )
+                                for _, row in bill_counts.iterrows():
+                                    bill = str(row.get("Bill", "")).strip()
+                                    count = int(row.get("Witness Rows", 0) or 0)
+                                    caption = _truncate_text(row.get("Caption", ""), 70)
+                                    status = str(row.get("Status", "")).strip()
+                                    line = f"{bill} ({count:,} witness rows)"
+                                    if status:
+                                        line += f", {status}"
+                                    if caption:
+                                        line += f" - {caption}"
+                                    top_bill_lines.append(line)
+
+                        bill_sub = Bill_Sub_All if isinstance(Bill_Sub_All, pd.DataFrame) else pd.DataFrame()
+                        if bill_list_all and not bill_sub.empty and {"Bill", "Subject"}.issubset(bill_sub.columns):
+                            if session_val is not None and "Session" in bill_sub.columns:
+                                bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+                            sub_counts = (
+                                bill_sub[bill_sub["Bill"].astype(str).isin(bill_list_all)]
+                                .groupby("Subject")
+                                .size()
+                                .reset_index(name="Mentions")
+                                .sort_values("Mentions", ascending=False)
+                                .head(5)
+                            )
+                            policy_count = int(sub_counts["Subject"].nunique()) if not sub_counts.empty else 0
+                            for _, row in sub_counts.iterrows():
+                                subject = _truncate_text(row.get("Subject", ""), 60)
+                                mentions = int(row.get("Mentions", 0) or 0)
+                                if subject:
+                                    top_subject_lines.append(f"{subject} ({mentions:,})")
+
+                if bill_count:
+                    focus_section["metrics"].append(("Bills w/ witness activity", f"{bill_count:,}"))
+                if policy_count:
+                    focus_section["metrics"].append(("Policy areas", f"{policy_count:,}"))
+                if top_bill_lines:
+                    focus_section["bullets"].append(
+                        f"Top bills by witness activity: {_join_top(top_bill_lines)}"
+                    )
+                if top_subject_lines:
+                    focus_section["bullets"].append(
+                        f"Top policy areas: {_join_top(top_subject_lines)}"
+                    )
+                if not sub_counts.empty:
+                    focus_section["charts"].append(
+                        {
+                            "kind": "bar",
+                            "orientation": "h",
+                            "title": "Top Policy Areas (Witness Bills)",
+                            "caption": "Focus Chart. Policy areas tied to client-linked witness activity",
+                            "data": [
+                                {"label": str(r.Subject), "value": int(r.Mentions)}
+                                for r in sub_counts.itertuples()
+                            ],
+                        }
+                    )
+                if status_counts:
+                    status_summary = ", ".join([f"{k} ({v:,})" for k, v in status_counts])
+                    focus_section["bullets"].append(f"Bill outcomes (selected session): {status_summary}")
+
+                if not lobby_sub_all.empty:
+                    lobby_sub = lobby_sub_all.copy()
+                    if "Session" in lobby_sub.columns and session_val is not None:
+                        lobby_sub = lobby_sub[lobby_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+                    if "LobbyShortNorm" in lobby_sub.columns:
+                        lobby_sub = lobby_sub[lobby_sub["LobbyShortNorm"].isin(lobbyshort_norms)].copy()
+                    elif "LobbyShort" in lobby_sub.columns:
+                        lobby_sub = lobby_sub[lobby_sub["LobbyShort"].astype(str).str.strip().isin(lobbyshorts)].copy()
+                    else:
+                        lobby_sub = lobby_sub.iloc[0:0].copy()
+                    if not lobby_sub.empty:
+                        lobby_sub = lobby_sub.assign(
+                            Subject=lobby_sub.get("Subject Matter", "").fillna("").astype(str).str.strip(),
+                            Other=lobby_sub.get("Other Subject Matter Description", "").fillna("").astype(str).str.strip(),
+                        )
+                        for col in ["Subject", "Other"]:
+                            series = lobby_sub[col]
+                            lobby_sub[col] = series.where(~series.str.lower().isin(["nan", "none"]), "")
+                        unnamed0 = lobby_sub.get("Unnamed: 0", lobby_sub.get("Column1", "")).fillna("").astype(str).str.strip()
+                        unnamed0 = unnamed0.where(~unnamed0.str.lower().isin(["nan", "none"]), "")
+                        topic = lobby_sub["Subject"]
+                        topic = topic.where(topic != "", lobby_sub["Other"])
+                        topic = topic.where(topic != "", unnamed0)
+                        topic = topic.where(topic != "", "Unspecified")
+                        lobby_sub["Topic"] = topic
+                        topic_counts = _top_counts(lobby_sub["Topic"], 5)
+                        if topic_counts:
+                            topics = ", ".join([f"{t} ({c:,})" for t, c in topic_counts])
+                            focus_section["bullets"].append(f"Reported subject matters: {topics}")
+
+                if not staff_all.empty and lobbyist_norms:
+                    staff_df = staff_all.copy()
+                    staff_session_mask = (
+                        staff_df["Session"].astype(str).str.strip() == str(session_val)
+                        if "Session" in staff_df.columns and session_val is not None
+                        else pd.Series(False, index=staff_df.index)
+                    )
+                    last_names = {last_name_norm_from_text(n) for n in lobbyist_names if last_name_norm_from_text(n)}
+                    init_map = {k: v for k, v in ((_last_first_initial_key(n), n) for n in lobbyist_names) if k}
+                    full_map = {norm_name(n): n for n in lobbyist_names if n}
+                    last_map = {k: v for k, v in ((last_name_norm_from_text(n), n) for n in lobbyist_names) if k}
+
+                    match_mask = pd.Series(False, index=staff_df.index)
+                    match_mask = match_mask | staff_df.get("StaffNameNorm", pd.Series(False, index=staff_df.index)).isin(lobbyist_norms)
+                    match_mask = match_mask | staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)).isin(lobbyist_norms)
+                    if last_names:
+                        match_mask = match_mask | staff_df.get("StaffLastNorm", pd.Series(False, index=staff_df.index)).isin(last_names)
+                    if lobbyshort_norms:
+                        match_mask = match_mask | staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)).isin(lobbyshort_norms)
+
+                    staff_pick = staff_df[match_mask].copy()
+                    staff_pick_session = staff_df[staff_session_mask & match_mask].copy()
+                    if not staff_pick.empty:
+                        staff_rows = int(len(staff_pick))
+                        staff_legs = int(staff_pick.get("Legislator", pd.Series(dtype=object)).nunique()) if "Legislator" in staff_pick.columns else 0
+                        focus_section["metrics"].append(("Staff history rows", f"{staff_rows:,}"))
+                        if staff_legs:
+                            focus_section["metrics"].append(("Legislators w/ staff ties", f"{staff_legs:,}"))
+                        top_staff_legs = _top_counts(staff_pick.get("Legislator", pd.Series(dtype=object)), 5)
+                        if top_staff_legs:
+                            legs = ", ".join([f"{l} ({c:,})" for l, c in top_staff_legs])
+                            focus_section["bullets"].append(f"Top legislators in staff history: {legs}")
+                    if not staff_pick_session.empty:
+                        focus_section["bullets"].append(
+                            f"Staff history rows in selected session: {len(staff_pick_session):,}"
+                        )
+
+                if lobbyshorts:
+                    activities = build_activities_multi(
+                        la_food,
+                        la_ent,
+                        la_tran,
+                        la_gift,
+                        la_evnt,
+                        la_awrd,
+                        lobbyshorts=lobbyshorts,
+                        session=str(session_val) if session_val is not None else None,
+                        name_to_short=name_to_short,
+                        lobbyist_norms_tuple=lobbyist_norms_tuple,
+                        filerid_to_short=filerid_to_short,
+                        lobbyshort_to_name=lobbyshort_to_name,
+                    )
+                    if not activities.empty:
+                        focus_section["metrics"].append(("Activity rows", f"{len(activities):,}"))
+                        type_counts = _top_counts(activities.get("Type", pd.Series(dtype=object)), 4)
+                        if type_counts:
+                            types = ", ".join([f"{t} ({c:,})" for t, c in type_counts])
+                            focus_section["bullets"].append(f"Top activity types: {types}")
+                        amount_total = _amount_mid_sum(activities.get("Amount", pd.Series(dtype=object)))
+                        if amount_total > 0:
+                            focus_section["bullets"].append(f"Reported activity amount (midpoint): {fmt_usd(amount_total)}")
+                        focus_section["charts"].append(
+                            {
+                                "kind": "bar",
+                                "orientation": "h",
+                                "title": "Activity Types (Rows)",
+                                "caption": "Focus Chart. Activity types for client-linked lobbyists",
+                                "data": [{"label": t, "value": c} for t, c in type_counts],
+                            }
+                        )
+
+                    disclosures = build_disclosures_multi(
+                        la_cvr,
+                        la_dock,
+                        la_i4e,
+                        la_sub,
+                        lobbyshorts=lobbyshorts,
+                        session=str(session_val) if session_val is not None else None,
+                        name_to_short=name_to_short,
+                        lobbyist_norms_tuple=lobbyist_norms_tuple,
+                        filerid_to_short=filerid_to_short,
+                        lobbyshort_to_name=lobbyshort_to_name,
+                    )
+                    if not disclosures.empty:
+                        focus_section["metrics"].append(("Disclosure rows", f"{len(disclosures):,}"))
+                        d_counts = _top_counts(disclosures.get("Type", pd.Series(dtype=object)), 4)
+                        if d_counts:
+                            types = ", ".join([f"{t} ({c:,})" for t, c in d_counts])
+                            focus_section["bullets"].append(f"Top disclosure types: {types}")
+                        focus_section["charts"].append(
+                            {
+                                "kind": "bar",
+                                "orientation": "h",
+                                "title": "Disclosure Types (Rows)",
+                                "caption": "Focus Chart. Disclosure types for client-linked lobbyists",
+                                "data": [{"label": t, "value": c} for t, c in d_counts],
+                            }
+                        )
+                lobby_group = (
+                    client_rows.groupby("LobbyShort", as_index=False)
+                    .agg(Mid=("Mid", "sum"), LobbyName=("Lobby Name", lambda s: s.dropna().astype(str).iloc[0] if len(s) else ""))
+                )
+                lobby_group["Lobbyist"] = lobby_group["LobbyName"].where(
+                    lobby_group["LobbyName"].astype(str).str.strip().ne(""),
+                    lobby_group["LobbyShort"],
+                )
+                top_lobby = lobby_group.sort_values("Mid", ascending=False).head(5)
+                chart_data = [
+                    {"label": str(r.Lobbyist), "value": float(r.Mid)}
+                    for r in top_lobby.itertuples()
+                    if float(r.Mid) > 0
+                ]
+                if chart_data:
+                    focus_section["charts"].append(
+                        {
+                            "kind": "bar",
+                            "orientation": "h",
+                            "title": "Top Lobbyists by Midpoint Compensation",
+                            "caption": "Focus Chart. Top lobbyists by midpoint compensation",
+                            "data": chart_data,
+                        }
+                    )
+
+    if focus_type == "lobbyist":
+        lobbyshort = str(fc.get("lobbyshort", "")).strip()
+        display_name = str(fc.get("display_name", "")).strip() or lobbyshort
+        if lobbyshort:
+            lobbyist_norms = set()
+            for name in [display_name, lobbyshort]:
+                if not name:
+                    continue
+                lobbyist_norms |= norm_person_variants(name)
+                init_key = _last_first_initial_key(name)
+                if init_key:
+                    lobbyist_norms.add(init_key)
+            if isinstance(short_to_names, dict) and lobbyshort in short_to_names:
+                for name in short_to_names.get(lobbyshort, []):
+                    lobbyist_norms |= norm_person_variants(name)
+                    init_key = _last_first_initial_key(name)
+                    if init_key:
+                        lobbyist_norms.add(init_key)
+            lobbyist_norms_tuple = tuple(sorted(lobbyist_norms))
+            lobbyshort_norm = norm_name(lobbyshort)
+
+            lobby_rows = ensure_cols(
+                base,
+                {"Client": "", "LobbyShort": "", "Low_num": 0.0, "High_num": 0.0, "IsTFL": 0},
+            ).copy()
+            lobby_rows = lobby_rows[lobby_rows["LobbyShort"].astype(str).str.strip() == lobbyshort].copy()
+
+            focus_section = {"title": f"Lobbyist - {display_name}", "summary": "", "metrics": [], "bullets": [], "charts": []}
+            if lobby_rows.empty:
+                focus_section["summary"] = "No lobbyist rows were found for the selected scope."
+            else:
+                lobby_rows["Mid"] = (lobby_rows["Low_num"] + lobby_rows["High_num"]) / 2
+                l_tfl_low = float(lobby_rows.loc[lobby_rows["IsTFL"] == 1, "Low_num"].sum())
+                l_tfl_high = float(lobby_rows.loc[lobby_rows["IsTFL"] == 1, "High_num"].sum())
+                l_pri_low = float(lobby_rows.loc[lobby_rows["IsTFL"] == 0, "Low_num"].sum())
+                l_pri_high = float(lobby_rows.loc[lobby_rows["IsTFL"] == 0, "High_num"].sum())
+                tfl_clients_count = int(lobby_rows.loc[lobby_rows["IsTFL"] == 1, "Client"].nunique())
+                pri_clients_count = int(lobby_rows.loc[lobby_rows["IsTFL"] == 0, "Client"].nunique())
+
+                focus_section["summary"] = (
+                    f"{display_name} is tied to {tfl_clients_count + pri_clients_count:,} clients in this scope "
+                    f"and reported compensation ranging from {fmt_usd(l_tfl_low + l_pri_low)} to {fmt_usd(l_tfl_high + l_pri_high)}."
+                )
+                focus_section["metrics"] = [
+                    ("Lobbyist", display_name),
+                    ("Total clients", f"{tfl_clients_count + pri_clients_count:,}"),
+                    ("Taxpayer-funded clients", f"{tfl_clients_count:,}"),
+                    ("Private clients", f"{pri_clients_count:,}"),
+                    ("Taxpayer-funded range", f"{fmt_usd(l_tfl_low)} - {fmt_usd(l_tfl_high)}"),
+                    ("Private range", f"{fmt_usd(l_pri_low)} - {fmt_usd(l_pri_high)}"),
+                ]
+
+                bill_count = 0
+                policy_count = 0
+                top_bill_lines = []
+                top_subject_lines = []
+                status_counts = []
+                bill_list_all = []
+                sub_counts = pd.DataFrame()
+
+                wit = Wit_All if isinstance(Wit_All, pd.DataFrame) else pd.DataFrame()
+                if not wit.empty and "LobbyShort" in wit.columns:
+                    wit = wit[wit["LobbyShort"].astype(str).str.strip() == lobbyshort].copy()
+                    if session_val is not None and "Session" in wit.columns:
+                        wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)].copy()
+                    if not wit.empty:
+                        pos = bill_position_from_flags(wit)
+                        bill_count = int(pos["Bill"].nunique()) if not pos.empty else 0
+                        bill_list_all = pos["Bill"].dropna().astype(str).unique().tolist() if not pos.empty else []
+                        pos_counts = _pos_counts_from_positions(pos)
+                        focus_section["bullets"].append(
+                            f"Bills with witness activity (selected session): {bill_count:,}"
+                        )
+                        focus_section["bullets"].append(
+                            f"Witness positions - Against {pos_counts['Against']:,}, For {pos_counts['For']:,}, On {pos_counts['On']:,}."
+                        )
+
+                        bs = Bill_Status_All if isinstance(Bill_Status_All, pd.DataFrame) else pd.DataFrame()
+                        if not bs.empty and "Session" in bs.columns and session_val is not None:
+                            bs = bs[bs["Session"].astype(str).str.strip() == str(session_val)].copy()
+                        if bill_list_all and not bs.empty and "Bill" in bs.columns:
+                            status_counts = _top_counts(
+                                bs[bs["Bill"].astype(str).isin(bill_list_all)].get(
+                                    "Status", pd.Series(dtype=object)
+                                ),
+                                4,
+                            )
+
+                        if "Bill" in wit.columns:
+                            bill_counts = (
+                                wit.groupby("Bill").size().reset_index(name="Witness Rows")
+                                .sort_values("Witness Rows", ascending=False)
+                                .head(5)
+                            )
+                            if not bill_counts.empty:
+                                if not bs.empty and "Bill" in bs.columns:
+                                    bs_short = bs.drop_duplicates(subset=["Bill"])
+                                    bill_counts = bill_counts.merge(
+                                        bs_short[["Bill", "Caption", "Status"]],
+                                        on="Bill",
+                                        how="left",
+                                    )
+                                for _, row in bill_counts.iterrows():
+                                    bill = str(row.get("Bill", "")).strip()
+                                    count = int(row.get("Witness Rows", 0) or 0)
+                                    caption = _truncate_text(row.get("Caption", ""), 70)
+                                    status = str(row.get("Status", "")).strip()
+                                    line = f"{bill} ({count:,} witness rows)"
+                                    if status:
+                                        line += f", {status}"
+                                    if caption:
+                                        line += f" - {caption}"
+                                    top_bill_lines.append(line)
+
+                        bill_sub = Bill_Sub_All if isinstance(Bill_Sub_All, pd.DataFrame) else pd.DataFrame()
+                        if bill_list_all and not bill_sub.empty and {"Bill", "Subject"}.issubset(bill_sub.columns):
+                            if session_val is not None and "Session" in bill_sub.columns:
+                                bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+                            sub_counts = (
+                                bill_sub[bill_sub["Bill"].astype(str).isin(bill_list_all)]
+                                .groupby("Subject")
+                                .size()
+                                .reset_index(name="Mentions")
+                                .sort_values("Mentions", ascending=False)
+                                .head(5)
+                            )
+                            policy_count = int(sub_counts["Subject"].nunique()) if not sub_counts.empty else 0
+                            for _, row in sub_counts.iterrows():
+                                subject = _truncate_text(row.get("Subject", ""), 60)
+                                mentions = int(row.get("Mentions", 0) or 0)
+                                if subject:
+                                    top_subject_lines.append(f"{subject} ({mentions:,})")
+
+                if bill_count:
+                    focus_section["metrics"].append(("Bills w/ witness activity", f"{bill_count:,}"))
+                if policy_count:
+                    focus_section["metrics"].append(("Policy areas", f"{policy_count:,}"))
+
+                client_mid = (
+                    lobby_rows.groupby(["Client", "IsTFL"], as_index=False)
+                    .agg(Mid=("Mid", "sum"))
+                    .sort_values("Mid", ascending=False)
+                )
+                tfl_top = client_mid[client_mid["IsTFL"] == 1].head(5)
+                pri_top = client_mid[client_mid["IsTFL"] == 0].head(5)
+                if not tfl_top.empty:
+                    top_tfl = [
+                        f"{_truncate_text(r.Client, 50)} ({fmt_usd(r.Mid)})"
+                        for r in tfl_top.itertuples()
+                    ]
+                    focus_section["bullets"].append(f"Top taxpayer-funded clients: {_join_top(top_tfl)}")
+                if not pri_top.empty:
+                    top_pri = [
+                        f"{_truncate_text(r.Client, 50)} ({fmt_usd(r.Mid)})"
+                        for r in pri_top.itertuples()
+                    ]
+                    focus_section["bullets"].append(f"Top private clients: {_join_top(top_pri)}")
+                if top_bill_lines:
+                    focus_section["bullets"].append(
+                        f"Top bills by witness activity: {_join_top(top_bill_lines)}"
+                    )
+                if top_subject_lines:
+                    focus_section["bullets"].append(
+                        f"Top policy areas: {_join_top(top_subject_lines)}"
+                    )
+                if not sub_counts.empty:
+                    focus_section["charts"].append(
+                        {
+                            "kind": "bar",
+                            "orientation": "h",
+                            "title": "Top Policy Areas (Witness Bills)",
+                            "caption": "Focus Chart. Policy areas tied to lobbyist witness activity",
+                            "data": [
+                                {"label": str(r.Subject), "value": int(r.Mentions)}
+                                for r in sub_counts.itertuples()
+                            ],
+                        }
+                    )
+                if status_counts:
+                    status_summary = ", ".join([f"{k} ({v:,})" for k, v in status_counts])
+                    focus_section["bullets"].append(f"Bill outcomes (selected session): {status_summary}")
+
+                if not lobby_sub_all.empty:
+                    lobby_sub = lobby_sub_all.copy()
+                    if "Session" in lobby_sub.columns and session_val is not None:
+                        lobby_sub = lobby_sub[lobby_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+                    if "LobbyShortNorm" in lobby_sub.columns:
+                        lobby_sub = lobby_sub[lobby_sub["LobbyShortNorm"] == lobbyshort_norm].copy()
+                    elif "LobbyShort" in lobby_sub.columns:
+                        lobby_sub = lobby_sub[lobby_sub["LobbyShort"].astype(str).str.strip() == lobbyshort].copy()
+                    else:
+                        lobby_sub = lobby_sub.iloc[0:0].copy()
+                    if not lobby_sub.empty:
+                        lobby_sub = lobby_sub.assign(
+                            Subject=lobby_sub.get("Subject Matter", "").fillna("").astype(str).str.strip(),
+                            Other=lobby_sub.get("Other Subject Matter Description", "").fillna("").astype(str).str.strip(),
+                        )
+                        for col in ["Subject", "Other"]:
+                            series = lobby_sub[col]
+                            lobby_sub[col] = series.where(~series.str.lower().isin(["nan", "none"]), "")
+                        unnamed0 = lobby_sub.get("Unnamed: 0", lobby_sub.get("Column1", "")).fillna("").astype(str).str.strip()
+                        unnamed0 = unnamed0.where(~unnamed0.str.lower().isin(["nan", "none"]), "")
+                        topic = lobby_sub["Subject"]
+                        topic = topic.where(topic != "", lobby_sub["Other"])
+                        topic = topic.where(topic != "", unnamed0)
+                        topic = topic.where(topic != "", "Unspecified")
+                        lobby_sub["Topic"] = topic
+                        topic_counts = _top_counts(lobby_sub["Topic"], 5)
+                        if topic_counts:
+                            topics = ", ".join([f"{t} ({c:,})" for t, c in topic_counts])
+                            focus_section["bullets"].append(f"Reported subject matters: {topics}")
+
+                if not staff_all.empty and lobbyist_norms:
+                    staff_df = staff_all.copy()
+                    staff_session_mask = (
+                        staff_df["Session"].astype(str).str.strip() == str(session_val)
+                        if "Session" in staff_df.columns and session_val is not None
+                        else pd.Series(False, index=staff_df.index)
+                    )
+                    last_names = {last_name_norm_from_text(n) for n in [display_name, lobbyshort] if last_name_norm_from_text(n)}
+
+                    match_mask = pd.Series(False, index=staff_df.index)
+                    match_mask = match_mask | staff_df.get("StaffNameNorm", pd.Series(False, index=staff_df.index)).isin(lobbyist_norms)
+                    match_mask = match_mask | staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)).isin(lobbyist_norms)
+                    if last_names:
+                        match_mask = match_mask | staff_df.get("StaffLastNorm", pd.Series(False, index=staff_df.index)).isin(last_names)
+                    if lobbyshort_norm:
+                        match_mask = match_mask | (
+                            staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)) == lobbyshort_norm
+                        )
+
+                    staff_pick = staff_df[match_mask].copy()
+                    staff_pick_session = staff_df[staff_session_mask & match_mask].copy()
+                    if not staff_pick.empty:
+                        staff_rows = int(len(staff_pick))
+                        staff_legs = int(staff_pick.get("Legislator", pd.Series(dtype=object)).nunique()) if "Legislator" in staff_pick.columns else 0
+                        focus_section["metrics"].append(("Staff history rows", f"{staff_rows:,}"))
+                        if staff_legs:
+                            focus_section["metrics"].append(("Legislators w/ staff ties", f"{staff_legs:,}"))
+                        top_staff_legs = _top_counts(staff_pick.get("Legislator", pd.Series(dtype=object)), 5)
+                        if top_staff_legs:
+                            legs = ", ".join([f"{l} ({c:,})" for l, c in top_staff_legs])
+                            focus_section["bullets"].append(f"Top legislators in staff history: {legs}")
+                    if not staff_pick_session.empty:
+                        focus_section["bullets"].append(
+                            f"Staff history rows in selected session: {len(staff_pick_session):,}"
+                        )
+
+                activities = build_activities(
+                    la_food,
+                    la_ent,
+                    la_tran,
+                    la_gift,
+                    la_evnt,
+                    la_awrd,
+                    lobbyshort=lobbyshort,
+                    session=str(session_val) if session_val is not None else None,
+                    name_to_short=name_to_short,
+                    lobbyist_norms_tuple=lobbyist_norms_tuple,
+                    filerid_to_short=filerid_to_short,
+                )
+                if not activities.empty:
+                    focus_section["metrics"].append(("Activity rows", f"{len(activities):,}"))
+                    type_counts = _top_counts(activities.get("Type", pd.Series(dtype=object)), 4)
+                    if type_counts:
+                        types = ", ".join([f"{t} ({c:,})" for t, c in type_counts])
+                        focus_section["bullets"].append(f"Top activity types: {types}")
+                    amount_total = _amount_mid_sum(activities.get("Amount", pd.Series(dtype=object)))
+                    if amount_total > 0:
+                        focus_section["bullets"].append(f"Reported activity amount (midpoint): {fmt_usd(amount_total)}")
+                    focus_section["charts"].append(
+                        {
+                            "kind": "bar",
+                            "orientation": "h",
+                            "title": "Activity Types (Rows)",
+                            "caption": "Focus Chart. Activity types for the selected lobbyist",
+                            "data": [{"label": t, "value": c} for t, c in type_counts],
+                        }
+                    )
+
+                disclosures = build_disclosures(
+                    la_cvr,
+                    la_dock,
+                    la_i4e,
+                    la_sub,
+                    lobbyshort=lobbyshort,
+                    session=str(session_val) if session_val is not None else None,
+                    name_to_short=name_to_short,
+                    lobbyist_norms_tuple=lobbyist_norms_tuple,
+                    filerid_to_short=filerid_to_short,
+                )
+                if not disclosures.empty:
+                    focus_section["metrics"].append(("Disclosure rows", f"{len(disclosures):,}"))
+                    d_counts = _top_counts(disclosures.get("Type", pd.Series(dtype=object)), 4)
+                    if d_counts:
+                        types = ", ".join([f"{t} ({c:,})" for t, c in d_counts])
+                        focus_section["bullets"].append(f"Top disclosure types: {types}")
+                    focus_section["charts"].append(
+                        {
+                            "kind": "bar",
+                            "orientation": "h",
+                            "title": "Disclosure Types (Rows)",
+                            "caption": "Focus Chart. Disclosure types for the selected lobbyist",
+                            "data": [{"label": t, "value": c} for t, c in d_counts],
+                        }
+                    )
+
+                client_group = (
+                    lobby_rows.groupby("Client", as_index=False)
+                    .agg(Mid=("Mid", "sum"))
+                    .sort_values("Mid", ascending=False)
+                    .head(5)
+                )
+                chart_data = [
+                    {"label": str(r.Client), "value": float(r.Mid)}
+                    for r in client_group.itertuples()
+                    if float(r.Mid) > 0
+                ]
+                if chart_data:
+                    focus_section["charts"].append(
+                        {
+                            "kind": "bar",
+                            "orientation": "h",
+                            "title": "Top Clients by Midpoint Compensation",
+                            "caption": "Focus Chart. Top clients by midpoint compensation",
+                            "data": chart_data,
+                        }
+                    )
+
+    if focus_type == "legislator":
+        member_name = str(fc.get("name", "")).strip()
+        if member_name:
+            focus_section = {"title": f"Legislator - {member_name}", "summary": "", "metrics": [], "bullets": [], "charts": []}
+            member_info = parse_member_name(member_name)
+            authored_all = build_author_bill_index(Bill_Status_All) if isinstance(Bill_Status_All, pd.DataFrame) else pd.DataFrame()
+            if authored_all.empty:
+                focus_section["summary"] = "No authored bill data was available for the selected session."
+            else:
+                authored = authored_all.copy()
+                authored = authored[authored["AuthorNorm"] == norm_name(member_name)].copy()
+                if session_val is not None and "Session" in authored.columns:
+                    authored = authored[authored["Session"].astype(str).str.strip() == str(session_val)].copy()
+
+                bill_count = int(authored["Bill"].nunique()) if not authored.empty else 0
+                passed = int((authored.get("Status", pd.Series(dtype=object)) == "Passed").sum()) if not authored.empty else 0
+                failed = int((authored.get("Status", pd.Series(dtype=object)) == "Failed").sum()) if not authored.empty else 0
+                bill_list = authored["Bill"].dropna().astype(str).unique().tolist() if not authored.empty else []
+
+                wit = Wit_All if isinstance(Wit_All, pd.DataFrame) else pd.DataFrame()
+                witness = pd.DataFrame()
+                if bill_list and not wit.empty:
+                    if session_val is not None and "Session" in wit.columns:
+                        wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)].copy()
+                    wit = wit[wit["Bill"].astype(str).isin(bill_list)].copy() if "Bill" in wit.columns else wit.iloc[0:0].copy()
+                    witness = bill_position_from_flags(wit) if not wit.empty else pd.DataFrame()
+                    if not witness.empty:
+                        witness = witness.merge(tfl_flag, on="LobbyShort", how="left")
+                        witness["IsTFL"] = pd.to_numeric(witness.get("IsTFL", 0), errors="coerce").fillna(0).astype(int)
+
+                any_witness = int(witness["Bill"].nunique()) if not witness.empty else 0
+                tfl_opposed = 0
+                lobbyist_count = int(witness["LobbyShort"].nunique()) if not witness.empty and "LobbyShort" in witness.columns else 0
+                tfl_lobbyist_count = int(witness.loc[witness["IsTFL"] == 1, "LobbyShort"].nunique()) if not witness.empty and "LobbyShort" in witness.columns else 0
+                if not witness.empty:
+                    against_mask = witness["Position"].astype(str).str.contains("Against", case=False, na=False)
+                    tfl_mask = witness["IsTFL"] == 1
+                    tfl_opposed = int(witness.loc[against_mask & tfl_mask, "Bill"].nunique())
+
+                focus_section["summary"] = (
+                    f"{member_name} authored {bill_count:,} bills in the selected session, with "
+                    f"{passed:,} passed and {failed:,} failed."
+                )
+                focus_section["metrics"] = [
+                    ("Bills authored", f"{bill_count:,}"),
+                    ("Passed / Failed", f"{passed:,} / {failed:,}"),
+                    ("Bills with witness activity", f"{any_witness:,}"),
+                    ("Bills opposed by TFL lobbyists", f"{tfl_opposed:,}"),
+                    ("Unique lobbyists", f"{lobbyist_count:,}"),
+                    ("Lobbyists w/ TFL clients", f"{tfl_lobbyist_count:,}"),
+                ]
+
+                top_bills_lines = []
+                if not authored.empty:
+                    authored_unique = authored.drop_duplicates(subset=["Bill"]).copy()
+                    status_rank = authored_unique.get("Status", pd.Series(dtype=object)).map(
+                        {"Passed": 0, "Failed": 1}
+                    ).fillna(2)
+                    authored_unique = authored_unique.assign(_rank=status_rank)
+                    top_authored = authored_unique.sort_values(["_rank", "Bill"]).head(5)
+                    for _, row in top_authored.iterrows():
+                        bill = str(row.get("Bill", "")).strip()
+                        status = str(row.get("Status", "")).strip()
+                        caption = _truncate_text(row.get("Caption", ""), 70)
+                        line = bill
+                        if status:
+                            line += f" ({status})"
+                        if caption:
+                            line += f" - {caption}"
+                        if line.strip():
+                            top_bills_lines.append(line)
+
+                policy_count = 0
+                top_subject_lines = []
+                bill_sub = Bill_Sub_All if isinstance(Bill_Sub_All, pd.DataFrame) else pd.DataFrame()
+                if bill_list and not bill_sub.empty and {"Bill", "Subject"}.issubset(bill_sub.columns):
+                    if session_val is not None and "Session" in bill_sub.columns:
+                        bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+                    sub_counts = (
+                        bill_sub[bill_sub["Bill"].astype(str).isin(bill_list)]
+                        .groupby("Subject")
+                        .size()
+                        .reset_index(name="Mentions")
+                        .sort_values("Mentions", ascending=False)
+                        .head(5)
+                    )
+                    policy_count = int(sub_counts["Subject"].nunique()) if not sub_counts.empty else 0
+                    for _, row in sub_counts.iterrows():
+                        subject = _truncate_text(row.get("Subject", ""), 60)
+                        mentions = int(row.get("Mentions", 0) or 0)
+                        if subject:
+                            top_subject_lines.append(f"{subject} ({mentions:,})")
+
+                if top_bills_lines:
+                    focus_section["bullets"].append(f"Top authored bills: {_join_top(top_bills_lines)}")
+                if top_subject_lines:
+                    focus_section["bullets"].append(f"Top policy areas: {_join_top(top_subject_lines)}")
+                if policy_count:
+                    focus_section["metrics"].append(("Policy areas", f"{policy_count:,}"))
+
+                if not witness.empty:
+                    pos_counts = _pos_counts_from_positions(witness)
+                    focus_section["bullets"].append(
+                        f"Witness positions - Against {pos_counts['Against']:,}, For {pos_counts['For']:,}, On {pos_counts['On']:,}."
+                    )
+                    if "LobbyShort" in witness.columns:
+                        top_lobby = (
+                            witness.groupby("LobbyShort")
+                            .size()
+                            .reset_index(name="Rows")
+                            .sort_values("Rows", ascending=False)
+                            .head(5)
+                        )
+                        top_lobby_lines = []
+                        top_lobby_chart = []
+                        for _, row in top_lobby.iterrows():
+                            short = str(row.get("LobbyShort", "")).strip()
+                            rows = int(row.get("Rows", 0) or 0)
+                            label = lobbyshort_to_name.get(short, short)
+                            if label:
+                                top_lobby_lines.append(f"{label} ({rows:,} rows)")
+                                top_lobby_chart.append({"label": label, "value": rows})
+                        if top_lobby_lines:
+                            focus_section["bullets"].append(
+                                f"Top lobbyists on witness lists: {_join_top(top_lobby_lines)}"
+                            )
+                        if top_lobby_chart:
+                            focus_section["charts"].append(
+                                {
+                                    "kind": "bar",
+                                    "orientation": "h",
+                                    "title": "Top Lobbyists on Witness Lists",
+                                    "caption": "Focus Chart. Lobbyists with the most witness-list rows",
+                                    "data": top_lobby_chart,
+                                }
+                            )
+
+                    if "IsTFL" in witness.columns:
+                        counts = []
+                        for funding_label, mask in [
+                            ("Taxpayer Funded", witness["IsTFL"] == 1),
+                            ("Private", witness["IsTFL"] != 1),
+                        ]:
+                            subset = witness[mask]
+                            pos_counts = _pos_counts_from_positions(subset)
+                            for position in ["Against", "For", "On"]:
+                                counts.append(
+                                    {
+                                        "Position": position,
+                                        "Funding": funding_label,
+                                        "Count": int(pos_counts.get(position, 0)),
+                                    }
+                                )
+                        if counts:
+                            focus_section["charts"].append(
+                                {
+                                    "kind": "grouped_bar",
+                                    "title": "Witness Positions by Funding Type",
+                                    "caption": "Focus Chart. Witness positions by funding type",
+                                    "data": counts,
+                                }
+                            )
+
+                activities = build_member_activities(
+                    la_food,
+                    la_ent,
+                    la_tran,
+                    la_gift,
+                    la_evnt,
+                    la_awrd,
+                    member_name=member_name,
+                    session=str(session_val) if session_val is not None else None,
+                    name_to_short=name_to_short,
+                    filerid_to_short=filerid_to_short,
+                    lobbyshort_to_name=lobbyshort_to_name,
+                )
+                if not activities.empty:
+                    focus_section["metrics"].append(("Activity rows", f"{len(activities):,}"))
+                    type_counts = _top_counts(activities.get("Type", pd.Series(dtype=object)), 4)
+                    if type_counts:
+                        types = ", ".join([f"{t} ({c:,})" for t, c in type_counts])
+                        focus_section["bullets"].append(f"Top activity types: {types}")
+                    amount_total = _amount_mid_sum(activities.get("Amount", pd.Series(dtype=object)))
+                    if amount_total > 0:
+                        focus_section["bullets"].append(f"Reported activity amount (midpoint): {fmt_usd(amount_total)}")
+                    focus_section["charts"].append(
+                        {
+                            "kind": "bar",
+                            "orientation": "h",
+                            "title": "Activity Types (Rows)",
+                            "caption": "Focus Chart. Activity types linked to the legislator",
+                            "data": [{"label": t, "value": c} for t, c in type_counts],
+                        }
+                    )
+
+                staff_matches = pd.DataFrame()
+                if not staff_all.empty and "Legislator" in staff_all.columns:
+                    staff_df = staff_all.copy()
+                    leg_norm = norm_name_series(staff_df["Legislator"])
+                    leg_last_norm = last_name_norm_series(staff_df["Legislator"])
+                    leg_init_key = staff_df["Legislator"].fillna("").astype(str).map(_last_first_initial_key)
+
+                    match = pd.Series(False, index=staff_df.index)
+                    last_norm = member_info.get("last_norm", "")
+                    if last_norm:
+                        match = leg_last_norm == last_norm
+                        if member_info.get("initial_key"):
+                            match = match & (leg_init_key == member_info["initial_key"])
+
+                    full_norm = member_info.get("full_norm", "")
+                    if full_norm:
+                        match = match | leg_norm.str.contains(full_norm, na=False)
+
+                    staff_matches = staff_df[match].copy()
+
+                if not staff_matches.empty:
+                    focus_section["metrics"].append(("Staff history rows", f"{len(staff_matches):,}"))
+                    staffer_count = int(staff_matches.get("Staffer", pd.Series(dtype=object)).nunique()) if "Staffer" in staff_matches.columns else 0
+                    if staffer_count:
+                        focus_section["metrics"].append(("Staffers", f"{staffer_count:,}"))
+                    top_staffers = _top_counts(staff_matches.get("Staffer", pd.Series(dtype=object)), 5)
+                    if top_staffers:
+                        staffer_list = ", ".join([f"{s} ({c:,})" for s, c in top_staffers])
+                        focus_section["bullets"].append(f"Top staffers in history: {staffer_list}")
+
+                staff_lobbyists = pd.DataFrame()
+                if not staff_matches.empty and "Staffer" in staff_matches.columns:
+                    tmp_short = Lobby_TFL_Client_All[["LobbyShort"]].dropna().copy()
+                    tmp_short["InitialKey"] = tmp_short["LobbyShort"].map(_last_first_initial_key)
+                    init_counts = (
+                        tmp_short.groupby(["InitialKey", "LobbyShort"])
+                        .size()
+                        .reset_index(name="n")
+                        .sort_values(["InitialKey", "n"], ascending=[True, False])
+                        .drop_duplicates("InitialKey")
+                    )
+                    initial_to_short = dict(zip(init_counts["InitialKey"], init_counts["LobbyShort"]))
+
+                    def map_staffer(name: str) -> str:
+                        if not name:
+                            return ""
+                        for v in norm_person_variants(name):
+                            if v in name_to_short:
+                                return str(name_to_short[v])
+                        init_key = _last_first_initial_key(name)
+                        if init_key and init_key in initial_to_short:
+                            return str(initial_to_short[init_key])
+                        return ""
+
+                    staff_lobbyists = staff_matches.copy()
+                    staff_lobbyists["LobbyShort"] = staff_lobbyists["Staffer"].fillna("").astype(str).map(map_staffer)
+                    staff_lobbyists = staff_lobbyists[staff_lobbyists["LobbyShort"].astype(str).str.strip() != ""].copy()
+                    if not staff_lobbyists.empty:
+                        focus_section["metrics"].append(
+                            ("Staffers who became lobbyists", f"{staff_lobbyists['Staffer'].nunique():,}")
+                        )
+                        staff_lobbyists["Lobbyist"] = staff_lobbyists["LobbyShort"].map(lobbyshort_to_name).fillna(staff_lobbyists["LobbyShort"])
+                        top_lobbyists = _top_counts(staff_lobbyists.get("Lobbyist", pd.Series(dtype=object)), 5)
+                        if top_lobbyists:
+                            lobbyist_list = ", ".join([f"{l} ({c:,})" for l, c in top_lobbyists])
+                            focus_section["bullets"].append(f"Staff-to-lobbyist matches: {lobbyist_list}")
+
+                chart_data = [
+                    {"label": "Bills authored", "value": bill_count},
+                    {"label": "Bills with witness activity", "value": any_witness},
+                    {"label": "Bills opposed by TFL lobbyists", "value": tfl_opposed},
+                ]
+                focus_section["charts"].append(
+                    {
+                        "kind": "bar",
+                        "orientation": "v",
+                        "title": "Legislator Focus Metrics",
+                        "caption": "Focus Chart. Legislator summary metrics",
+                        "data": chart_data,
+                    }
+                )
+
+    if focus_type == "bill":
+        bill_id = str(fc.get("bill", "")).strip()
+        if bill_id:
+            bill_norm = bill_id
+            try:
+                bill_norm = normalize_bill(bill_id) or bill_id
+            except Exception:
+                bill_norm = bill_id
+            bill_id = bill_norm
+            focus_section = {"title": f"Bill - {bill_id}", "summary": "", "metrics": [], "bullets": [], "charts": []}
+            bs = Bill_Status_All if isinstance(Bill_Status_All, pd.DataFrame) else pd.DataFrame()
+            caption = ""
+            status = ""
+            author = ""
+            if not bs.empty and "Bill" in bs.columns:
+                bs = bs.copy()
+                if session_val is not None and "Session" in bs.columns:
+                    bs = bs[bs["Session"].astype(str).str.strip() == str(session_val)].copy()
+                try:
+                    bs["BillNorm"] = bs["Bill"].astype(str).map(normalize_bill)
+                except Exception:
+                    bs["BillNorm"] = bs["Bill"].astype(str).str.strip()
+                bs_match = bs[bs["BillNorm"] == bill_id].copy()
+                if not bs_match.empty:
+                    caption = str(bs_match.get("Caption", pd.Series([""])).iloc[0]).strip()
+                    status = str(bs_match.get("Status", pd.Series([""])).iloc[0]).strip()
+                    for col in ["Author", "Authors"]:
+                        if col in bs_match.columns:
+                            author = str(bs_match.get(col, pd.Series([""])).iloc[0]).strip()
+                            if author:
+                                break
+
+            wit = Wit_All if isinstance(Wit_All, pd.DataFrame) else pd.DataFrame()
+            pos = pd.DataFrame()
+            if not wit.empty and "Bill" in wit.columns:
+                wit = wit.copy()
+                if session_val is not None and "Session" in wit.columns:
+                    wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)].copy()
+                try:
+                    wit["Bill"] = wit["Bill"].astype(str).map(normalize_bill)
+                except Exception:
+                    wit["Bill"] = wit["Bill"].astype(str).str.strip()
+                wit = wit[wit["Bill"] == bill_id].copy()
+                if not wit.empty:
+                    pos = bill_position_from_flags(wit)
+                    if not pos.empty:
+                        pos = pos.merge(tfl_flag, on="LobbyShort", how="left")
+                        pos["IsTFL"] = pd.to_numeric(pos.get("IsTFL", 0), errors="coerce").fillna(0).astype(int)
+
+            unique_lobbyists = int(pos["LobbyShort"].nunique()) if not pos.empty else 0
+            org_series = wit.get("org", pd.Series(dtype=object)) if isinstance(wit, pd.DataFrame) else pd.Series(dtype=object)
+            org_counts = _top_counts(org_series, 5)
+            unique_orgs = int(org_series.dropna().astype(str).str.strip().nunique()) if not org_series.empty else 0
+
+            witness_rows = int(len(wit)) if isinstance(wit, pd.DataFrame) else 0
+            tfl_opposed = 0
+            top_lobbyist_lines = []
+            subject_lines = []
+            tfl_witness_rows = 0
+            private_witness_rows = 0
+            if not pos.empty:
+                against_mask = pos["Position"].astype(str).str.contains("Against", case=False, na=False)
+                tfl_mask = pos["IsTFL"] == 1
+                tfl_opposed = int(pos.loc[against_mask & tfl_mask, "LobbyShort"].nunique())
+                tfl_witness_rows = int(pos.loc[tfl_mask, "LobbyShort"].nunique())
+                private_witness_rows = int(pos.loc[~tfl_mask, "LobbyShort"].nunique())
+
+                if "LobbyShort" in pos.columns:
+                    name_map = {}
+                    lt = Lobby_TFL_Client_All if isinstance(Lobby_TFL_Client_All, pd.DataFrame) else pd.DataFrame()
+                    if not lt.empty and {"LobbyShort", "Lobby Name"}.issubset(lt.columns):
+                        tmp = lt[["LobbyShort", "Lobby Name"]].dropna().copy()
+                        tmp["LobbyShort"] = tmp["LobbyShort"].astype(str).str.strip()
+                        tmp["Lobby Name"] = tmp["Lobby Name"].astype(str).str.strip()
+                        name_map = (
+                            tmp.groupby("LobbyShort")["Lobby Name"]
+                            .agg(lambda s: s.dropna().astype(str).iloc[0] if len(s) else "")
+                            .to_dict()
+                        )
+
+                    counts = (
+                        pos.groupby("LobbyShort")
+                        .size()
+                        .reset_index(name="Rows")
+                        .sort_values("Rows", ascending=False)
+                        .head(5)
+                    )
+                    for _, row in counts.iterrows():
+                        short = str(row.get("LobbyShort", "")).strip()
+                        rows = int(row.get("Rows", 0) or 0)
+                        name = name_map.get(short, "")
+                        label = f"{short}"
+                        if name:
+                            label = f"{name} ({short})"
+                        top_lobbyist_lines.append(f"{label} ({rows:,} rows)")
+
+            focus_section["summary"] = (
+                f"{bill_id} has {witness_rows:,} witness-list rows in the selected session."
+            )
+            focus_section["metrics"] = [
+                ("Bill", bill_id),
+                ("Status", status or "Unknown"),
+                ("Witness rows", f"{witness_rows:,}"),
+                ("Unique lobbyists", f"{unique_lobbyists:,}"),
+                ("TFL lobbyists opposed", f"{tfl_opposed:,}"),
+                ("TFL lobbyists (any position)", f"{tfl_witness_rows:,}"),
+                ("Private lobbyists (any position)", f"{private_witness_rows:,}"),
+            ]
+            if unique_orgs:
+                focus_section["metrics"].append(("Organizations", f"{unique_orgs:,}"))
+            if caption:
+                focus_section["bullets"].append(f"Caption: {caption}")
+            if author:
+                focus_section["bullets"].append(f"Author: {author}")
+
+            if top_lobbyist_lines:
+                focus_section["bullets"].append(
+                    f"Top lobbyists by witness rows: {_join_top(top_lobbyist_lines)}"
+                )
+            if org_counts:
+                org_lines = [f"{_truncate_text(n, 60)} ({c:,})" for n, c in org_counts]
+                focus_section["bullets"].append(
+                    f"Top organizations on witness lists: {_join_top(org_lines)}"
+                )
+                focus_section["charts"].append(
+                    {
+                        "kind": "bar",
+                        "orientation": "h",
+                        "title": "Top Witness Organizations",
+                        "caption": "Focus Chart. Organizations with the most witness-list rows",
+                        "data": [{"label": n, "value": c} for n, c in org_counts],
+                    }
+                )
+
+            bill_sub = Bill_Sub_All if isinstance(Bill_Sub_All, pd.DataFrame) else pd.DataFrame()
+            if not bill_sub.empty and {"Bill", "Subject"}.issubset(bill_sub.columns):
+                if session_val is not None and "Session" in bill_sub.columns:
+                    bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+                bill_sub = bill_sub.copy()
+                bill_sub["BillNorm"] = bill_sub["Bill"].astype(str).map(normalize_bill)
+                sub_rows = bill_sub[bill_sub["BillNorm"] == bill_id]
+                if not sub_rows.empty:
+                    subjects = sub_rows["Subject"].dropna().astype(str).str.strip().unique().tolist()
+                    for subject in subjects[:6]:
+                        subject_lines.append(_truncate_text(subject, 70))
+            if subject_lines:
+                focus_section["bullets"].append(f"Subjects: {_join_top(subject_lines)}")
+
+            if not pos.empty:
+                counts = []
+                for funding_label, mask in [
+                    ("Taxpayer Funded", pos["IsTFL"] == 1),
+                    ("Private", pos["IsTFL"] != 1),
+                ]:
+                    subset = pos[mask]
+                    pos_counts = _pos_counts_from_positions(subset)
+                    for position in ["Against", "For", "On"]:
+                        counts.append(
+                            {
+                                "Position": position,
+                                "Funding": funding_label,
+                                "Count": int(pos_counts.get(position, 0)),
+                            }
+                        )
+                focus_section["charts"].append(
+                    {
+                        "kind": "grouped_bar",
+                        "title": "Witness Positions by Funding Type",
+                        "caption": "Focus Chart. Witness positions by funding type",
+                        "data": counts,
+                    }
+                )
+
+    payload = {
+        "session_label": session_label,
+        "generated_date": generated_date,
+        "scope_label": scope_label,
+        "focus_label": focus_label,
+        "total_low_value": total_low,
+        "total_high_value": total_high,
+        "tfl_low_value": tfl_low,
+        "tfl_high_value": tfl_high,
+        "private_low_value": private_low,
+        "private_high_value": private_high,
+        "total_low": fmt_usd(total_low),
+        "total_high": fmt_usd(total_high),
+        "tfl_low": fmt_usd(tfl_low),
+        "tfl_high": fmt_usd(tfl_high),
+        "private_low": fmt_usd(private_low),
+        "private_high": fmt_usd(private_high),
+        "tfl_share_low_pct": f"{tfl_share_low_pct:.1f}",
+        "tfl_share_high_pct": f"{tfl_share_high_pct:.1f}",
+        "tfl_share_low_pct_value": tfl_share_low_pct,
+        "tfl_share_high_pct_value": tfl_share_high_pct,
+        "private_share_low_pct_value": private_share_low_pct,
+        "private_share_high_pct_value": private_share_high_pct,
+        "unique_lobbyists_total": f"{unique_lobbyists_total:,}",
+        "unique_lobbyists_tfl": f"{unique_lobbyists_tfl:,}",
+        "unique_clients_total": f"{unique_clients_total:,}",
+        "unique_clients_tfl": f"{unique_clients_tfl:,}",
+        "chart_compensation_bar": chart_compensation_bar,
+        "chart_share": chart_share,
+        "chart_entity_types": chart_entity_types,
+        "chart_entity_types_data": entity_type_counts,
+        "witness_activity_summary": witness_summary,
+        "chart_witness_positions": chart_witness_positions,
+        "witness_counts": witness_counts,
+        "chart_top_bills": chart_top_bills,
+        "chart_top_subjects": chart_top_subjects,
+        "existing_law_gap_summary": existing_law_gap_summary,
+        "recommended_fix_statute": recommended_fix_statute,
+        "implementation_notes": implementation_notes,
+        "data_sources_bullets": data_sources_bullets,
+        "disclaimer_note": disclaimer_note,
+        "report_title": report_title,
+        "scope_session_label": scope_session_label,
+        "scope_note": scope_note,
+        "has_top_bills": bool(top_bills),
+        "has_top_subjects": bool(top_subjects),
+        "top_bills": top_bills,
+        "top_subjects": top_subjects,
+        "focus_section": focus_section,
+    }
+
+    for i in range(5):
+        if i < len(top_bills):
+            b = top_bills[i]
+            payload[f"bill_{i + 1}_id"] = b["id"]
+            payload[f"bill_{i + 1}_caption"] = b["caption"]
+            payload[f"bill_{i + 1}_opp_count"] = f"{b['tfl']:,}"
+            payload[f"bill_{i + 1}_private_opp"] = f"{b['private']:,}"
+            payload[f"bill_{i + 1}_summary"] = b["summary"]
+        else:
+            payload[f"bill_{i + 1}_id"] = "-"
+            payload[f"bill_{i + 1}_caption"] = "-"
+            payload[f"bill_{i + 1}_opp_count"] = "0"
+            payload[f"bill_{i + 1}_private_opp"] = "0"
+            payload[f"bill_{i + 1}_summary"] = "No summary available."
+
+    for i in range(5):
+        if i < len(top_subjects):
+            s = top_subjects[i]
+            payload[f"subject_{i + 1}"] = s["Subject"]
+            payload[f"subject_{i + 1}_opp_count"] = f"{int(s['Oppositions']):,}"
+        else:
+            payload[f"subject_{i + 1}"] = "-"
+            payload[f"subject_{i + 1}_opp_count"] = "0"
+
+    return payload
+
+def _build_report_text(payload: dict) -> str:
+    lines = [
+        "TAXPAYER-FUNDED LOBBYING IN TEXAS:",
+        f"Analysis of the {payload['session_label']} Legislative Session",
+        "",
+        "Prepared by Lobby Look-Up",
+        f"Generated: {payload['generated_date']}",
+        f"Scope: {payload['scope_session_label']}",
+        f"Focus: {payload['focus_label']}",
+        "",
+        "=====================================================================",
+        "",
+        "EXECUTIVE SUMMARY",
+        "",
+        (
+            "Texas taxpayers should not be compelled to finance political advocacy through their own government. "
+            f"During the {payload['session_label']} Legislative Session, registered lobbying activity reported "
+            f"compensation ranges totaling between {payload['total_low']} and {payload['total_high']}. Within that total, "
+            f"taxpayer-funded lobbying activity accounted for approximately {payload['tfl_low']} to {payload['tfl_high']}, "
+            f"while privately funded lobbying accounted for approximately {payload['private_low']} to {payload['private_high']}. "
+            f"Even under conservative assumptions, taxpayer-funded lobbying represented roughly {payload['tfl_share_low_pct']}% "
+            f"to {payload['tfl_share_high_pct']}% of all reported lobbying compensation during this scope."
+        ),
+    ]
+    if payload.get("scope_note"):
+        lines.append(payload["scope_note"])
+        lines.append("")
+    lines += [
+        (
+            "This report explains why taxpayer-funded lobbying is structurally inconsistent with transparent and "
+            f"accountable government, documents the scale of the practice in {payload['session_label']}, and identifies "
+            "the legislation and policy areas most frequently opposed by taxpayer-funded lobbyists. The conclusion is "
+            "straightforward: Texas should abolish taxpayer-funded lobbying by political subdivisions and close both "
+            "direct and indirect funding pathways so public money is used to provide public services, not to finance "
+            "political advocacy."
+        ),
+        "",
+        "=====================================================================",
+        "",
+        f"I. THE SCALE OF LOBBYING IN {payload['session_label']}",
+        "",
+        (
+            "Lobbying in Texas is a major industry, and the compensation ranges reported to the state reflect the scale "
+            "at which public policy is contested. For the "
+            f"{payload['session_label']} session, the total reported lobbying compensation range across the selected scope "
+            f"was {payload['total_low']} to {payload['total_high']}. Taxpayer-funded entities accounted for "
+            f"{payload['tfl_low']} to {payload['tfl_high']} of that total, while privately funded entities accounted for "
+            f"{payload['private_low']} to {payload['private_high']}. Because compensation is disclosed in ranges rather than "
+            "precise amounts, these figures should be understood as conservative estimates of the activity captured in "
+            "the underlying registrations and filings."
+        ),
+        "",
+        (
+            "The composition of the participating universe underscores why taxpayer-funded lobbying is not a marginal "
+            "phenomenon. Across this scope, "
+            f"{payload['unique_lobbyists_total']} unique lobbyists were observed, including {payload['unique_lobbyists_tfl']} "
+            "who represented at least one taxpayer-funded client. Likewise, "
+            f"{payload['unique_clients_total']} clients appeared in the data, including {payload['unique_clients_tfl']} that "
+            "qualify as governmental or taxpayer-funded entities. The point is not merely that local governments participate "
+            "in the process; it is that they do so at a scale capable of shaping agendas, crowding out citizen influence, "
+            "and resisting reforms that would otherwise be evaluated on their merits."
+        ),
+        "",
+        f"[CHART 1: Lobbying Compensation Range by Funding Type ({payload['session_label']})]",
+        payload["chart_compensation_bar"],
+        "",
+        "[CHART 2: Share of Total Lobbying - Taxpayer vs Private]",
+        payload["chart_share"],
+        "",
+        "=====================================================================",
+        "",
+        "II. WHAT TAXPAYER-FUNDED LOBBYING IS - AND WHY IT MATTERS",
+        "",
+        (
+            "Taxpayer-funded lobbying occurs when political subdivisions use public funds to employ registered lobbyists, "
+            "contract with lobbying firms, or pay dues and assessments to associations that, in turn, employ lobbyists. "
+            "In practice, the entities involved often include cities, counties, independent school districts, special "
+            "districts, authorities, and intergovernmental associations funded by member governments. The distinctive "
+            "feature is not the subject matter they address -- nearly any policy can be lobbied -- but the source of the "
+            "money used to do it. When advocacy is financed with tax revenue or statutorily compelled fees, citizens are "
+            "required to fund political activity as a condition of living, owning property, or receiving basic public services."
+        ),
+        "",
+        (
+            "That is why taxpayer-funded lobbying is a different category of problem than private-sector lobbying. "
+            "Private entities spend their own money and must persuade contributors, shareholders, or members that the "
+            "advocacy is worthwhile. Public entities spend money that was collected under compulsion and therefore operate "
+            "without meaningful donor consent. This creates an unavoidable mismatch between who pays and who benefits. "
+            "It also creates a confidence problem: citizens reasonably conclude that government is using their money to "
+            "entrench itself, grow its authority, and resist reforms -- especially reforms aimed at fiscal restraint, "
+            "regulatory limits, or transparency."
+        ),
+        "",
+        "[CHART 3: Taxpayer-Funded Clients by Entity Type]",
+        payload["chart_entity_types"],
+        "",
+        "=====================================================================",
+        "",
+        f"III. LEGISLATIVE ACTIVITY PATTERNS IN {payload['session_label']}",
+        "",
+        (
+            "Compensation totals explain scale, but legislative activity signals show how that scale is used. "
+            f"Across the {payload['session_label']} session, taxpayer-funded lobbyists appeared repeatedly in committee "
+            "processes, filing and testifying in ways that illustrate institutional priorities. The witness-list record "
+            "indicates that taxpayer-funded entities did not simply monitor legislation; they frequently intervened in it "
+            "-- especially on proposals with direct implications for local discretion, budgets, and oversight."
+        ),
+        "",
+        f"Within this scope, witness positions for taxpayer-funded and privately funded interests can be summarized as follows: {payload['witness_activity_summary']}",
+        (
+            "The distribution of positions matters because it is a proxy for the incentives embedded in taxpayer-funded "
+            "lobbying. When a local government's policy influence is financed with public money, the natural tendency is "
+            "to oppose measures that constrain revenue growth, tighten accountability, standardize processes, or limit "
+            "regulatory flexibility. These tendencies may not be malicious; they are institutional. But when institutional "
+            "tendencies are financed by compulsory taxation, the state has an obligation to scrutinize and restrain the practice."
+        ),
+        "",
+        "[CHART 4: Witness Positions by Funding Type]",
+        payload["chart_witness_positions"],
+        "",
+        "=====================================================================",
+        "",
+        "IV. THE BILLS MOST OPPOSED BY TAXPAYER-FUNDED LOBBYISTS",
+        "",
+    ]
+
+    if payload.get("has_top_bills"):
+        lines += [
+            (
+                "The most direct way to see taxpayer-funded lobbying in action is to identify the bills that generated "
+                "concentrated opposition from taxpayer-funded entities. In "
+                f"{payload['session_label']}, the top bills opposed by taxpayer-funded lobbyists -- ranked by the number "
+                "of Against filings -- were as follows. These bills provide a window into the reforms that most reliably "
+                "trigger government-funded resistance."
+            ),
+            "",
+            (
+                f"The most opposed bill in this scope was {payload['bill_1_id']} ({payload['bill_1_caption']}). "
+                f"Taxpayer-funded entities filed opposition {payload['bill_1_opp_count']} times, compared to "
+                f"{payload['bill_1_private_opp']} private opposition filings, suggesting that the primary institutional "
+                f"pressure against the measure was government-funded. In summary, {payload['bill_1_summary']}. "
+                f"The second most opposed bill, {payload['bill_2_id']} ({payload['bill_2_caption']}), drew "
+                f"{payload['bill_2_opp_count']} taxpayer-funded opposition filings and can be summarized as follows: "
+                f"{payload['bill_2_summary']}. The next three bills -- {payload['bill_3_id']} ({payload['bill_3_caption']}), "
+                f"{payload['bill_4_id']} ({payload['bill_4_caption']}), and {payload['bill_5_id']} ({payload['bill_5_caption']}) -- "
+                f"each attracted sustained taxpayer-funded opposition, with {payload['bill_3_opp_count']}, "
+                f"{payload['bill_4_opp_count']}, and {payload['bill_5_opp_count']} opposition filings, respectively. "
+                "Their content, taken together, reflects recurring pressure points where local institutional incentives "
+                "diverge from statewide reforms."
+            ),
+            "",
+            "[CHART 5: Top 5 Bills Opposed by Taxpayer-Funded Lobbyists]",
+            payload["chart_top_bills"],
+            "",
+        ]
+    else:
+        lines += [
+            "No bill-level opposition data was available for the selected scope/session.",
+            "",
+        ]
+
+    lines += [
+        "=====================================================================",
+        "",
+        "V. THE POLICY AREAS MOST OPPOSED BY TAXPAYER-FUNDED LOBBYISTS",
+        "",
+    ]
+
+    if payload.get("has_top_subjects"):
+        lines += [
+            (
+                "Bills are discrete, but policy areas reveal patterns. When opposition is aggregated by subject matter, "
+                "taxpayer-funded lobbying tends to cluster in the places where the Legislature can most directly alter "
+                "local fiscal and regulatory authority. In "
+                f"{payload['session_label']}, the top five policy areas most opposed by taxpayer-funded lobbyists were "
+                f"{payload['subject_1']} ({payload['subject_1_opp_count']} oppositions), "
+                f"{payload['subject_2']} ({payload['subject_2_opp_count']}), "
+                f"{payload['subject_3']} ({payload['subject_3_opp_count']}), "
+                f"{payload['subject_4']} ({payload['subject_4_opp_count']}), and "
+                f"{payload['subject_5']} ({payload['subject_5_opp_count']}). This concentration is not accidental. "
+                "These are the categories where statewide reforms most often require local governments to adjust "
+                "discretionary practices, accept constraints, or comply with transparency rules that limit managerial flexibility."
+            ),
+            "",
+            (
+                "The significance of subject-level concentration is that it transforms taxpayer-funded lobbying from "
+                "a series of isolated transactions into a coherent institutional behavior. Once the pattern is visible, "
+                "the policy question becomes unavoidable: should taxpayers be compelled to fund a system that predictably "
+                "mobilizes against reforms designed to protect taxpayers?"
+            ),
+            "",
+            "[CHART 6: Top 5 Policy Areas Opposed by Taxpayer-Funded Lobbyists]",
+            payload["chart_top_subjects"],
+            "",
+        ]
+    else:
+        lines += [
+            "No subject-level opposition data was available for the selected scope/session.",
+            "",
+        ]
+
+    lines += [
+        "=====================================================================",
+        "",
+        "VI. STRUCTURAL INCENTIVES AND THE COMPULSION PROBLEM",
+        "",
+        (
+            "Taxpayer-funded lobbying persists because it is rational for institutions. Political subdivisions face "
+            "budget pressures, political pressures, and administrative demands, and they naturally seek to preserve the "
+            "widest possible discretion to manage those pressures. But rationality for institutions is not the same as "
+            "legitimacy for taxpayers. When the money used to lobby is collected under compulsion, the normal disciplining "
+            "forces of voluntary association are absent. The cost of advocacy is dispersed across taxpayers, while the "
+            "perceived benefits -- expanded authority, preserved revenues, reduced oversight -- accrue to the institution."
+        ),
+        "",
+        (
+            "The result is a misalignment: the payer is not the decision-maker, and the decision-maker has an incentive "
+            "to externalize the cost. That is why taxpayer-funded lobbying is not merely politics as usual. It is a "
+            "financing structure that undermines accountability and encourages institutional self-protection. Over time, "
+            "it becomes a form of self-reinforcing governance: public entities use public funds to defend and expand the "
+            "very powers that allow them to collect and deploy public funds."
+        ),
+        "",
+        "=====================================================================",
+        "",
+        "VII. LEGAL PARITY AND STATUTORY INCONSISTENCY",
+        "",
+        (
+            "Texas has already recognized that using public money to hire lobbyists raises concerns. State agencies face "
+            "statutory restrictions that prevent them from employing registered lobbyists with public funds. Yet political "
+            "subdivisions are not subject to uniform prohibitions, and the result is a parity failure. "
+            f"{payload['existing_law_gap_summary']}"
+        ),
+        "",
+        (
+            "If the state has concluded that state agencies should not use taxpayer dollars to hire registered lobbyists, "
+            "the same logic applies -- often more urgently -- to political subdivisions. Local entities are numerous, "
+            "collectively spend vast sums, and frequently coordinate through associations that amplify their influence. "
+            "In that environment, the absence of a clear prohibition invites continual expansion of the practice and "
+            "continued erosion of public trust."
+        ),
+        "",
+        "=====================================================================",
+        "",
+        "VIII. POLICY SOLUTION: A COMPREHENSIVE BAN ON TAXPAYER-FUNDED LOBBYING",
+        "",
+        (
+            "The policy principle is simple: public money should not be used to lobby government. A workable statutory "
+            "approach is equally straightforward: Texas should extend the existing state-agency prohibition framework to "
+            "political subdivisions and close indirect funding pathways that allow local governments to outsource lobbying "
+            "through membership associations."
+        ),
+        "",
+        f"A recommended statutory reform is: {payload['recommended_fix_statute']}. Under this approach, the law should prohibit political subdivisions from using public funds to employ registered lobbyists directly, contract with registered lobbyists, or pay membership dues or assessments to organizations that employ registered lobbyists for the purpose of influencing legislation. The ban must be drafted to address both direct payments and indirect routing of funds. Otherwise, enforcement will become a game of accounting rather than a real protection for taxpayers.",
+        "",
+        (
+            "Implementation should include clear definitions of political subdivision, public funds, and lobbying "
+            f"services, and should make explicit that the prohibition applies regardless of whether the money is labeled "
+            "appropriated, fee-based, enterprise, or interlocal. The Legislature should also specify enforceable remedies. "
+            f"{payload['implementation_notes']}"
+        ),
+        "",
+        "=====================================================================",
+        "",
+        "IX. DATA SOURCES AND METHODOLOGY",
+        "",
+        "This report is based on public information drawn from:",
+        payload["data_sources_bullets"],
+        "",
+        (
+            "Compensation figures reflect statutory reporting ranges filed with the Texas Ethics Commission. Totals were "
+            "calculated by aggregating minimum and maximum disclosed ranges within the selected scope. Witness list "
+            "activity reflects publicly available committee records compiled into the Lobby Look-Up dataset. Because "
+            "compensation is reported in ranges rather than exact amounts, the totals presented here should be interpreted "
+            "as conservative estimates rather than precise expenditures."
+        ),
+        "",
+        "=====================================================================",
+        "",
+        "CONCLUSION",
+        "",
+        (
+            f"During the {payload['session_label']} Legislative Session, taxpayers indirectly financed lobbying activity "
+            f"totaling between {payload['tfl_low']} and {payload['tfl_high']} in reported compensation ranges. This practice "
+            "compels political financing, entrenches institutional self-interest, and undermines public confidence that "
+            "government is operating transparently and accountably."
+        ),
+        "",
+        (
+            "Texas should abolish taxpayer-funded lobbying by political subdivisions and close both direct and indirect "
+            "funding pathways. Public money should be used to provide public services -- not to finance political advocacy."
+        ),
+        "",
+        "=====================================================================",
+        "",
+        "Prepared by Lobby Look-Up",
+        payload["disclaimer_note"],
+    ]
+    return "\n".join(lines)
+
+def _build_report_pdf_bytes(payload: dict) -> bytes:
+    class ReportPDF(FPDF):
+        def __init__(self, header_title: str, header_subtitle: str, generated_date: str):
+            super().__init__(orientation="P", unit="mm", format="A4")
+            self.header_title = header_title
+            self.header_subtitle = header_subtitle
+            self.generated_date = generated_date
+
+        def header(self):
+            if self.page_no() == 1:
+                return
+            self.set_text_color(60, 60, 60)
+            self.set_font("Helvetica", "B", 9)
+            self.cell(0, 5, _pdf_safe_text(self.header_title), ln=1)
+            self.set_font("Helvetica", "", 8)
+            subtitle = str(self.header_subtitle or "")
+            if len(subtitle) > 110:
+                subtitle = subtitle[:107].rstrip() + "..."
+            self.cell(0, 4, _pdf_safe_text(subtitle), ln=1)
+            self.set_draw_color(200, 200, 200)
+            self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+            self.ln(3)
+            self.set_text_color(0, 0, 0)
+
+        def footer(self):
+            self.set_y(-12)
+            self.set_text_color(120, 120, 120)
+            self.set_font("Helvetica", "", 8)
+            w = self.w - self.l_margin - self.r_margin
+            left_w = w * 0.6
+            right_w = w - left_w
+            self.cell(left_w, 4, _pdf_safe_text(f"Generated {self.generated_date}"), ln=0, align="L")
+            self.cell(right_w, 4, _pdf_safe_text(f"Page {self.page_no()}"), ln=0, align="R")
+            self.set_text_color(0, 0, 0)
+
+    header_title = payload.get("report_title", "Lobby Look-Up Report")
+    scope_sub = payload.get("scope_session_label") or payload.get("scope_label", "")
+    header_subtitle = f"{scope_sub} | {payload['focus_label']}".strip(" |")
+    pdf = ReportPDF(header_title, header_subtitle, payload["generated_date"])
+    pdf.set_margins(12, 12, 12)
+    pdf.set_auto_page_break(auto=True, margin=12)
+    pdf.set_title(_pdf_safe_text(header_title))
+    pdf.set_author(_pdf_safe_text("Lobby Look-Up"))
+    pdf.add_page()
+
+    pdf.set_fill_color(16, 35, 58)
+    pdf.rect(pdf.l_margin, pdf.get_y(), pdf.w - pdf.l_margin - pdf.r_margin, 2, "F")
+    pdf.ln(4)
+
+    _pdf_add_heading(pdf, "TAXPAYER-FUNDED LOBBYING IN TEXAS", size=16)
+    _pdf_add_subheading(
+        pdf,
+        f"Analysis of the {payload['session_label']} Legislative Session",
+        size=12,
+    )
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(0, 5, _pdf_safe_text("Prepared by Lobby Look-Up"), ln=1)
+    pdf.cell(0, 5, _pdf_safe_text(f"Generated: {payload['generated_date']}"), ln=1)
+    pdf.cell(0, 5, _pdf_safe_text(f"Scope: {payload['scope_session_label']}"), ln=1)
+    pdf.cell(0, 5, _pdf_safe_text(f"Focus: {payload['focus_label']}"), ln=1)
+    pdf.ln(2)
+    _pdf_add_rule(pdf)
+
+    _pdf_add_section_title(pdf, "Executive Summary")
+    exec_summary = (
+        "Texas taxpayers should not be compelled to finance political advocacy through their own government. "
+        f"During the {payload['session_label']} Legislative Session, registered lobbying activity reported "
+        f"compensation ranges totaling between {payload['total_low']} and {payload['total_high']}. Within that total, "
+        f"taxpayer-funded lobbying activity accounted for approximately {payload['tfl_low']} to {payload['tfl_high']}, "
+        f"while privately funded lobbying accounted for approximately {payload['private_low']} to {payload['private_high']}. "
+        f"Even under conservative assumptions, taxpayer-funded lobbying represented roughly {payload['tfl_share_low_pct']}% "
+        f"to {payload['tfl_share_high_pct']}% of all reported lobbying compensation during this scope."
+    )
+    _pdf_add_paragraph(pdf, exec_summary, size=11)
+    if payload.get("scope_note"):
+        _pdf_add_paragraph(pdf, payload["scope_note"], size=10)
+    exec_summary_2 = (
+        "This report explains why taxpayer-funded lobbying is structurally inconsistent with transparent and "
+        "accountable government, documents the scale of the practice in "
+        f"{payload['session_label']}, and identifies the legislation and policy areas most frequently opposed by "
+        "taxpayer-funded lobbyists. The conclusion is straightforward: Texas should abolish taxpayer-funded lobbying "
+        "by political subdivisions and close both direct and indirect funding pathways so public money is used to provide "
+        "public services, not to finance political advocacy."
+    )
+    _pdf_add_paragraph(pdf, exec_summary_2, size=11)
+
+    _pdf_add_subheading(pdf, "Key Metrics", size=11)
+    metrics = [
+        ("Total lobbying range", f"{payload['total_low']} - {payload['total_high']}"),
+        ("Taxpayer-funded range", f"{payload['tfl_low']} - {payload['tfl_high']}"),
+        ("Private range", f"{payload['private_low']} - {payload['private_high']}"),
+        ("Unique lobbyists", payload["unique_lobbyists_total"]),
+        ("Lobbyists w/ TFL clients", payload["unique_lobbyists_tfl"]),
+        ("Unique clients", payload["unique_clients_total"]),
+        ("Taxpayer-funded clients", payload["unique_clients_tfl"]),
+    ]
+    _pdf_add_kpi_table(pdf, metrics, size=10)
+
+    highlights = [
+        f"Taxpayer-funded share: {payload['tfl_share_low_pct']}% - {payload['tfl_share_high_pct']}%",
+        f"Taxpayer-funded range: {payload['tfl_low']} - {payload['tfl_high']}",
+        f"Private range: {payload['private_low']} - {payload['private_high']}",
+    ]
+    _pdf_add_subheading(pdf, "Report Highlights", size=10)
+    _pdf_add_bullets(pdf, highlights, size=10)
+
+    focus_section = payload.get("focus_section")
+    if focus_section and isinstance(focus_section, dict):
+        title = focus_section.get("title", "").strip()
+        summary = focus_section.get("summary", "").strip()
+        metrics = focus_section.get("metrics", [])
+        bullets = focus_section.get("bullets", [])
+        charts = focus_section.get("charts", [])
+
+        if title or summary or metrics or bullets or charts:
+            _pdf_add_section_title(pdf, "Focus Snapshot")
+            if title:
+                _pdf_add_subheading(pdf, title, size=11)
+            if summary:
+                _pdf_add_paragraph(pdf, summary, size=11)
+            if metrics:
+                _pdf_add_subheading(pdf, "Key Focus Metrics", size=10)
+                _pdf_add_kpi_table(pdf, metrics, size=10)
+            if bullets:
+                _pdf_add_subheading(pdf, "Focus Highlights", size=10)
+                _pdf_add_bullets(pdf, bullets, size=10)
+            if charts:
+                _pdf_add_subheading(pdf, "Focus Charts", size=10)
+                for chart in charts:
+                    fig = _build_focus_chart(chart if isinstance(chart, dict) else {})
+                    if fig:
+                        caption = str(chart.get("caption", "Focus Chart")).strip() if isinstance(chart, dict) else "Focus Chart"
+                        _pdf_add_chart(pdf, fig, caption)
+            _pdf_add_rule(pdf)
+
+    _pdf_add_section_title(pdf, f"I. THE SCALE OF LOBBYING IN {payload['session_label']}")
+    scale_p1 = (
+        "Lobbying in Texas is a major industry, and the compensation ranges reported to the state reflect the scale "
+        "at which public policy is contested. For the "
+        f"{payload['session_label']} session, the total reported lobbying compensation range across the selected scope "
+        f"was {payload['total_low']} to {payload['total_high']}. Taxpayer-funded entities accounted for "
+        f"{payload['tfl_low']} to {payload['tfl_high']} of that total, while privately funded entities accounted for "
+        f"{payload['private_low']} to {payload['private_high']}. Because compensation is disclosed in ranges rather than "
+        "precise amounts, these figures should be understood as conservative estimates of the activity captured in "
+        "the underlying registrations and filings."
+    )
+    _pdf_add_paragraph(pdf, scale_p1, size=11)
+    scale_p2 = (
+        "The composition of the participating universe underscores why taxpayer-funded lobbying is not a marginal "
+        "phenomenon. Across this scope, "
+        f"{payload['unique_lobbyists_total']} unique lobbyists were observed, including {payload['unique_lobbyists_tfl']} "
+        "who represented at least one taxpayer-funded client. Likewise, "
+        f"{payload['unique_clients_total']} clients appeared in the data, including {payload['unique_clients_tfl']} that "
+        "qualify as governmental or taxpayer-funded entities. The point is not merely that local governments participate "
+        "in the process; it is that they do so at a scale capable of shaping agendas, crowding out citizen influence, "
+        "and resisting reforms that would otherwise be evaluated on their merits."
+    )
+    _pdf_add_paragraph(pdf, scale_p2, size=11)
+
+    comp_df = pd.DataFrame(
+        [
+            {"Funding": "Taxpayer Funded", "Low": payload["tfl_low_value"], "High": payload["tfl_high_value"]},
+            {"Funding": "Private", "Low": payload["private_low_value"], "High": payload["private_high_value"]},
+        ]
+    )
+    comp_long = comp_df.melt(id_vars="Funding", value_vars=["Low", "High"], var_name="Estimate", value_name="Total")
+    if not comp_long.empty and comp_long["Total"].sum() > 0:
+        fig_comp = px.bar(
+            comp_long,
+            x="Funding",
+            y="Total",
+            color="Estimate",
+            barmode="group",
+            text="Total",
+            color_discrete_map={"Low": "#004c6d", "High": "#1f77b4"},
+        )
+        fig_comp.update_traces(texttemplate="$%{text:,.0f}", textposition="outside", cliponaxis=False)
+        fig_comp.update_layout(
+            template="plotly_white",
+            title="Lobbying Compensation Range by Funding Type",
+            yaxis_title="Reported compensation",
+            xaxis_title="",
+            legend_title="Estimate",
+            margin=dict(l=40, r=20, t=50, b=30),
+        )
+        fig_comp.update_yaxes(tickprefix="$", tickformat="~s")
+        _pdf_add_chart(pdf, fig_comp, "Chart 1. Lobbying Compensation Range by Funding Type")
+
+    tfl_mid = (payload["tfl_low_value"] + payload["tfl_high_value"]) / 2
+    pri_mid = (payload["private_low_value"] + payload["private_high_value"]) / 2
+    if (tfl_mid + pri_mid) > 0:
+        share_df = pd.DataFrame(
+            {"Funding": ["Taxpayer Funded", "Private"], "Total": [tfl_mid, pri_mid]}
+        )
+        fig_share = px.pie(
+            share_df,
+            names="Funding",
+            values="Total",
+            hole=0.5,
+            color="Funding",
+            color_discrete_map={"Taxpayer Funded": "#0ea5a4", "Private": "#4c78a8"},
+        )
+        fig_share.update_layout(
+            template="plotly_white",
+            title="Share of Total Lobbying (Midpoint)",
+            margin=dict(l=20, r=20, t=50, b=20),
+        )
+        _pdf_add_chart(pdf, fig_share, "Chart 2. Share of Total Lobbying - Taxpayer vs Private", width_px=700, height_px=420)
+
+    _pdf_add_section_title(pdf, "II. WHAT TAXPAYER-FUNDED LOBBYING IS - AND WHY IT MATTERS")
+    def_p1 = (
+        "Taxpayer-funded lobbying occurs when political subdivisions use public funds to employ registered lobbyists, "
+        "contract with lobbying firms, or pay dues and assessments to associations that, in turn, employ lobbyists. "
+        "In practice, the entities involved often include cities, counties, independent school districts, special "
+        "districts, authorities, and intergovernmental associations funded by member governments. The distinctive "
+        "feature is not the subject matter they address -- nearly any policy can be lobbied -- but the source of the "
+        "money used to do it. When advocacy is financed with tax revenue or statutorily compelled fees, citizens are "
+        "required to fund political activity as a condition of living, owning property, or receiving basic public services."
+    )
+    _pdf_add_paragraph(pdf, def_p1, size=11)
+    def_p2 = (
+        "That is why taxpayer-funded lobbying is a different category of problem than private-sector lobbying. "
+        "Private entities spend their own money and must persuade contributors, shareholders, or members that the "
+        "advocacy is worthwhile. Public entities spend money that was collected under compulsion and therefore operate "
+        "without meaningful donor consent. This creates an unavoidable mismatch between who pays and who benefits. "
+        "It also creates a confidence problem: citizens reasonably conclude that government is using their money to "
+        "entrench itself, grow its authority, and resist reforms -- especially reforms aimed at fiscal restraint, "
+        "regulatory limits, or transparency."
+    )
+    _pdf_add_paragraph(pdf, def_p2, size=11)
+
+    entity_counts = payload.get("chart_entity_types_data", [])
+    if entity_counts:
+        entity_df = pd.DataFrame(entity_counts)
+        fig_entities = px.bar(
+            entity_df.sort_values("count"),
+            x="count",
+            y="type",
+            orientation="h",
+            text="count",
+            color_discrete_sequence=["#4c78a8"],
+        )
+        fig_entities.update_traces(textposition="outside", cliponaxis=False)
+        fig_entities.update_layout(
+            template="plotly_white",
+            title="Taxpayer-Funded Clients by Entity Type",
+            xaxis_title="Clients",
+            yaxis_title="",
+            margin=dict(l=40, r=20, t=50, b=30),
+        )
+        _pdf_add_chart(pdf, fig_entities, "Chart 3. Taxpayer-Funded Clients by Entity Type")
+
+    _pdf_add_section_title(pdf, f"III. LEGISLATIVE ACTIVITY PATTERNS IN {payload['session_label']}")
+    act_p1 = (
+        "Compensation totals explain scale, but legislative activity signals show how that scale is used. "
+        f"Across the {payload['session_label']} session, taxpayer-funded lobbyists appeared repeatedly in committee "
+        "processes, filing and testifying in ways that illustrate institutional priorities. The witness-list record "
+        "indicates that taxpayer-funded entities did not simply monitor legislation; they frequently intervened in it "
+        "-- especially on proposals with direct implications for local discretion, budgets, and oversight."
+    )
+    _pdf_add_paragraph(pdf, act_p1, size=11)
+    act_p2 = (
+        "Within this scope, witness positions for taxpayer-funded and privately funded interests can be summarized as follows: "
+        f"{payload['witness_activity_summary']} The distribution of positions matters because it is a proxy for the "
+        "incentives embedded in taxpayer-funded lobbying."
+    )
+    _pdf_add_paragraph(pdf, act_p2, size=11)
+
+    w_counts = payload.get("witness_counts", {})
+    if w_counts:
+        w_rows = []
+        for position in ["Against", "For", "On"]:
+            w_rows.append(
+                {
+                    "Position": position,
+                    "Taxpayer Funded": int(w_counts.get("tfl", {}).get(position, 0)),
+                    "Private": int(w_counts.get("private", {}).get(position, 0)),
+                }
+            )
+        w_df = pd.DataFrame(w_rows)
+        if not w_df.empty and w_df[["Taxpayer Funded", "Private"]].sum().sum() > 0:
+            w_long = w_df.melt(id_vars="Position", var_name="Funding", value_name="Count")
+            fig_wit = px.bar(
+                w_long,
+                x="Position",
+                y="Count",
+                color="Funding",
+                barmode="group",
+                text="Count",
+                color_discrete_map={"Taxpayer Funded": "#ff6b6b", "Private": "#4c78a8"},
+            )
+            fig_wit.update_traces(textposition="outside", cliponaxis=False)
+            fig_wit.update_layout(
+                template="plotly_white",
+                title="Witness Positions by Funding Type",
+                yaxis_title="Positions",
+                xaxis_title="",
+                margin=dict(l=40, r=20, t=50, b=30),
+            )
+            _pdf_add_chart(pdf, fig_wit, "Chart 4. Witness Positions by Funding Type")
+
+    _pdf_add_section_title(pdf, "IV. THE BILLS MOST OPPOSED BY TAXPAYER-FUNDED LOBBYISTS")
+    if payload.get("has_top_bills"):
+        bills_p = (
+            "The most direct way to see taxpayer-funded lobbying in action is to identify the bills that generated "
+            "concentrated opposition from taxpayer-funded entities. The bills below are ranked by the number of "
+            "Against filings by taxpayer-funded lobbyists."
+        )
+        _pdf_add_paragraph(pdf, bills_p, size=11)
+        top_bills = payload.get("top_bills", [])
+        if top_bills:
+            bill_df = pd.DataFrame(
+                [{"Bill": b["id"], "Oppositions": b.get("tfl", 0)} for b in top_bills]
+            )
+            fig_bills = px.bar(
+                bill_df.sort_values("Oppositions"),
+                x="Oppositions",
+                y="Bill",
+                orientation="h",
+                text="Oppositions",
+                color_discrete_sequence=["#d14b4b"],
+            )
+            fig_bills.update_traces(textposition="outside", cliponaxis=False)
+            fig_bills.update_layout(
+                template="plotly_white",
+                title="Top Bills Opposed by Taxpayer-Funded Lobbyists",
+                xaxis_title="Oppositions",
+                yaxis_title="",
+                margin=dict(l=40, r=20, t=50, b=30),
+            )
+            _pdf_add_chart(pdf, fig_bills, "Chart 5. Top 5 Bills Opposed by Taxpayer-Funded Lobbyists")
+    else:
+        _pdf_add_paragraph(pdf, "No bill-level opposition data was available for the selected scope/session.", size=11)
+
+    _pdf_add_section_title(pdf, "V. THE POLICY AREAS MOST OPPOSED BY TAXPAYER-FUNDED LOBBYISTS")
+    if payload.get("has_top_subjects"):
+        subject_p = (
+            "Bills are discrete, but policy areas reveal patterns. When opposition is aggregated by subject matter, "
+            "taxpayer-funded lobbying tends to cluster in the places where the Legislature can most directly alter "
+            "local fiscal and regulatory authority."
+        )
+        _pdf_add_paragraph(pdf, subject_p, size=11)
+        top_subjects = payload.get("top_subjects", [])
+        if top_subjects:
+            subj_df = pd.DataFrame(
+                [{"Subject": s["Subject"], "Oppositions": s.get("Oppositions", 0)} for s in top_subjects]
+            )
+            fig_subjects = px.bar(
+                subj_df.sort_values("Oppositions"),
+                x="Oppositions",
+                y="Subject",
+                orientation="h",
+                text="Oppositions",
+                color_discrete_sequence=["#7aa6c2"],
+            )
+            fig_subjects.update_traces(textposition="outside", cliponaxis=False)
+            fig_subjects.update_layout(
+                template="plotly_white",
+                title="Top Policy Areas Opposed by Taxpayer-Funded Lobbyists",
+                xaxis_title="Oppositions",
+                yaxis_title="",
+                margin=dict(l=40, r=20, t=50, b=30),
+            )
+            _pdf_add_chart(pdf, fig_subjects, "Chart 6. Top 5 Policy Areas Opposed by Taxpayer-Funded Lobbyists")
+    else:
+        _pdf_add_paragraph(pdf, "No subject-level opposition data was available for the selected scope/session.", size=11)
+
+    _pdf_add_section_title(pdf, "VI. STRUCTURAL INCENTIVES AND THE COMPULSION PROBLEM")
+    _pdf_add_paragraph(
+        pdf,
+        "Taxpayer-funded lobbying persists because it is rational for institutions. Political subdivisions face "
+        "budget pressures, political pressures, and administrative demands, and they naturally seek to preserve the "
+        "widest possible discretion to manage those pressures. But rationality for institutions is not the same as "
+        "legitimacy for taxpayers. When the money used to lobby is collected under compulsion, the normal disciplining "
+        "forces of voluntary association are absent. The cost of advocacy is dispersed across taxpayers, while the "
+        "perceived benefits -- expanded authority, preserved revenues, reduced oversight -- accrue to the institution.",
+        size=11,
+    )
+    _pdf_add_paragraph(
+        pdf,
+        "The result is a misalignment: the payer is not the decision-maker, and the decision-maker has an incentive "
+        "to externalize the cost. That is why taxpayer-funded lobbying is not merely politics as usual. It is a "
+        "financing structure that undermines accountability and encourages institutional self-protection. Over time, "
+        "it becomes a form of self-reinforcing governance: public entities use public funds to defend and expand the "
+        "very powers that allow them to collect and deploy public funds.",
+        size=11,
+    )
+
+    _pdf_add_section_title(pdf, "VII. LEGAL PARITY AND STATUTORY INCONSISTENCY")
+    _pdf_add_paragraph(
+        pdf,
+        "Texas has already recognized that using public money to hire lobbyists raises concerns. State agencies face "
+        "statutory restrictions that prevent them from employing registered lobbyists with public funds. Yet political "
+        "subdivisions are not subject to uniform prohibitions, and the result is a parity failure. "
+        f"{payload['existing_law_gap_summary']}",
+        size=11,
+    )
+    _pdf_add_paragraph(
+        pdf,
+        "If the state has concluded that state agencies should not use taxpayer dollars to hire registered lobbyists, "
+        "the same logic applies -- often more urgently -- to political subdivisions. Local entities are numerous, "
+        "collectively spend vast sums, and frequently coordinate through associations that amplify their influence. "
+        "In that environment, the absence of a clear prohibition invites continual expansion of the practice and "
+        "continued erosion of public trust.",
+        size=11,
+    )
+
+    _pdf_add_section_title(pdf, "VIII. POLICY SOLUTION: A COMPREHENSIVE BAN ON TAXPAYER-FUNDED LOBBYING")
+    _pdf_add_paragraph(
+        pdf,
+        "The policy principle is simple: public money should not be used to lobby government. A workable statutory "
+        "approach is equally straightforward: Texas should extend the existing state-agency prohibition framework to "
+        "political subdivisions and close indirect funding pathways that allow local governments to outsource lobbying "
+        "through membership associations.",
+        size=11,
+    )
+    _pdf_add_paragraph(
+        pdf,
+        f"A recommended statutory reform is: {payload['recommended_fix_statute']}. Under this approach, the law should "
+        "prohibit political subdivisions from using public funds to employ registered lobbyists directly, contract with "
+        "registered lobbyists, or pay membership dues or assessments to organizations that employ registered lobbyists "
+        "for the purpose of influencing legislation. The ban must be drafted to address both direct payments and indirect "
+        "routing of funds. Otherwise, enforcement will become a game of accounting rather than a real protection for taxpayers.",
+        size=11,
+    )
+    _pdf_add_paragraph(
+        pdf,
+        "Implementation should include clear definitions of political subdivision, public funds, and lobbying "
+        "services, and should make explicit that the prohibition applies regardless of whether the money is labeled "
+        "appropriated, fee-based, enterprise, or interlocal. The Legislature should also specify enforceable remedies. "
+        f"{payload['implementation_notes']}",
+        size=11,
+    )
+
+    _pdf_add_section_title(pdf, "IX. DATA SOURCES AND METHODOLOGY")
+    _pdf_add_paragraph(pdf, "This report is based on public information drawn from:", size=11)
+    bullets = [
+        b.strip().lstrip("- ").strip()
+        for b in payload.get("data_sources_bullets", "").splitlines()
+        if b.strip()
+    ]
+    _pdf_add_bullets(pdf, bullets, size=10)
+    _pdf_add_paragraph(
+        pdf,
+        "Compensation figures reflect statutory reporting ranges filed with the Texas Ethics Commission. Totals were "
+        "calculated by aggregating minimum and maximum disclosed ranges within the selected scope. Witness list activity "
+        "reflects publicly available committee records compiled into the Lobby Look-Up dataset. Because compensation is "
+        "reported in ranges rather than exact amounts, the totals presented here should be interpreted as conservative "
+        "estimates rather than precise expenditures.",
+        size=11,
+    )
+
+    _pdf_add_section_title(pdf, "CONCLUSION")
+    _pdf_add_paragraph(
+        pdf,
+        f"During the {payload['session_label']} Legislative Session, taxpayers indirectly financed lobbying activity "
+        f"totaling between {payload['tfl_low']} and {payload['tfl_high']} in reported compensation ranges. This practice "
+        "compels political financing, entrenches institutional self-interest, and undermines public confidence that "
+        "government is operating transparently and accountably.",
+        size=11,
+    )
+    _pdf_add_paragraph(
+        pdf,
+        "Texas should abolish taxpayer-funded lobbying by political subdivisions and close both direct and indirect "
+        "funding pathways. Public money should be used to provide public services -- not to finance political advocacy.",
+        size=11,
+    )
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.cell(0, 5, _pdf_safe_text("Prepared by Lobby Look-Up"), ln=1)
+    pdf.cell(0, 5, _pdf_safe_text(payload["disclaimer_note"]), ln=1)
+
+    output = pdf.output(dest="S")
+    return output if isinstance(output, (bytes, bytearray)) else output.encode("latin-1")
+
+def _render_pdf_report_section(
+    *,
+    key_prefix: str,
+    session_val: str | None,
+    scope_label: str,
+    focus_label: str,
+    Lobby_TFL_Client_All: pd.DataFrame,
+    Wit_All: pd.DataFrame,
+    Bill_Status_All: pd.DataFrame,
+    Bill_Sub_All: pd.DataFrame,
+    tfl_session_val: str | None,
+    focus_context: dict | None = None,
+) -> None:
+    """Render PDF report generation section in an expander."""
+    with st.expander("Custom PDF report", expanded=False):
+        st.caption("Generate a PDF report using the current filters and selections.")
+        
+        sig_key = f"{key_prefix}_report_sig"
+        pdf_key = f"{key_prefix}_report_pdf"
+        name_key = f"{key_prefix}_report_name"
+        signature = f"{session_val}|{scope_label}|{focus_label}"
+        
+        if st.session_state.get(sig_key) != signature:
+            st.session_state[sig_key] = signature
+            if pdf_key in st.session_state:
+                del st.session_state[pdf_key]
+            if name_key in st.session_state:
+                del st.session_state[name_key]
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            generate_clicked = st.button("Generate report", key=f"{key_prefix}_report_build", use_container_width=True)
+            
+        if generate_clicked:
+            try:
+                with st.status("Generating PDF...", expanded=False):
+                    payload = _build_report_payload(
+                        session_val=session_val,
+                        scope_label=scope_label,
+                        focus_label=focus_label,
+                        Lobby_TFL_Client_All=Lobby_TFL_Client_All,
+                        Wit_All=Wit_All,
+                        Bill_Status_All=Bill_Status_All,
+                        Bill_Sub_All=Bill_Sub_All,
+                        tfl_session_val=tfl_session_val,
+                        focus_context=focus_context,
+                    )
+                    pdf_bytes = _coerce_pdf_bytes(_build_report_pdf_bytes(payload))
+                    if pdf_bytes and len(pdf_bytes) > 0:
+                        st.session_state[pdf_key] = pdf_bytes
+                        st.session_state[name_key] = f"tfl-report-{_slugify(focus_label)}.pdf"
+                        st.success("Report generated")
+            except Exception as e:
+                st.error(f"Report generation failed: {str(e)}")
+        
+        with c2:
+            if pdf_key in st.session_state and isinstance(st.session_state[pdf_key], bytes):
+                st.download_button(
+                    "Download PDF",
+                    st.session_state[pdf_key],
+                    st.session_state.get(name_key, "report.pdf"),
+                    "application/pdf",
+                    key=f"{key_prefix}_dl",
+                    use_container_width=True,
+                )
 
 PLOTLY_CONFIG = {"displayModeBar": False, "responsive": True, "displaylogo": False}
 CHART_COLORS = [
@@ -4178,7 +6955,7 @@ def render_bill_search_results(bill_query: str, session_val: str | None, tfl_ses
     )
     view = view.drop(columns=["_tfl_sort"])
     st.dataframe(view, use_container_width=True, height=520, hide_index=True)
-    export_dataframe(view, "bill_lobbyists.csv")
+    _ = export_dataframe(view, "bill_lobbyists.csv")
     return True
 
 # =========================================================
@@ -5359,6 +8136,79 @@ if st.session_state.lobbyshort:
     chips.append(f"Lobbyist: {st.session_state.lobbyshort}")
 st.markdown("".join([f'<span class="chip">{c}</span>' for c in chips]), unsafe_allow_html=True)
 
+focus_label = "All Lobbyists"
+if st.session_state.lobbyshort:
+    name_hint = short_to_names.get(st.session_state.lobbyshort, []) if isinstance(short_to_names, dict) else []
+    display_name = name_hint[0] if name_hint else st.session_state.lobbyshort
+    if display_name != st.session_state.lobbyshort:
+        focus_label = f"Lobbyist: {display_name} ({st.session_state.lobbyshort})"
+    else:
+        focus_label = f"Lobbyist: {st.session_state.lobbyshort}"
+elif st.session_state.search_query.strip():
+    focus_label = f"Lobbyist search: {st.session_state.search_query.strip()}"
+
+report_title = "Bill Report" if bill_mode and st.session_state.search_query.strip() else "Lobbyist Report"
+focus_tables = {
+    "Staff_All": Staff_All,
+    "Lobby_Sub_All": Lobby_Sub_All,
+    "LaFood": data.get("LaFood", pd.DataFrame()),
+    "LaEnt": data.get("LaEnt", pd.DataFrame()),
+    "LaTran": data.get("LaTran", pd.DataFrame()),
+    "LaGift": data.get("LaGift", pd.DataFrame()),
+    "LaEvnt": data.get("LaEvnt", pd.DataFrame()),
+    "LaAwrd": data.get("LaAwrd", pd.DataFrame()),
+    "LaCvr": LaCvr,
+    "LaDock": LaDock,
+    "LaI4E": LaI4E,
+    "LaSub": LaSub,
+}
+focus_lookups = {
+    "name_to_short": name_to_short,
+    "short_to_names": short_to_names,
+    "filerid_to_short": data.get("filerid_to_short", {}),
+}
+
+focus_context = {
+    "type": "",
+    "report_title": report_title,
+    "tables": focus_tables,
+    "lookups": focus_lookups,
+}
+if bill_mode and st.session_state.search_query.strip():
+    bill_id = ""
+    try:
+        bill_id = normalize_bill(st.session_state.search_query.strip())
+    except Exception:
+        bill_id = ""
+    focus_context.update(
+        {
+            "type": "bill",
+            "bill": bill_id or st.session_state.search_query.strip(),
+            "query": st.session_state.search_query.strip(),
+        }
+    )
+elif st.session_state.lobbyshort:
+    focus_context.update(
+        {
+            "type": "lobbyist",
+            "lobbyshort": st.session_state.lobbyshort,
+            "display_name": display_name,
+        }
+    )
+
+_ = _render_pdf_report_section(
+    key_prefix="lobby",
+    session_val=st.session_state.session,
+    scope_label=st.session_state.scope,
+    focus_label=focus_label,
+    Lobby_TFL_Client_All=Lobby_TFL_Client_All,
+    Wit_All=Wit_All,
+    Bill_Status_All=Bill_Status_All,
+    Bill_Sub_All=Bill_Sub_All,
+    tfl_session_val=tfl_session_val,
+    focus_context=focus_context,
+)
+
 # =========================================================
 # FAST ALL-LOBBYISTS OVERVIEW (cached and uses Low_num/High_num)
 # =========================================================
@@ -5647,7 +8497,7 @@ with tab_all:
             height=560,
             hide_index=True,
         )
-        export_dataframe(view_disp[cols], "all_lobbyists_overview.csv", label="Download overview CSV")
+        _ = export_dataframe(view_disp[cols], "all_lobbyists_overview.csv", label="Download overview CSV")
 
 # -----------------------------
 # Per-lobbyist tabs: only compute when lobbyist is selected AND session != All
@@ -5977,10 +8827,16 @@ else:
 
                 f1, f2 = st.columns(2)
                 with f1:
-                    status_opts = sorted(filtered.get("Status", pd.Series(dtype=object)).dropna().astype(str).unique().tolist())
+                    status_opts = _clean_options(
+                        filtered.get("Status", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
+                    )
+                    status_opts = sorted(status_opts)
                     status_sel = st.multiselect("Filter by status", status_opts, default=status_opts)
                 with f2:
-                    pos_opts = sorted(filtered.get("Position", pd.Series(dtype=object)).dropna().astype(str).unique().tolist())
+                    pos_opts = _clean_options(
+                        filtered.get("Position", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
+                    )
+                    pos_opts = sorted(pos_opts)
                     pos_sel = st.multiselect("Filter by position", pos_opts, default=pos_opts)
 
                 if status_sel:
@@ -5996,7 +8852,7 @@ else:
                 show_cols = [c for c in show_cols if c in filtered.columns]
 
                 st.dataframe(filtered[show_cols].sort_values(["Bill"]), use_container_width=True, height=520, hide_index=True)
-                export_dataframe(filtered[show_cols], "bills.csv")
+                _ = export_dataframe(filtered[show_cols], "bills.csv")
 
         # ---- Policy tab
         with tab_policy:
@@ -6053,7 +8909,7 @@ else:
                 m2["Share"] = (m2["Share"] * 100).round(0).astype("Int64").astype(str) + "%"
                 m2 = m2.rename(columns={"Subject": "Policy Area"})
                 st.dataframe(m2[["Policy Area", "Mentions", "Share"]], use_container_width=True, height=520, hide_index=True)
-                export_dataframe(m2, "policy_areas.csv")
+                _ = export_dataframe(m2, "policy_areas.csv")
 
             st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
             st.subheader("Reported Subject Matters (Lobby_Sub_All)")
@@ -6102,7 +8958,7 @@ else:
                     height=420,
                     hide_index=True,
                 )
-                export_dataframe(lobby_sub_counts, "reported_subject_matters.csv")
+                _ = export_dataframe(lobby_sub_counts, "reported_subject_matters.csv")
 
         # ---- Staff tab
         with tab_staff:
@@ -6114,7 +8970,7 @@ else:
                 cols = ["Session", "Legislator", "Title", "Staffer"]
                 staff_view = staff_pick[cols].drop_duplicates().sort_values(["Session", "Legislator", "Title"])
                 st.dataframe(staff_view, use_container_width=True, height=380, hide_index=True)
-                export_dataframe(staff_view, "staff_history.csv")
+                _ = export_dataframe(staff_view, "staff_history.csv")
 
             if staff_pick_session.empty:
                 st.caption("Session-specific staff metrics are not shown because there are no matches for the selected session.")
@@ -6126,7 +8982,7 @@ else:
                     s2[col] = pd.to_numeric(s2[col], errors="coerce")
                     s2[col] = (s2[col] * 100).round(0)
                 st.dataframe(s2, use_container_width=True, height=320, hide_index=True)
-                export_dataframe(s2, "staff_stats.csv")
+                _ = export_dataframe(s2, "staff_stats.csv")
 
         # ---- Activities tab
         with tab_activities:
@@ -6136,7 +8992,8 @@ else:
                 st.caption("If Excel still shows rows, your workbook may key activities on a different ID (e.g., filerID).")
             else:
                 filt = activities.copy()
-                t_opts = sorted(filt["Type"].dropna().astype(str).unique().tolist())
+                t_opts = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
+                t_opts = sorted(t_opts)
                 sel_types = st.multiselect("Filter by activity type", t_opts, default=t_opts)
                 if sel_types:
                     filt = filt[filt["Type"].isin(sel_types)].copy()
@@ -6164,7 +9021,7 @@ else:
 
                 st.caption(f"{len(filt):,} rows")
                 st.dataframe(filt, use_container_width=True, height=560, hide_index=True)
-                export_dataframe(filt, "activities.csv")
+                _ = export_dataframe(filt, "activities.csv")
 
         # ---- Disclosures tab
         with tab_disclosures:
@@ -6173,7 +9030,8 @@ else:
                 st.info("No disclosure rows found for this lobbyist/session.")
             else:
                 filt = disclosures.copy()
-                d_types = sorted(filt["Type"].dropna().astype(str).unique().tolist())
+                d_types = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
+                d_types = sorted(d_types)
                 sel_types = st.multiselect("Filter by disclosure type", d_types, default=d_types)
                 if sel_types:
                     filt = filt[filt["Type"].isin(sel_types)].copy()
@@ -6201,7 +9059,7 @@ else:
 
                 st.caption(f"{len(filt):,} rows")
                 st.dataframe(filt, use_container_width=True, height=560, hide_index=True)
-                export_dataframe(filt, "disclosures.csv")
+                _ = export_dataframe(filt, "disclosures.csv")
 
 # Hide Streamlit chrome
 st.markdown(
@@ -6214,4 +9072,3 @@ footer {visibility: hidden;}
 """,
     unsafe_allow_html=True,
 )
-
