@@ -78,7 +78,10 @@ html, body, [data-testid="stAppViewContainer"]{
 
 [data-testid="stHeader"]{ display: none !important; }
 [data-testid="stToolbar"]{ right: 1rem; }
-.block-container{ padding-top: calc(var(--nav-h) + 0.8rem); }
+.block-container{
+    padding-top: calc(var(--nav-h) + 0.8rem);
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
 
 h1,h2,h3{ color: var(--text) !important; }
 p,li,span,div{ color: var(--text); }
@@ -811,17 +814,18 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input::placeh
 @media (max-width: 768px) {
     :root{ --nav-h: 108px; --nav-search-w: 100%; }
     .block-container {
-        padding-left: 0.5rem;
-        padding-right: 0.5rem;
+        padding-left: calc(0.5rem + env(safe-area-inset-left, 0px));
+        padding-right: calc(0.5rem + env(safe-area-inset-right, 0px));
         padding-top: calc(var(--nav-h) + 3.6rem);
     }
     .section-title { font-size: 1.3rem; min-height: 2.5rem; }
     .big-title { font-size: 2rem; }
     .subtitle { font-size: 1rem; }
-    [data-testid="stTextInput"] input { font-size: 16px !important; }
-    [data-testid="stSelectbox"] div[role="combobox"] { font-size: 14px !important; }
-    button { padding: 0.5rem 1rem !important; font-size: 14px !important; }
-    .stTabs [data-baseweb="tab"] { padding: 8px 12px !important; font-size: 13px !important; }
+    [data-testid="stTextInput"] input { font-size: 16px !important; min-height: 44px !important; }
+    [data-testid="stSelectbox"] div[role="combobox"] { font-size: 14px !important; min-height: 44px; }
+    [data-testid="stMultiSelect"] div[role="combobox"] { min-height: 44px; }
+    button { padding: 0.5rem 1rem !important; font-size: 14px !important; min-height: 44px; }
+    .stTabs [data-baseweb="tab"] { padding: 10px 12px !important; font-size: 13px !important; min-height: 40px; }
     .stTabs [data-baseweb="tab-list"]{
         flex-wrap: nowrap;
         overflow-x: auto;
@@ -839,7 +843,7 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input::placeh
     .chip{ font-size: 0.75rem; padding: 4px 8px; margin-right: 4px; }
     [data-testid="stHorizontalBlock"]{ flex-direction: column; }
     [data-testid="column"]{ width: 100% !important; flex: 1 1 100% !important; }
-    [data-testid="stDataFrame"]{ overflow-x: auto; }
+    [data-testid="stDataFrame"]{ overflow-x: auto; -webkit-overflow-scrolling: touch; }
     button[kind="primary"]{ width: 100%; }
     .custom-nav{
         height: var(--nav-h);
@@ -860,7 +864,7 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input::placeh
         width: 100%;
     }
     .custom-nav .nav-links::-webkit-scrollbar{ display: none; }
-    .custom-nav .nav-link{ font-size: 0.9rem; padding: 8px 2px; }
+    .custom-nav .nav-link{ font-size: 0.9rem; padding: 10px 6px; }
     .custom-nav .brand-top{ font-size: 0.8rem; }
     .custom-nav .brand-bottom{ font-size: 1.2rem; }
     .about-shell{ grid-template-columns: 1fr; }
@@ -879,16 +883,16 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input::placeh
     .tap-feature-head{ flex-direction: column; align-items: flex-start; }
     div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]){
         top: calc(var(--nav-h) + 6px);
-        left: 12px;
-        right: 12px;
+        left: calc(12px + env(safe-area-inset-left, 0px));
+        right: calc(12px + env(safe-area-inset-right, 0px));
         width: auto;
         height: auto;
     }
     div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input{
         width: 100%;
-        height: 42px !important;
+        height: 44px !important;
     }
-    div[data-testid="stPlotlyChart"]{ padding: 6px 8px 4px 8px; border-radius: 16px; }
+    div[data-testid="stPlotlyChart"]{ padding: 6px 8px 4px 8px; border-radius: 16px; touch-action: pan-y; }
 }
 </style>
 """,
