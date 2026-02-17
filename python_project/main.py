@@ -11,6 +11,9 @@ import plotly.express as px
 import plotly.io as pio
 import altair as alt
 from fpdf import FPDF
+from app.html_report import build_html_report
+from app.pdf import html_to_pdf_bytes
+from app.report_store import save_report_pdf
 
 # =========================================================
 # CONFIG
@@ -66,6 +69,14 @@ st.markdown(
     --nav-border: rgba(255,255,255,0.08);
     --nav-search-w: 320px;
     --nav-search-h: 38px;
+    --space-1: 6px;
+    --space-2: 10px;
+    --space-3: 16px;
+    --space-4: 22px;
+    --radius-md: 14px;
+    --radius-lg: 18px;
+    --shadow-1: 0 10px 25px rgba(0,0,0,0.20);
+    --shadow-2: 0 18px 32px rgba(0,0,0,0.28);
 }
 
 html, body, [data-testid="stAppViewContainer"]{
@@ -74,6 +85,26 @@ html, body, [data-testid="stAppViewContainer"]{
                             var(--bg) !important;
     color: var(--text) !important;
     font-family: 'IBM Plex Sans', system-ui, -apple-system, Segoe UI, sans-serif !important;
+}
+
+[data-testid="stAppViewContainer"]{
+    position: relative;
+}
+[data-testid="stAppViewContainer"]::before{
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+        linear-gradient(transparent 26px, rgba(255,255,255,0.035) 27px),
+        linear-gradient(90deg, transparent 26px, rgba(255,255,255,0.035) 27px);
+    background-size: 32px 32px;
+    opacity: 0.15;
+    pointer-events: none;
+    z-index: 0;
+}
+[data-testid="stAppViewContainer"] > div{
+    position: relative;
+    z-index: 1;
 }
 
 [data-testid="stHeader"]{ display: none !important; }
@@ -92,16 +123,16 @@ p,li,span,div{ color: var(--text); }
 .card{
     background: linear-gradient(180deg, var(--panel), var(--panel2));
     border: 1px solid var(--border);
-    border-radius: 18px;
+    border-radius: var(--radius-lg);
     padding: 16px 16px 14px 16px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.20);
+    box-shadow: var(--shadow-1);
 }
 div[data-testid="stPlotlyChart"]{
     background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
     border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 18px;
+    border-radius: var(--radius-lg);
     padding: 10px 12px 6px 12px;
-    box-shadow: 0 18px 30px rgba(0,0,0,0.22);
+    box-shadow: var(--shadow-2);
     box-sizing: border-box;
     margin-top: 0.35rem;
 }
@@ -537,6 +568,9 @@ div[data-testid="stPlotlyChart"] > div{
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
 }
+.fade-up{
+    animation: about-fade-up 360ms ease both;
+}
 .about-hero,
 .about-panel,
 .about-section{
@@ -551,6 +585,9 @@ div[data-testid="stPlotlyChart"] > div{
     .about-hero,
     .about-panel,
     .about-section{
+        animation: none;
+    }
+    .fade-up{
         animation: none;
     }
 }
@@ -568,6 +605,60 @@ div[data-testid="stPlotlyChart"] > div{
     margin-top: -0.3rem;
     margin-bottom: 0.6rem;
 }
+.section-caption{
+    color: var(--muted);
+    font-size: 0.92rem;
+    margin-top: 0.2rem;
+}
+.callout{
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    box-shadow: 0 12px 22px rgba(0,0,0,0.22);
+}
+.callout-title{
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+}
+.callout-body{
+    color: var(--text);
+    font-size: 0.96rem;
+    line-height: 1.5;
+}
+.filter-summary{
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: rgba(7,22,39,0.55);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+}
+.filter-summary-label{
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-right: 4px;
+}
+#filter-bar-marker + div[data-testid="stHorizontalBlock"],
+#filter-summary-marker + div[data-testid="stHorizontalBlock"]{
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 18px;
+    padding: 12px 14px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    box-shadow: 0 16px 28px rgba(0,0,0,0.24);
+    animation: about-fade-up 360ms ease both;
+}
+#filter-summary-marker + div[data-testid="stHorizontalBlock"]{
+    padding: 10px 12px;
+}
 .pill{
     display:inline-flex;
     align-items:center;
@@ -579,6 +670,108 @@ div[data-testid="stPlotlyChart"] > div{
     font-size: 0.8rem;
 }
 .pill b{ font-weight: 700; }
+.pill-list{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+.pill.pill-muted{
+    color: var(--muted);
+    border-color: rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.02);
+}
+.meta-card{
+    margin-top: 0.4rem;
+    background: linear-gradient(135deg, rgba(30,144,255,0.12), rgba(0,224,184,0.08), rgba(7,22,39,0.85));
+    border: 1px solid rgba(255,255,255,0.16);
+    box-shadow: 0 14px 28px rgba(0,0,0,0.26);
+}
+.meta-title{
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.7rem;
+    color: var(--muted);
+}
+.meta-sub{
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-top: 4px;
+}
+.insight-panel{
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 16px;
+    margin: 10px 0 4px 0;
+}
+.insight-card{
+    background: linear-gradient(160deg, rgba(30,144,255,0.14), rgba(0,224,184,0.08), rgba(7,22,39,0.9));
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 18px;
+    padding: 14px 16px;
+    box-shadow: 0 16px 28px rgba(0,0,0,0.28);
+}
+.insight-kicker{
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+}
+.insight-title{
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 0 0 0.4rem 0;
+}
+.insight-list{
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.insight-list li{
+    position: relative;
+    padding-left: 1.1rem;
+    margin: 0.35rem 0;
+    line-height: 1.45;
+}
+.insight-list li::before{
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.55rem;
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: rgba(0,224,184,0.9);
+    box-shadow: 0 0 0 2px rgba(0,224,184,0.15);
+}
+.mini-kpi-grid{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+.mini-kpi{
+    background: rgba(7,22,39,0.5);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 10px 12px;
+}
+.mini-kpi .label{
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.62rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+}
+.mini-kpi .value{
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+.mini-kpi .sub{
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-top: 4px;
+}
 
 .kpi-title{ color: var(--muted); font-size: 0.85rem; margin-bottom: 8px; }
 .kpi-value{ font-size: 2.0rem; font-weight: 700; line-height: 1.15; color: var(--text); }
@@ -867,6 +1060,8 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input::placeh
     .custom-nav .nav-link{ font-size: 0.9rem; padding: 10px 6px; }
     .custom-nav .brand-top{ font-size: 0.8rem; }
     .custom-nav .brand-bottom{ font-size: 1.2rem; }
+    .insight-panel{ grid-template-columns: 1fr; }
+    .mini-kpi-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .about-shell{ grid-template-columns: 1fr; }
     .about-hero{ padding: 18px 16px 16px 16px; }
     .about-title{ font-size: 1.6rem; }
@@ -954,7 +1149,7 @@ def _page_about():
         <p class="about-note">To help us review efficiently, include:</p>
         <ul class="about-checklist">
           <li>The legislative session</li>
-          <li>The lobbyist name (or LobbyShort identifier)</li>
+          <li>The lobbyist name (or last name + first initial)</li>
           <li>A brief description of the issue or requested change</li>
         </ul>
       </div>
@@ -1100,11 +1295,16 @@ def _page_turn_off_tap():
         selected_title = st.selectbox(
             "Choose a video",
             video_titles,
+            help="Select a featured video to preview in the player.",
             key="tap_selected_title",
             label_visibility="collapsed",
         )
     with controls[1]:
-        show_all_players = st.checkbox("Show all players", value=False)
+        show_all_players = st.checkbox(
+            "Show all players",
+            value=False,
+            help="Display every embedded player below the gallery.",
+        )
 
     selected = next(video for video in videos if video["title"] == selected_title)
     selected_watch_url = f"https://www.youtube.com/watch?v={selected['id']}"
@@ -1320,10 +1520,16 @@ def _page_client_lookup():
         st.session_state.client_disclosure_search = ""
     if "client_filter" not in st.session_state:
         st.session_state.client_filter = ""
+    if "recent_client_searches" not in st.session_state:
+        st.session_state.recent_client_searches = []
 
     st.sidebar.header("Filters")
     st.session_state.client_scope = st.sidebar.radio(
-        "Overview scope", ["This Session", "All Sessions"], index=0, key="client_scope_radio"
+        "Overview scope",
+        ["This Session", "All Sessions"],
+        index=0,
+        key="client_scope_radio",
+        help="Switch between the selected session only or totals across all sessions.",
     )
 
     sessions = sorted(
@@ -1344,6 +1550,7 @@ def _page_client_lookup():
         health = data_health_table(data)
         st.dataframe(health, use_container_width=True, height=260, hide_index=True)
 
+    st.markdown('<div id="filter-bar-marker"></div>', unsafe_allow_html=True)
     top1, top2, top3 = st.columns([2.2, 1.2, 1.2])
 
     with top1:
@@ -1351,6 +1558,8 @@ def _page_client_lookup():
             "Search client",
             value=st.session_state.client_query,
             placeholder="e.g., City of Austin",
+            key="client_query_input",
+            help="Search by client name. Suggestions appear when close matches exist.",
         )
 
     with top2:
@@ -1376,6 +1585,7 @@ def _page_client_lookup():
             session_labels,
             index=session_labels.index(current_label),
             key="client_session_select",
+            help="Choose the legislative session used for filters and totals.",
         )
         st.session_state.client_session = label_to_session.get(chosen_label, default_session)
 
@@ -1391,11 +1601,14 @@ def _page_client_lookup():
             ["Select a client..."] + client_suggestions,
             index=0,
             key="client_suggestions_select",
+            help="Pick a suggested client to populate the selection.",
         )
         if pick in client_suggestions:
             resolved_client = pick
 
     st.session_state.client_name = resolved_client or ""
+    if st.session_state.client_name:
+        _remember_recent_client_search(st.session_state.client_name)
 
     with top3:
         st.markdown('<div class="small-muted">Client</div>', unsafe_allow_html=True)
@@ -1404,12 +1617,51 @@ def _page_client_lookup():
         else:
             st.write("-")
 
+    recent = st.session_state.get("recent_client_searches", [])
+    if recent:
+        st.markdown('<div class="section-sub">Recent lookups</div>', unsafe_allow_html=True)
+        recent_cols = st.columns(min(len(recent), 4))
+        for idx, rec in enumerate(recent[:8]):
+            col = recent_cols[idx % len(recent_cols)]
+            label = rec if len(rec) <= 28 else rec[:25] + "..."
+            if col.button(
+                f"Reuse {label}",
+                key=f"recent_client_lookup_{idx}",
+                help="Reuse a recent client search",
+                use_container_width=True,
+            ):
+                st.session_state.client_query = rec
+                st.session_state.client_query_input = rec
+                st.session_state.client_name = ""
+                st.session_state.client_bill_search = ""
+                st.session_state.client_activity_search = ""
+                st.session_state.client_disclosure_search = ""
+                st.session_state.client_filter = ""
+
     tfl_session_val = _tfl_session_for_filter(st.session_state.client_session, tfl_sessions)
 
-    chips = [f"Session: {_session_label(st.session_state.client_session)}", f"Scope: {st.session_state.client_scope}"]
+    active_parts = [
+        f"Session: {_session_label(st.session_state.client_session)}",
+        f"Scope: {st.session_state.client_scope}",
+    ]
     if st.session_state.client_name:
-        chips.append(f"Client: {st.session_state.client_name}")
-    st.markdown("".join([f'<span class="chip">{c}</span>' for c in chips]), unsafe_allow_html=True)
+        active_parts.append(f"Client: {st.session_state.client_name}")
+    chips_html = "".join([f'<span class="chip">{html.escape(c)}</span>' for c in active_parts])
+    st.markdown('<div id="filter-summary-marker"></div>', unsafe_allow_html=True)
+    f1, f2 = st.columns([3, 1])
+    with f1:
+        st.markdown(
+            f'<div class="filter-summary"><span class="filter-summary-label">Active filters</span>{chips_html}</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(f"Selected client: {st.session_state.client_name or '-'}")
+    with f2:
+        if st.button(
+            "Clear filters",
+            use_container_width=True,
+            help="Reset client search and primary filters to defaults.",
+        ):
+            reset_client_filters(default_session)
 
     focus_label = "All Clients"
     if st.session_state.client_name:
@@ -1502,10 +1754,11 @@ def _page_client_lookup():
         ["All Clients", "Overview", "Lobbyists", "Bills", "Policy Areas", "Staff History", "Activities", "Disclosures"]
     )
 
-    def kpi_card(title: str, value: str, sub: str = ""):
+    def kpi_card(title: str, value: str, sub: str = "", help_text: str = ""):
+        tooltip_attr = f' title="{html.escape(help_text, quote=True)}"' if help_text else ""
         st.markdown(
             f"""
-<div class="card">
+<div class="card"{tooltip_attr}>
   <div class="kpi-title">{title}</div>
   <div class="kpi-value">{value}</div>
   <div class="kpi-sub">{sub}</div>
@@ -1519,24 +1772,38 @@ def _page_client_lookup():
         st.markdown(f'<div class="section-sub">Scope: {st.session_state.client_scope}</div>', unsafe_allow_html=True)
 
         if all_clients.empty:
-            st.info("No Lobby_TFL_Client_All rows found for the selected scope/session.")
+            st.info("No Texas Ethics Commission lobby filing rows found for the selected scope/session.")
         else:
             a1, a2, a3, a4 = st.columns(4)
             with a1:
                 kpi_card(
                     "Total Taxpayer Funded",
                     f"{fmt_usd(all_stats.get('tfl_low_total', 0.0))} - {fmt_usd(all_stats.get('tfl_high_total', 0.0))}",
+                    help_text="Sum of reported low/high compensation for taxpayer-funded clients in this scope.",
                 )
             with a2:
                 kpi_card(
                     "Total Private",
                     f"{fmt_usd(all_stats.get('pri_low_total', 0.0))} - {fmt_usd(all_stats.get('pri_high_total', 0.0))}",
+                    help_text="Sum of reported low/high compensation for private clients in this scope.",
                 )
             with a3:
-                kpi_card("Total Clients", f"{all_stats.get('total_clients', 0):,}")
-                kpi_card("Taxpayer Funded Clients", f"{all_stats.get('tfl_clients', 0):,}")
+                kpi_card(
+                    "Total Clients",
+                    f"{all_stats.get('total_clients', 0):,}",
+                    help_text="Unique client count in the selected scope.",
+                )
+                kpi_card(
+                    "Taxpayer Funded Clients",
+                    f"{all_stats.get('tfl_clients', 0):,}",
+                    help_text="Count of clients marked as taxpayer-funded in this scope.",
+                )
             with a4:
-                kpi_card("Private Clients", f"{all_stats.get('private_clients', 0):,}")
+                kpi_card(
+                    "Private Clients",
+                    f"{all_stats.get('private_clients', 0):,}",
+                    help_text="Count of clients marked as private in this scope.",
+                )
 
             mix_left, mix_right = st.columns([1, 2])
             with mix_left:
@@ -1724,6 +1991,7 @@ def _page_client_lookup():
                 value=st.session_state.client_filter,
                 placeholder="e.g., Austin",
                 key="client_filter_input",
+                help="Filter the All Clients table by a name substring.",
             )
 
             view = all_clients.copy()
@@ -2020,27 +2288,60 @@ def _page_client_lookup():
         st.markdown('<div class="section-title">Overview</div>', unsafe_allow_html=True)
         o1, o2, o3, o4 = st.columns(4)
         with o1:
-            kpi_card("Session", session, f"Scope: {st.session_state.client_scope}")
+            kpi_card(
+                "Session",
+                session,
+                f"Scope: {st.session_state.client_scope}",
+                help_text="Session used for detail tables; scope shows whether totals are this session or all sessions.",
+            )
         with o2:
-            kpi_card("Client", st.session_state.client_name)
+            kpi_card(
+                "Client",
+                st.session_state.client_name,
+                help_text="Resolved client selection from search or suggestions.",
+            )
         with o3:
-            kpi_card("Taxpayer Funded?", "Yes" if client_is_tfl else "No")
+            kpi_card(
+                "Taxpayer Funded?",
+                "Yes" if client_is_tfl else "No",
+                help_text="Whether the selected client is marked as taxpayer-funded in the data.",
+            )
         with o4:
-            kpi_card("Total Compensation", f"{fmt_usd(total_low)} - {fmt_usd(total_high)}")
+            kpi_card(
+                "Total Compensation",
+                f"{fmt_usd(total_low)} - {fmt_usd(total_high)}",
+                help_text="Sum of reported low/high compensation for this client in the selected scope.",
+            )
 
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
         s1, s2, s3, s4 = st.columns(4)
         with s1:
-            kpi_card("Lobbyists", f"{len(lobbyshorts):,}")
+            kpi_card(
+                "Lobbyists",
+                f"{len(lobbyshorts):,}",
+                help_text="Unique lobbyists tied to this client in the selected session.",
+            )
         with s2:
-            kpi_card("Total Bills (Witness Lists)", f"{len(bills):,}")
+            kpi_card(
+                "Total Bills (Witness Lists)",
+                f"{len(bills):,}",
+                help_text="Witness list rows tied to this client in the selected session.",
+            )
         with s3:
             passed = int((bills.get("Status", pd.Series(dtype=object)) == "Passed").sum()) if not bills.empty else 0
             failed = int((bills.get("Status", pd.Series(dtype=object)) == "Failed").sum()) if not bills.empty else 0
-            kpi_card("Passed / Failed", f"{passed:,} / {failed:,}")
+            kpi_card(
+                "Passed / Failed",
+                f"{passed:,} / {failed:,}",
+                help_text="Bill outcomes among witness list rows in this view.",
+            )
         with s4:
-            kpi_card("Sessions with Client", f"{client_rows_all['Session'].astype(str).nunique():,}")
+            kpi_card(
+                "Sessions with Client",
+                f"{client_rows_all['Session'].astype(str).nunique():,}",
+                help_text="Number of sessions where this client appears in the data.",
+            )
 
         st.markdown('<div class="section-sub">Funding Mix (Midpoint)</div>', unsafe_allow_html=True)
         client_tfl_low = float(client_lt.loc[client_lt["IsTFL"] == 1, "Low_num"].sum()) if not client_lt.empty else 0.0
@@ -2090,9 +2391,11 @@ def _page_client_lookup():
             view = lobbyist_totals.copy()
             view["Low"] = view["Low"].astype(float).apply(fmt_usd)
             view["High"] = view["High"].astype(float).apply(fmt_usd)
-            show_cols = ["Lobbyist", "LobbyShort", "Low", "High"]
-            st.dataframe(view[show_cols], use_container_width=True, height=520, hide_index=True)
-            _ = export_dataframe(view[show_cols], "client_lobbyists.csv")
+            view_disp = view.rename(columns={"LobbyShort": "Last name + first initial"})
+            show_cols = ["Lobbyist", "Last name + first initial", "Low", "High"]
+            show_cols = [c for c in show_cols if c in view_disp.columns]
+            st.dataframe(view_disp[show_cols], use_container_width=True, height=520, hide_index=True)
+            _ = export_dataframe(view_disp[show_cols], "client_lobbyists.csv")
 
     with tab_bills:
         st.markdown('<div class="section-title">Bills with Witness-List Activity</div>', unsafe_allow_html=True)
@@ -2104,6 +2407,7 @@ def _page_client_lookup():
                 value=st.session_state.client_bill_search,
                 placeholder="e.g., HB 4 or housing",
                 key="client_bill_search_input",
+                help="Filter bills by bill number, author, caption, organization, or lobbyist.",
             )
             filtered = bills.copy()
             if st.session_state.client_bill_search.strip():
@@ -2122,19 +2426,37 @@ def _page_client_lookup():
                     filtered.get("Status", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
                 )
                 status_opts = sorted(status_opts)
-                status_sel = st.multiselect("Filter by status", status_opts, default=status_opts, key="client_status_filter")
+                status_sel = st.multiselect(
+                    "Filter by status",
+                    status_opts,
+                    default=status_opts,
+                    key="client_status_filter",
+                    help="Limit results to selected bill statuses.",
+                )
             with f2:
                 pos_opts = _clean_options(
                     filtered.get("Position", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
                 )
                 pos_opts = sorted(pos_opts)
-                pos_sel = st.multiselect("Filter by position", pos_opts, default=pos_opts, key="client_position_filter")
+                pos_sel = st.multiselect(
+                    "Filter by position",
+                    pos_opts,
+                    default=pos_opts,
+                    key="client_position_filter",
+                    help="Limit results to selected witness positions.",
+                )
             with f3:
                 lobby_opts = _clean_options(
                     filtered.get("Lobbyist", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
                 )
                 lobby_opts = sorted(lobby_opts)
-                lobby_sel = st.multiselect("Filter by lobbyist", lobby_opts, default=lobby_opts, key="client_lobbyist_filter")
+                lobby_sel = st.multiselect(
+                    "Filter by lobbyist",
+                    lobby_opts,
+                    default=lobby_opts,
+                    key="client_lobbyist_filter",
+                    help="Limit results to selected lobbyists.",
+                )
 
             if status_sel:
                 filtered = filtered[filtered["Status"].astype(str).isin(status_sel)].copy()
@@ -2155,7 +2477,7 @@ def _page_client_lookup():
     with tab_policy:
         st.markdown('<div class="section-title">Policy Areas</div>', unsafe_allow_html=True)
         if mentions.empty:
-            st.info("No subjects found (Bill_Sub_All join returned 0 rows).")
+            st.info("No subjects found (Texas Legislature Online bill subject data returned 0 rows).")
         else:
             chart_mentions = mentions.copy()
             chart_mentions["SharePct"] = (chart_mentions["Share"] * 100).round(1)
@@ -2209,9 +2531,9 @@ def _page_client_lookup():
             _ = export_dataframe(m2, "client_policy_areas.csv")
 
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
-        st.subheader("Reported Subject Matters (Lobby_Sub_All)")
+        st.subheader("Reported Subject Matters (Texas Ethics Commission filings)")
         if lobby_sub_counts.empty:
-            st.info("No Lobby_Sub_All rows found for lobbyists tied to this client/session.")
+            st.info("No Texas Ethics Commission subject-matter rows found for lobbyists tied to this client/session.")
         else:
             top_topics = lobby_sub_counts.head(12).copy()
             max_mentions = int(top_topics["Mentions"].max()) if not top_topics.empty else 0
@@ -2290,13 +2612,25 @@ def _page_client_lookup():
             filt = activities.copy()
             t_opts = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
             t_opts = sorted(t_opts)
-            sel_types = st.multiselect("Filter by activity type", t_opts, default=t_opts, key="client_activity_types")
+            sel_types = st.multiselect(
+                "Filter by activity type",
+                t_opts,
+                default=t_opts,
+                key="client_activity_types",
+                help="Limit results to selected activity categories.",
+            )
             if sel_types:
                 filt = filt[filt["Type"].isin(sel_types)].copy()
 
             lobby_opts = _clean_options(filt["Lobbyist"].dropna().astype(str).unique().tolist())
             lobby_opts = sorted(lobby_opts)
-            sel_lobby = st.multiselect("Filter by lobbyist", lobby_opts, default=lobby_opts, key="client_activity_lobbyist")
+            sel_lobby = st.multiselect(
+                "Filter by lobbyist",
+                lobby_opts,
+                default=lobby_opts,
+                key="client_activity_lobbyist",
+                help="Limit results to selected lobbyists.",
+            )
             if sel_lobby:
                 filt = filt[filt["Lobbyist"].isin(sel_lobby)].copy()
 
@@ -2304,6 +2638,7 @@ def _page_client_lookup():
                 "Search activities (lobbyist, filer, member, description)",
                 value=st.session_state.client_activity_search,
                 key="client_activity_search_input",
+                help="Search activity rows by lobbyist, filer, member, or description.",
             )
             if st.session_state.client_activity_search.strip():
                 q = st.session_state.client_activity_search.strip()
@@ -2318,7 +2653,12 @@ def _page_client_lookup():
             if date_parsed.notna().any():
                 min_d = date_parsed.min().date()
                 max_d = date_parsed.max().date()
-                d_from, d_to = st.date_input("Date range", (min_d, max_d), key="client_activity_dates")
+                d_from, d_to = st.date_input(
+                    "Date range",
+                    (min_d, max_d),
+                    key="client_activity_dates",
+                    help="Restrict results to activities within this date range.",
+                )
                 if d_from and d_to:
                     mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
                     filt = filt[mask].copy()
@@ -2335,13 +2675,25 @@ def _page_client_lookup():
             filt = disclosures.copy()
             d_types = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
             d_types = sorted(d_types)
-            sel_types = st.multiselect("Filter by disclosure type", d_types, default=d_types, key="client_disclosure_types")
+            sel_types = st.multiselect(
+                "Filter by disclosure type",
+                d_types,
+                default=d_types,
+                key="client_disclosure_types",
+                help="Limit results to selected disclosure categories.",
+            )
             if sel_types:
                 filt = filt[filt["Type"].isin(sel_types)].copy()
 
             lobby_opts = _clean_options(filt["Lobbyist"].dropna().astype(str).unique().tolist())
             lobby_opts = sorted(lobby_opts)
-            sel_lobby = st.multiselect("Filter by lobbyist", lobby_opts, default=lobby_opts, key="client_disclosure_lobbyist")
+            sel_lobby = st.multiselect(
+                "Filter by lobbyist",
+                lobby_opts,
+                default=lobby_opts,
+                key="client_disclosure_lobbyist",
+                help="Limit results to selected lobbyists.",
+            )
             if sel_lobby:
                 filt = filt[filt["Lobbyist"].isin(sel_lobby)].copy()
 
@@ -2349,6 +2701,7 @@ def _page_client_lookup():
                 "Search disclosures (lobbyist, filer, description, entity)",
                 value=st.session_state.client_disclosure_search,
                 key="client_disclosure_search_input",
+                help="Search disclosure rows by lobbyist, filer, description, or entity.",
             )
             if st.session_state.client_disclosure_search.strip():
                 q = st.session_state.client_disclosure_search.strip()
@@ -2363,7 +2716,12 @@ def _page_client_lookup():
             if date_parsed.notna().any():
                 min_d = date_parsed.min().date()
                 max_d = date_parsed.max().date()
-                d_from, d_to = st.date_input("Date range", (min_d, max_d), key="client_disclosure_dates")
+                d_from, d_to = st.date_input(
+                    "Date range",
+                    (min_d, max_d),
+                    key="client_disclosure_dates",
+                    help="Restrict results to disclosures within this date range.",
+                )
                 if d_from and d_to:
                     mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
                     filt = filt[mask].copy()
@@ -2432,6 +2790,10 @@ def _page_member_lookup():
         st.session_state.member_witness_search = ""
     if "member_activity_search" not in st.session_state:
         st.session_state.member_activity_search = ""
+    if "member_filter" not in st.session_state:
+        st.session_state.member_filter = ""
+    if "recent_member_searches" not in st.session_state:
+        st.session_state.recent_member_searches = []
 
     st.sidebar.header("Filters")
 
@@ -2453,6 +2815,7 @@ def _page_member_lookup():
         health = data_health_table(data)
         st.dataframe(health, use_container_width=True, height=260, hide_index=True)
 
+    st.markdown('<div id="filter-bar-marker"></div>', unsafe_allow_html=True)
     top1, top2, top3 = st.columns([2.2, 1.2, 1.2])
 
     with top1:
@@ -2460,6 +2823,8 @@ def _page_member_lookup():
             "Search legislator",
             value=st.session_state.member_query,
             placeholder="e.g., Bell, Keith",
+            key="member_query_input",
+            help="Search by legislator name. Suggestions appear when close matches exist.",
         )
 
     with top2:
@@ -2485,6 +2850,7 @@ def _page_member_lookup():
             session_labels,
             index=session_labels.index(current_label),
             key="member_session_select",
+            help="Choose the legislative session used for filters and totals.",
         )
         st.session_state.member_session = label_to_session.get(chosen_label, default_session)
 
@@ -2501,11 +2867,14 @@ def _page_member_lookup():
             ["Select a legislator..."] + member_suggestions,
             index=0,
             key="member_suggestions_select",
+            help="Pick a suggested legislator to populate the selection.",
         )
         if pick in member_suggestions:
             resolved_member = pick
 
     st.session_state.member_name = resolved_member or ""
+    if st.session_state.member_name:
+        _remember_recent_member_search(st.session_state.member_name)
 
     with top3:
         st.markdown('<div class="small-muted">Member</div>', unsafe_allow_html=True)
@@ -2514,12 +2883,48 @@ def _page_member_lookup():
         else:
             st.write("-")
 
+    recent = st.session_state.get("recent_member_searches", [])
+    if recent:
+        st.markdown('<div class="section-sub">Recent lookups</div>', unsafe_allow_html=True)
+        recent_cols = st.columns(min(len(recent), 4))
+        for idx, rec in enumerate(recent[:8]):
+            col = recent_cols[idx % len(recent_cols)]
+            label = rec if len(rec) <= 28 else rec[:25] + "..."
+            if col.button(
+                f"Reuse {label}",
+                key=f"recent_member_lookup_{idx}",
+                help="Reuse a recent legislator search",
+                use_container_width=True,
+            ):
+                st.session_state.member_query = rec
+                st.session_state.member_query_input = rec
+                st.session_state.member_name = ""
+                st.session_state.member_bill_search = ""
+                st.session_state.member_witness_search = ""
+                st.session_state.member_activity_search = ""
+                st.session_state.member_filter = ""
+
     tfl_session_val = _tfl_session_for_filter(st.session_state.member_session, tfl_sessions)
 
-    chips = [f"Session: {_session_label(st.session_state.member_session)}"]
+    active_parts = [f"Session: {_session_label(st.session_state.member_session)}"]
     if st.session_state.member_name:
-        chips.append(f"Member: {st.session_state.member_name}")
-    st.markdown("".join([f'<span class="chip">{c}</span>' for c in chips]), unsafe_allow_html=True)
+        active_parts.append(f"Member: {st.session_state.member_name}")
+    chips_html = "".join([f'<span class="chip">{html.escape(c)}</span>' for c in active_parts])
+    st.markdown('<div id="filter-summary-marker"></div>', unsafe_allow_html=True)
+    f1, f2 = st.columns([3, 1])
+    with f1:
+        st.markdown(
+            f'<div class="filter-summary"><span class="filter-summary-label">Active filters</span>{chips_html}</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(f"Selected member: {st.session_state.member_name or '-'}")
+    with f2:
+        if st.button(
+            "Clear filters",
+            use_container_width=True,
+            help="Reset legislator search and primary filters to defaults.",
+        ):
+            reset_member_filters(default_session)
 
     focus_label = "All Legislators"
     if st.session_state.member_name:
@@ -2560,14 +2965,119 @@ def _page_member_lookup():
         focus_context=focus_context,
     )
 
-    tab_overview, tab_bills, tab_witness, tab_activities, tab_staff = st.tabs(
-        ["Overview", "Bills", "Witness Lists", "Activities", "Staff to Lobbyist"]
+    @st.cache_data(show_spinner=False)
+    def build_all_legislators_overview(
+        author_bills: pd.DataFrame,
+        wit_all: pd.DataFrame,
+        session_val: str,
+    ) -> tuple[pd.DataFrame, dict]:
+        if author_bills.empty:
+            return pd.DataFrame(), {}
+
+        session = str(session_val).strip()
+        if not session:
+            return pd.DataFrame(), {}
+
+        d = author_bills.copy()
+        d["Session"] = d["Session"].astype(str).str.strip()
+        d = d[d["Session"] == session].copy()
+        d = ensure_cols(d, {"Author": "", "Status": "", "Bill": ""})
+        d = d[d["Author"].astype(str).str.strip() != ""].copy()
+        if d.empty:
+            return pd.DataFrame(), {}
+
+        d = d[d["Bill"].notna()].copy()
+        d["Bill"] = d["Bill"].astype(str)
+        d = d[d["Bill"].str.strip() != ""].copy()
+        d["StatusClean"] = d["Status"].fillna("").astype(str).str.strip()
+
+        bills = d[["Author", "Bill", "StatusClean"]].drop_duplicates()
+        bill_status = bills[["Bill", "StatusClean"]].drop_duplicates()
+
+        total_bills = int(bill_status["Bill"].nunique())
+        passed_total = int((bill_status["StatusClean"] == "Passed").sum())
+        failed_total = int((bill_status["StatusClean"] == "Failed").sum())
+
+        g = bills.groupby("Author", as_index=False).agg(
+            Bills=("Bill", "nunique"),
+            Passed=("StatusClean", lambda s: (s == "Passed").sum()),
+            Failed=("StatusClean", lambda s: (s == "Failed").sum()),
+        )
+        g = g.rename(columns={"Author": "Legislator"})
+
+        wit = pd.DataFrame(columns=["Bill", "LobbyShort"])
+        if isinstance(wit_all, pd.DataFrame) and not wit_all.empty:
+            wit = wit_all.copy()
+            wit = ensure_cols(wit, {"Session": "", "Bill": "", "LobbyShort": ""})
+            wit["Session"] = wit["Session"].astype(str).str.strip()
+            wit = wit[wit["Session"] == session].copy()
+            wit = wit[wit["Bill"].notna()].copy()
+            wit["Bill"] = wit["Bill"].astype(str)
+            wit = wit[wit["Bill"].str.strip() != ""].copy()
+            bill_set = set(bills["Bill"].dropna().astype(str).unique().tolist())
+            if bill_set:
+                wit = wit[wit["Bill"].astype(str).isin(bill_set)].copy()
+            wit["LobbyShort"] = wit["LobbyShort"].fillna("").astype(str).str.strip()
+            wit = wit[wit["LobbyShort"] != ""].copy()
+
+        witness_rows = int(len(wit)) if not wit.empty else 0
+        witness_lobbyists = int(wit["LobbyShort"].nunique()) if not wit.empty else 0
+        witness_bills = int(wit["Bill"].nunique()) if not wit.empty else 0
+
+        if not wit.empty:
+            bill_authors = bills[["Bill", "Author"]].drop_duplicates()
+            bill_authors["Bill"] = bill_authors["Bill"].astype(str)
+            wit_join = bill_authors.merge(wit[["Bill", "LobbyShort"]], on="Bill", how="left")
+            wit_join = wit_join[wit_join["LobbyShort"].astype(str).str.strip() != ""].copy()
+            if not wit_join.empty:
+                wit_counts = (
+                    wit_join.groupby("Author", as_index=False)
+                    .agg(
+                        WitnessRows=("LobbyShort", "size"),
+                        WitnessLobbyists=("LobbyShort", "nunique"),
+                        WitnessBills=("Bill", "nunique"),
+                    )
+                )
+            else:
+                wit_counts = pd.DataFrame(columns=["Author", "WitnessRows", "WitnessLobbyists", "WitnessBills"])
+        else:
+            wit_counts = pd.DataFrame(columns=["Author", "WitnessRows", "WitnessLobbyists", "WitnessBills"])
+
+        g = g.merge(wit_counts, left_on="Legislator", right_on="Author", how="left")
+        if "Author" in g.columns:
+            g = g.drop(columns=["Author"])
+
+        for col in ["WitnessRows", "WitnessLobbyists", "WitnessBills"]:
+            if col not in g.columns:
+                g[col] = 0
+            g[col] = g[col].fillna(0).astype(int)
+
+        stats = {
+            "total_legislators": int(g["Legislator"].nunique()),
+            "total_bills": total_bills,
+            "passed": passed_total,
+            "failed": failed_total,
+            "witness_rows": witness_rows,
+            "witness_lobbyists": witness_lobbyists,
+            "witness_bills": witness_bills,
+        }
+        return g, stats
+
+    all_legislators, all_leg_stats = build_all_legislators_overview(
+        author_bills_all,
+        Wit_All,
+        st.session_state.member_session,
     )
 
-    def kpi_card(title: str, value: str, sub: str = ""):
+    tab_all, tab_overview, tab_bills, tab_witness, tab_activities, tab_staff = st.tabs(
+        ["All Legislators", "Overview", "Bills", "Witness Lists", "Activities", "Staff to Lobbyist"]
+    )
+
+    def kpi_card(title: str, value: str, sub: str = "", help_text: str = ""):
+        tooltip_attr = f' title="{html.escape(help_text, quote=True)}"' if help_text else ""
         st.markdown(
             f"""
-<div class="card">
+<div class="card"{tooltip_attr}>
   <div class="kpi-title">{title}</div>
   <div class="kpi-value">{value}</div>
   <div class="kpi-sub">{sub}</div>
@@ -2576,8 +3086,134 @@ def _page_member_lookup():
             unsafe_allow_html=True,
         )
 
+    with tab_all:
+        st.markdown('<div class="section-title">All Legislators Overview</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="section-sub">Session: {_session_label(st.session_state.member_session)}</div>',
+            unsafe_allow_html=True,
+        )
+
+        if all_legislators.empty:
+            st.info("No authored bills found for the selected session.")
+        else:
+            a1, a2, a3, a4 = st.columns(4)
+            with a1:
+                kpi_card(
+                    "Total Legislators",
+                    f"{all_leg_stats.get('total_legislators', 0):,}",
+                    help_text="Unique legislators with authored bills in the selected session.",
+                )
+            with a2:
+                kpi_card(
+                    "Bills Authored",
+                    f"{all_leg_stats.get('total_bills', 0):,}",
+                    help_text="Unique bills with at least one listed author in the session.",
+                )
+            with a3:
+                kpi_card(
+                    "Passed / Failed",
+                    f"{all_leg_stats.get('passed', 0):,} / {all_leg_stats.get('failed', 0):,}",
+                    help_text="Bill outcomes for authored bills in the session.",
+                )
+            with a4:
+                kpi_card(
+                    "Witness Rows",
+                    f"{all_leg_stats.get('witness_rows', 0):,}",
+                    f"Lobbyists: {all_leg_stats.get('witness_lobbyists', 0):,}",
+                    help_text="Witness list rows tied to authored bills in the session.",
+                )
+
+            st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
+
+            t1, t2 = st.columns(2)
+            with t1:
+                st.markdown('<div class="section-title">Top 5 by Bills Authored</div>', unsafe_allow_html=True)
+                top_bills = all_legislators.sort_values(["Bills", "Legislator"], ascending=[False, True]).head(5)
+                st.dataframe(
+                    top_bills[["Legislator", "Bills", "Passed", "Failed"]],
+                    use_container_width=True,
+                    height=240,
+                    hide_index=True,
+                )
+            with t2:
+                st.markdown('<div class="section-title">Top 5 by Witness Rows</div>', unsafe_allow_html=True)
+                if all_legislators["WitnessRows"].sum() > 0:
+                    top_witness = all_legislators.sort_values(
+                        ["WitnessRows", "Legislator"], ascending=[False, True]
+                    ).head(5)
+                    top_witness = top_witness.rename(
+                        columns={
+                            "WitnessRows": "Witness Rows",
+                            "WitnessLobbyists": "Unique Lobbyists",
+                            "WitnessBills": "Bills w/ Witness",
+                        }
+                    )
+                    st.dataframe(
+                        top_witness[["Legislator", "Witness Rows", "Unique Lobbyists", "Bills w/ Witness"]],
+                        use_container_width=True,
+                        height=240,
+                        hide_index=True,
+                    )
+                else:
+                    st.info("No witness-list rows found for authored bills in this session.")
+
+            st.session_state.member_filter = st.text_input(
+                "Filter legislator (contains)",
+                value=st.session_state.member_filter,
+                placeholder="e.g., Johnson",
+                key="member_filter_input",
+                help="Filter the All Legislators table by a name substring.",
+            )
+
+            view = all_legislators.copy()
+            if st.session_state.member_filter.strip():
+                view = view[
+                    view["Legislator"].astype(str).str.contains(
+                        st.session_state.member_filter.strip(), case=False, na=False
+                    )
+                ].copy()
+
+            sort_cols = []
+            sort_order = []
+            if "Bills" in view.columns:
+                sort_cols.append("Bills")
+                sort_order.append(False)
+            if "WitnessRows" in view.columns:
+                sort_cols.append("WitnessRows")
+                sort_order.append(False)
+            if "Legislator" in view.columns:
+                sort_cols.append("Legislator")
+                sort_order.append(True)
+            if sort_cols:
+                view = view.sort_values(sort_cols, ascending=sort_order)
+
+            view_disp = view.rename(
+                columns={
+                    "WitnessRows": "Witness Rows",
+                    "WitnessLobbyists": "Unique Lobbyists",
+                    "WitnessBills": "Bills w/ Witness",
+                }
+            )
+            show_cols = [
+                "Legislator",
+                "Bills",
+                "Passed",
+                "Failed",
+                "Bills w/ Witness",
+                "Witness Rows",
+                "Unique Lobbyists",
+            ]
+            show_cols = [c for c in show_cols if c in view_disp.columns]
+            st.dataframe(
+                view_disp[show_cols],
+                use_container_width=True,
+                height=560,
+                hide_index=True,
+            )
+            _ = export_dataframe(view_disp[show_cols], "all_legislators_overview.csv", label="Download overview CSV")
+
     def _no_member_msg():
-        st.info("Type a legislator name at the top to view details.")
+        st.info("Type a legislator name at the top to view details. The All Legislators tab is available without a selection.")
 
     if not st.session_state.member_name:
         with tab_overview:
@@ -2744,7 +3380,7 @@ def _page_member_lookup():
         st.markdown('<div class="section-title">Overview</div>', unsafe_allow_html=True)
 
         if authored.empty:
-            st.info("No authored bills found for this legislator/session in Bill_Status_All.")
+            st.info("No authored bills found for this legislator/session in Texas Legislature Online bill status data.")
         else:
             bill_count = int(authored["Bill"].nunique())
             passed = int((authored.get("Status", pd.Series(dtype=object)) == "Passed").sum())
@@ -2755,25 +3391,57 @@ def _page_member_lookup():
 
             o1, o2, o3, o4 = st.columns(4)
             with o1:
-                kpi_card("Session", session)
+                kpi_card(
+                    "Session",
+                    session,
+                    help_text="Session used for authored bill counts and witness lists.",
+                )
             with o2:
-                kpi_card("Member", member_name)
+                kpi_card(
+                    "Member",
+                    member_name,
+                    help_text="Resolved legislator selection from search or suggestions.",
+                )
             with o3:
-                kpi_card("Bills Authored", f"{bill_count:,}")
+                kpi_card(
+                    "Bills Authored",
+                    f"{bill_count:,}",
+                    help_text="Unique bills authored by this member in the session.",
+                )
             with o4:
-                kpi_card("Passed / Failed", f"{passed:,} / {failed:,}")
+                kpi_card(
+                    "Passed / Failed",
+                    f"{passed:,} / {failed:,}",
+                    help_text="Outcome counts for authored bills in the session.",
+                )
 
             st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
             s1, s2, s3, s4 = st.columns(4)
             with s1:
-                kpi_card("Witness Rows", f"{witness_rows:,}")
+                kpi_card(
+                    "Witness Rows",
+                    f"{witness_rows:,}",
+                    help_text="Witness list rows tied to this member's authored bills.",
+                )
             with s2:
-                kpi_card("Unique Lobbyists", f"{lobbyist_count:,}")
+                kpi_card(
+                    "Unique Lobbyists",
+                    f"{lobbyist_count:,}",
+                    help_text="Distinct lobbyists appearing in the witness lists.",
+                )
             with s3:
-                kpi_card("Lobbyists w/ TFL Clients", f"{tfl_count:,}")
+                kpi_card(
+                    "Lobbyists w/ TFL Clients",
+                    f"{tfl_count:,}",
+                    help_text="Witness rows marked as having a taxpayer-funded client.",
+                )
             with s4:
-                kpi_card("Activities Rows", f"{len(activities):,}")
+                kpi_card(
+                    "Activities Rows",
+                    f"{len(activities):,}",
+                    help_text="Activity rows where this member is the recipient.",
+                )
 
             st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
             st.markdown('<div class="section-sub">TFL Opposition Snapshot</div>', unsafe_allow_html=True)
@@ -2840,6 +3508,7 @@ def _page_member_lookup():
                     value=st.session_state.member_bill_search,
                     placeholder="e.g., HB 1 or education",
                     key="member_bill_search_input",
+                    help="Filter authored bills by bill number, caption, or status.",
                 )
                 bill_view = authored.copy()
                 if st.session_state.member_bill_search.strip():
@@ -2869,6 +3538,7 @@ def _page_member_lookup():
                 "Search witness list (Bill / Lobbyist / Organization)",
                 value=st.session_state.member_witness_search,
                 key="member_witness_search_input",
+                help="Filter witness list rows by bill, lobbyist, organization, or witness name.",
             )
             witness_view = witness.copy()
             if st.session_state.member_witness_search.strip():
@@ -2886,19 +3556,37 @@ def _page_member_lookup():
                     witness_view.get("Position", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
                 )
                 pos_opts = sorted(pos_opts)
-                pos_sel = st.multiselect("Filter by position", pos_opts, default=pos_opts, key="member_pos_filter")
+                pos_sel = st.multiselect(
+                    "Filter by position",
+                    pos_opts,
+                    default=pos_opts,
+                    key="member_pos_filter",
+                    help="Limit results to selected witness positions.",
+                )
             with f2:
                 tfl_opts = _clean_options(
                     witness_view.get("Has TFL Client", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
                 )
                 tfl_opts = sorted(tfl_opts)
-                tfl_sel = st.multiselect("Filter by TFL", tfl_opts, default=tfl_opts, key="member_tfl_filter")
+                tfl_sel = st.multiselect(
+                    "Filter by TFL",
+                    tfl_opts,
+                    default=tfl_opts,
+                    key="member_tfl_filter",
+                    help="Filter to rows marked as having a taxpayer-funded client.",
+                )
             with f3:
                 lob_opts = _clean_options(
                     witness_view.get("Lobbyist", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
                 )
                 lob_opts = sorted(lob_opts)
-                lob_sel = st.multiselect("Filter by lobbyist", lob_opts, default=lob_opts, key="member_lobbyist_filter")
+                lob_sel = st.multiselect(
+                    "Filter by lobbyist",
+                    lob_opts,
+                    default=lob_opts,
+                    key="member_lobbyist_filter",
+                    help="Limit results to selected lobbyists.",
+                )
 
             if pos_sel:
                 witness_view = witness_view[witness_view["Position"].astype(str).isin(pos_sel)].copy()
@@ -2934,13 +3622,25 @@ def _page_member_lookup():
             filt = activities.copy()
             t_opts = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
             t_opts = sorted(t_opts)
-            sel_types = st.multiselect("Filter by activity type", t_opts, default=t_opts, key="member_activity_types")
+            sel_types = st.multiselect(
+                "Filter by activity type",
+                t_opts,
+                default=t_opts,
+                key="member_activity_types",
+                help="Limit results to selected activity categories.",
+            )
             if sel_types:
                 filt = filt[filt["Type"].isin(sel_types)].copy()
 
             lobby_opts = _clean_options(filt["Lobbyist"].dropna().astype(str).unique().tolist())
             lobby_opts = sorted(lobby_opts)
-            sel_lobby = st.multiselect("Filter by lobbyist", lobby_opts, default=lobby_opts, key="member_activity_lobbyist")
+            sel_lobby = st.multiselect(
+                "Filter by lobbyist",
+                lobby_opts,
+                default=lobby_opts,
+                key="member_activity_lobbyist",
+                help="Limit results to selected lobbyists.",
+            )
             if sel_lobby:
                 filt = filt[filt["Lobbyist"].isin(sel_lobby)].copy()
 
@@ -2948,6 +3648,7 @@ def _page_member_lookup():
                 "Search activities (lobbyist, description, filer)",
                 value=st.session_state.member_activity_search,
                 key="member_activity_search_input",
+                help="Search activity rows by lobbyist, description, or filer.",
             )
             if st.session_state.member_activity_search.strip():
                 q = st.session_state.member_activity_search.strip()
@@ -2961,7 +3662,12 @@ def _page_member_lookup():
             if date_parsed.notna().any():
                 min_d = date_parsed.min().date()
                 max_d = date_parsed.max().date()
-                d_from, d_to = st.date_input("Date range", (min_d, max_d), key="member_activity_dates")
+                d_from, d_to = st.date_input(
+                    "Date range",
+                    (min_d, max_d),
+                    key="member_activity_dates",
+                    help="Restrict results to activities within this date range.",
+                )
                 if d_from and d_to:
                     mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
                     filt = filt[mask].copy()
@@ -2979,7 +3685,7 @@ def _page_member_lookup():
         else:
             cols = ["Session", "Legislator", "Title", "Staffer", "Lobbyist", "LobbyShort", "source"]
             cols = [c for c in cols if c in staff_lobbyists.columns]
-            staff_view = staff_lobbyists[cols].drop_duplicates()
+            staff_view = staff_lobbyists[cols].drop_duplicates().rename(columns={"LobbyShort": "Last name + first initial"})
             sort_cols = [c for c in ["Session", "Legislator", "Staffer"] if c in staff_view.columns]
             if sort_cols:
                 staff_view = staff_view.sort_values(sort_cols)
@@ -3056,24 +3762,41 @@ if "nav_search_query" not in st.session_state:
     st.session_state.nav_search_query = ""
 if "nav_search_last" not in st.session_state:
     st.session_state.nav_search_last = ""
+if "nav_search_trigger" not in st.session_state:
+    st.session_state.nav_search_trigger = False
+
+def _nav_submit() -> None:
+    st.session_state.nav_search_trigger = True
 
 nav_query_raw = st.text_input(
     "Nav search",
     key="nav_search_query",
     placeholder="Search bills, clients, members, lobbyists",
     label_visibility="collapsed",
+    on_change=_nav_submit,
+    help="Global search across bills, clients, members, and lobbyists.",
 )
 nav_query = nav_query_raw.strip()
 nav_search_submitted = False
-if nav_query and nav_query != st.session_state.nav_search_last:
+if nav_query and st.session_state.nav_search_trigger:
     nav_search_submitted = True
     st.session_state.nav_search_last = nav_query
+    st.session_state.nav_search_trigger = False
+elif not nav_query:
+    st.session_state.nav_search_trigger = False
+nav_suggest_slot = st.empty()
+nav_skip_submit = False
 
 # =========================================================
 # HELPERS
 # =========================================================
 _RE_NONWORD = re.compile(r"[^\w]+", flags=re.UNICODE)
 _TITLE_WORDS = {"MR", "MRS", "MS", "MISS", "DR", "HON", "JR", "SR", "II", "III", "IV"}
+_NICKNAME_MAP = {
+    "CHUCK": {"CHARLES"},
+    "CHARLIE": {"CHARLES"},
+    "CHARLES": {"CHUCK", "CHARLIE"},
+}
 
 def norm_name(x) -> str:
     if x is None or (isinstance(x, float) and pd.isna(x)):
@@ -3096,6 +3819,17 @@ def clean_filer_name_series(s: pd.Series) -> pd.Series:
     s = s.str.replace(r"\([^)]*\)", "", regex=True)
     s = s.str.replace(r"\b(" + "|".join(_TITLE_WORDS) + r")\b\.?", "", regex=True, flags=re.IGNORECASE)
     s = s.str.replace(r"\s+", " ", regex=True).str.strip()
+    return s
+
+def clean_person_name(name: str) -> str:
+    if name is None or (isinstance(name, float) and pd.isna(name)):
+        return ""
+    s = str(name).replace("\u00A0", " ").strip()
+    if not s:
+        return ""
+    s = re.sub(r"\([^)]*\)", "", s)
+    s = re.sub(r"\b(" + "|".join(_TITLE_WORDS) + r")\b\.?", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s+", " ", s).strip()
     return s
 
 PRIMARY_PATTERNS = [
@@ -3208,6 +3942,7 @@ def filter_filer_rows(
     name_to_short: dict,
     lobbyist_norms: set[str],
     filerid_to_short: dict | None,
+    filer_ids: set[int] | tuple[int, ...] | None = None,
     loose: bool = False,
 ) -> pd.DataFrame:
     if df.empty:
@@ -3220,8 +3955,14 @@ def filter_filer_rows(
         return d
 
     filerid_map = filerid_to_short or {}
-    if "filerIdent" in d.columns and filerid_map:
+    if "FilerID" in d.columns:
+        d["FilerID"] = pd.to_numeric(d["FilerID"], errors="coerce").fillna(-1).astype(int)
+    elif "filerIdent" in d.columns:
         d["FilerID"] = pd.to_numeric(d["filerIdent"], errors="coerce").fillna(-1).astype(int)
+    else:
+        d["FilerID"] = -1
+
+    if filerid_map:
         d["FilerShortFromId"] = d["FilerID"].map(filerid_map)
     else:
         d["FilerShortFromId"] = ""
@@ -3256,6 +3997,25 @@ def filter_filer_rows(
         (d["FilerSortNorm"].isin(lobbyist_norms) if lobbyist_norms else False) |
         (d["FilerIsShort"])
     )
+    if filer_ids:
+        filer_ids_set = set()
+        for x in filer_ids:
+            try:
+                if pd.isna(x):
+                    continue
+            except Exception:
+                pass
+            try:
+                filer_ids_set.add(int(x))
+            except Exception:
+                try:
+                    filer_ids_set.add(int(float(x)))
+                except Exception:
+                    continue
+        if filer_ids_set:
+            filer_match = d["FilerID"].isin(filer_ids_set)
+            if filer_match.any():
+                ok = filer_match
     if loose and not ok.any():
         loose_ok = pd.Series(False, index=d.index)
 
@@ -3423,6 +4183,44 @@ def last_name_norm_series(s: pd.Series) -> pd.Series:
     last = last_from_comma.where(comma_mask, last_from_space).fillna("")
     return norm_name_series(last)
 
+def first_name_norm_series(s: pd.Series) -> pd.Series:
+    if isinstance(s, pd.DataFrame):
+        s = s.iloc[:, 0] if s.shape[1] > 0 else pd.Series([], dtype="string")
+    if not isinstance(s, pd.Series):
+        s = pd.Series(s)
+    s = (
+        s.fillna("")
+         .astype("string")
+         .str.replace("\u00A0", " ", regex=False)
+         .str.strip()
+    )
+    comma_mask = s.str.contains(",", na=False)
+    first_from_comma = (
+        s.where(comma_mask, "")
+         .astype("string")
+         .str.split(",", n=1)
+         .str[1]
+         .fillna("")
+         .astype("string")
+         .str.strip()
+         .str.split()
+         .str[0]
+         .fillna("")
+         .astype("string")
+         .str.strip()
+    )
+    first_from_space = (
+        s.where(~comma_mask, "")
+         .astype("string")
+         .str.split()
+         .str[0]
+         .fillna("")
+         .astype("string")
+         .str.strip()
+    )
+    first = first_from_comma.where(comma_mask, first_from_space).fillna("")
+    return norm_name_series(first)
+
 def _last_first_initial_key(name: str) -> str:
     if name is None or (isinstance(name, float) and pd.isna(name)):
         return ""
@@ -3449,22 +4247,26 @@ def _last_first_initial_key(name: str) -> str:
 def norm_person_variants(user_text: str) -> set[str]:
     if not user_text:
         return set()
-    t = str(user_text).replace("\u00A0", " ").strip()
+    t = clean_person_name(user_text)
     if not t:
         return set()
 
     if "," in t:
         parts = [p.strip() for p in t.split(",", 1)]
         last = parts[0]
-        first = parts[1] if len(parts) > 1 else ""
+        rest = parts[1] if len(parts) > 1 else ""
+        first = rest.split()[0].strip() if rest else ""
     else:
         toks = t.split()
         if len(toks) == 1:
-            first, last = toks[0], ""
+            first, last = "", toks[0]
         else:
             first, last = toks[0], toks[-1]
 
     variants = {norm_name(t)}
+    raw_norm = norm_name(user_text)
+    if raw_norm:
+        variants.add(raw_norm)
     if first and last:
         variants |= {
             norm_name(f"{first} {last}"),
@@ -3473,6 +4275,53 @@ def norm_person_variants(user_text: str) -> set[str]:
             norm_name(f"{first}{last}"),
             norm_name(f"{last}{first}"),
         }
+    return {v for v in variants if v}
+
+def _nickname_variants(first_norm: str) -> set[str]:
+    if not first_norm:
+        return set()
+    variants = {first_norm}
+    if first_norm in _NICKNAME_MAP:
+        variants |= _NICKNAME_MAP[first_norm]
+    for base, nicknames in _NICKNAME_MAP.items():
+        if first_norm in nicknames:
+            variants.add(base)
+            variants |= nicknames
+    return {v for v in variants if v}
+
+def norm_person_variants_with_nicknames(user_text: str) -> set[str]:
+    variants = norm_person_variants(user_text)
+    if not user_text:
+        return variants
+    t = clean_person_name(user_text)
+    if not t:
+        return variants
+
+    def _add_nickname_variants(first_val: str, last_val: str) -> None:
+        first_norm = norm_name(first_val)
+        last_norm = norm_name(last_val)
+        if not first_norm or not last_norm:
+            return
+        for fn in _nickname_variants(first_norm):
+            if fn == first_norm:
+                continue
+            variants.add(f"{fn}{last_norm}")
+            variants.add(f"{last_norm}{fn}")
+
+    if "," in t:
+        parts = [p.strip() for p in t.split(",", 1)]
+        last = parts[0]
+        rest = parts[1] if len(parts) > 1 else ""
+        first = rest.split()[0].strip() if rest else ""
+        _add_nickname_variants(first, last)
+    else:
+        toks = t.split()
+        if len(toks) < 2:
+            return variants
+        first, last = toks[0], toks[-1]
+        _add_nickname_variants(first, last)
+        if len(toks) == 2:
+            _add_nickname_variants(last, first)
     return {v for v in variants if v}
 
 def person_display(org, last, first) -> str:
@@ -3490,7 +4339,7 @@ def amount_display(exact, low, high, code=None) -> str:
         return str(exact)
     if pd.notna(low) and str(low).strip():
         if pd.notna(high) and str(high).strip():
-            return f"{low}–{high}"
+            return f"{low}--{high}"
         return str(low)
     if pd.notna(code) and str(code).strip():
         return str(code)
@@ -3581,9 +4430,194 @@ def fmt_usd(x: float, decimals: int = 0) -> str:
     except Exception:
         return "$0"
 
-def export_dataframe(df: pd.DataFrame, filename: str, label: str = "Download CSV"):
-    _ = st.download_button(label=label, data=df.to_csv(index=False), file_name=filename, mime="text/csv")
+def _shorten_text(value: str, max_len: int = 36) -> str:
+    s = str(value or "").strip()
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 3].rstrip() + "..."
+
+def render_pill_list(items: list[str], limit: int = 12, empty_label: str = "--") -> str:
+    cleaned = [str(i).strip() for i in (items or []) if str(i).strip()]
+    if not cleaned:
+        return f'<div class="pill-list"><span class="pill pill-muted">{html.escape(empty_label)}</span></div>'
+    seen = []
+    for item in cleaned:
+        if item not in seen:
+            seen.append(item)
+    shown = seen[:limit]
+    pills = [f'<span class="pill">{html.escape(item)}</span>' for item in shown]
+    if len(seen) > limit:
+        pills.append(f'<span class="pill pill-muted">+{len(seen) - limit} more</span>')
+    return '<div class="pill-list">' + "".join(pills) + "</div>"
+
+def _current_filter_parts(extra: list[str] | None = None) -> list[str]:
+    parts = []
+    session_val = st.session_state.get("session", None)
+    session_label = _session_label(session_val) if session_val is not None else ""
+    if session_label:
+        parts.append(f"Session: {session_label}")
+    scope_label = st.session_state.get("scope", "")
+    if scope_label:
+        parts.append(f"Scope: {scope_label}")
+    lobbyshort = st.session_state.get("lobbyshort", "").strip()
+    query = st.session_state.get("search_query", "").strip()
+    if lobbyshort:
+        parts.append(f"Lobbyist: {_shorten_text(lobbyshort, 28)}")
+    elif query:
+        parts.append(f"Query: {_shorten_text(query, 28)}")
+    if extra:
+        parts.extend([p for p in extra if p])
+    return parts
+
+def _export_context_label(extra: list[str] | None = None, max_len: int = 72) -> str:
+    parts = _current_filter_parts(extra)
+    if not parts:
+        return ""
+    return _shorten_text(", ".join(parts), max_len)
+
+def _export_filename(filename: str, extra: list[str] | None = None) -> str:
+    parts = _current_filter_parts(extra)
+    if not parts:
+        return filename
+    stem = Path(filename).stem or "export"
+    suffix = Path(filename).suffix or ".csv"
+    tokens = []
+    for part in parts:
+        token = re.sub(r"[^A-Za-z0-9]+", "-", part).strip("-").lower()
+        if token:
+            tokens.append(token)
+    tokens = tokens[:4]
+    if not tokens:
+        return filename
+    return f"{stem}__{'__'.join(tokens)}{suffix}"
+
+def export_dataframe(df: pd.DataFrame, filename: str, label: str = "Download CSV", context: list[str] | str | None = None):
+    extra = []
+    if isinstance(context, str):
+        extra = [context]
+    elif isinstance(context, (list, tuple)):
+        extra = [str(c) for c in context if c]
+    context_label = _export_context_label(extra)
+    export_label = f"{label} ({context_label})" if context_label else label
+    export_name = _export_filename(filename, extra)
+    _ = st.download_button(label=export_label, data=df.to_csv(index=False), file_name=export_name, mime="text/csv")
+    if context_label:
+        st.markdown(f'<div class="section-caption">CSV includes: {context_label}.</div>', unsafe_allow_html=True)
     return ""
+
+def build_timeline_counts(df: pd.DataFrame, date_col: str, freq: str = "M") -> pd.DataFrame:
+    if df.empty or date_col not in df.columns:
+        return pd.DataFrame(columns=["Period", "Label", "Count"])
+    date = pd.to_datetime(df[date_col], errors="coerce")
+    base = df.assign(_date=date).dropna(subset=["_date"])
+    if base.empty:
+        return pd.DataFrame(columns=["Period", "Label", "Count"])
+    if freq.upper() == "Q":
+        period = base["_date"].dt.to_period("Q")
+    else:
+        period = base["_date"].dt.to_period("M")
+    base = base.assign(Period=period.dt.to_timestamp(), Label=period.astype(str))
+    timeline = (
+        base.groupby(["Period", "Label"])
+        .size()
+        .reset_index(name="Count")
+        .sort_values("Period")
+    )
+    return timeline
+
+def require_columns(df: pd.DataFrame, required: list[str], label: str, hint: str = "") -> bool:
+    missing = [c for c in required if c not in df.columns]
+    if not missing:
+        return True
+    st.warning(f"{label} is missing required columns: {', '.join(missing)}.")
+    if hint:
+        st.caption(hint)
+    return False
+
+def reset_filters(default_session: str) -> None:
+    st.session_state.search_query = ""
+    st.session_state.lobbyshort = ""
+    st.session_state.lobby_filerid = None
+    st.session_state.lobby_selected_key = ""
+    st.session_state.lobby_all_matches = False
+    st.session_state.lobby_merge_keys = []
+    st.session_state.lobby_candidate_map = {}
+    st.session_state.lobby_match_query = ""
+    st.session_state.lobby_match_select = "No match"
+    st.session_state.bill_search = ""
+    st.session_state.activity_search = ""
+    st.session_state.disclosure_search = ""
+    st.session_state.filter_lobbyshort = ""
+    st.session_state.scope = "This Session"
+    st.session_state.session = default_session
+
+
+def _remember_recent_search(query: str) -> None:
+    """Track recent lobby lookups for quick reuse."""
+    if not query or not query.strip():
+        return
+    history = st.session_state.get("recent_lobby_searches", [])
+    q = query.strip()
+    deduped = [h for h in history if h.strip().lower() != q.lower()]
+    deduped.insert(0, q)
+    st.session_state.recent_lobby_searches = deduped[:6]
+
+
+def reset_client_filters(default_session: str) -> None:
+    st.session_state.client_query = ""
+    st.session_state.client_name = ""
+    st.session_state.client_bill_search = ""
+    st.session_state.client_activity_search = ""
+    st.session_state.client_disclosure_search = ""
+    st.session_state.client_filter = ""
+    st.session_state.client_scope = "This Session"
+    st.session_state.client_session = default_session
+    st.session_state.client_scope_radio = "This Session"
+    st.session_state.client_session_select = _session_label(default_session)
+    st.session_state.client_suggestions_select = "Select a client..."
+    st.session_state.client_query_input = ""
+    st.session_state.client_bill_search_input = ""
+    st.session_state.client_activity_search_input = ""
+    st.session_state.client_disclosure_search_input = ""
+    st.session_state.client_filter_input = ""
+
+
+def reset_member_filters(default_session: str) -> None:
+    st.session_state.member_query = ""
+    st.session_state.member_name = ""
+    st.session_state.member_bill_search = ""
+    st.session_state.member_witness_search = ""
+    st.session_state.member_activity_search = ""
+    st.session_state.member_filter = ""
+    st.session_state.member_session = default_session
+    st.session_state.member_session_select = _session_label(default_session)
+    st.session_state.member_suggestions_select = "Select a legislator..."
+    st.session_state.member_query_input = ""
+    st.session_state.member_bill_search_input = ""
+    st.session_state.member_witness_search_input = ""
+    st.session_state.member_activity_search_input = ""
+    st.session_state.member_filter_input = ""
+
+
+def _remember_recent_client_search(query: str) -> None:
+    if not query or not query.strip():
+        return
+    history = st.session_state.get("recent_client_searches", [])
+    q = query.strip()
+    deduped = [h for h in history if h.strip().lower() != q.lower()]
+    deduped.insert(0, q)
+    st.session_state.recent_client_searches = deduped[:6]
+
+
+def _remember_recent_member_search(query: str) -> None:
+    if not query or not query.strip():
+        return
+    history = st.session_state.get("recent_member_searches", [])
+    q = query.strip()
+    deduped = [h for h in history if h.strip().lower() != q.lower()]
+    deduped.insert(0, q)
+    st.session_state.recent_member_searches = deduped[:6]
+
 
 def _ordinal(n: int) -> str:
     if 10 <= (n % 100) <= 20:
@@ -3980,7 +5014,9 @@ def _build_report_payload(
     focus_context: dict | None = None,
 ) -> dict:
     session_label = _session_label(session_val) if session_val else "Selected Session"
-    generated_date = datetime.now().strftime("%B %d, %Y")
+    generated_dt = datetime.now()
+    generated_date = generated_dt.strftime("%B %d, %Y")
+    generated_ts = generated_dt.strftime("%Y-%m-%d %H:%M")
     scope_label = scope_label or "Selected Session"
     focus_label = focus_label or "All"
 
@@ -4011,6 +5047,24 @@ def _build_report_payload(
     if not scope_session_label:
         scope_session_label = scope_label or "Selected Session"
 
+    report_id = f"LL-{generated_dt.strftime('%Y%m%d-%H%M')}-{_slugify(focus_label, default='scope')[:10]}"
+    filter_summary_parts = [f"Scope: {scope_session_label}"]
+    if focus_label:
+        filter_summary_parts.append(f"Focus: {focus_label}")
+    if focus_context and isinstance(focus_context, dict):
+        if focus_context.get("type") == "bill":
+            bill_id = focus_context.get("bill") or focus_context.get("query", "")
+            if bill_id:
+                filter_summary_parts.append(f"Bill: {bill_id}")
+        if focus_context.get("type") == "lobbyist":
+            lobby_name = focus_context.get("display_name", "")
+            if lobby_name:
+                filter_summary_parts.append(f"Lobbyist: {lobby_name}")
+    filter_summary = "; ".join(filter_summary_parts)
+    selected_lobbyist = ""
+    if focus_context and isinstance(focus_context, dict) and focus_context.get("type") == "lobbyist":
+        selected_lobbyist = focus_context.get("display_name") or ""
+
     total_low = float(base["Low_num"].sum()) if not base.empty else 0.0
     total_high = float(base["High_num"].sum()) if not base.empty else 0.0
     tfl_low = float(base.loc[base["IsTFL"] == 1, "Low_num"].sum()) if not base.empty else 0.0
@@ -4022,6 +5076,33 @@ def _build_report_payload(
     private_share_low_pct, private_share_high_pct = _calc_share_range(
         private_low, private_high, total_low, total_high
     )
+
+    funding_mix = {
+        "Taxpayer Funded": (tfl_low + tfl_high) / 2,
+        "Private": (private_low + private_high) / 2,
+    }
+
+    def _top_clients(df: pd.DataFrame, is_tfl: int, limit: int = 5) -> list[dict]:
+        if df.empty or "Client" not in df.columns:
+            return []
+        subset = df[df["IsTFL"] == is_tfl].copy()
+        subset["Client"] = subset["Client"].fillna("").astype(str).str.strip()
+        subset = subset[subset["Client"] != ""]
+        if subset.empty:
+            return []
+        grouped = (
+            subset.groupby("Client", as_index=False)
+            .agg(Low=("Low_num", "sum"), High=("High_num", "sum"))
+            .sort_values(["High", "Low"], ascending=False)
+            .head(limit)
+        )
+        return [
+            {"Client": row["Client"], "Low": float(row["Low"]), "High": float(row["High"])}
+            for _, row in grouped.iterrows()
+        ]
+
+    top_clients_tfl = _top_clients(base, 1, limit=5)
+    top_clients_private = _top_clients(base, 0, limit=5)
 
     def _series_from(df: pd.DataFrame, col: str) -> pd.Series:
         s = df.get(col, pd.Series(dtype=object))
@@ -5432,8 +6513,12 @@ def _build_report_payload(
     payload = {
         "session_label": session_label,
         "generated_date": generated_date,
+        "generated_ts": generated_ts,
+        "report_id": report_id,
         "scope_label": scope_label,
         "focus_label": focus_label,
+        "filter_summary": filter_summary,
+        "selected_lobbyist": selected_lobbyist,
         "total_low_value": total_low,
         "total_high_value": total_high,
         "tfl_low_value": tfl_low,
@@ -5452,10 +6537,13 @@ def _build_report_payload(
         "tfl_share_high_pct_value": tfl_share_high_pct,
         "private_share_low_pct_value": private_share_low_pct,
         "private_share_high_pct_value": private_share_high_pct,
+        "funding_mix": funding_mix,
         "unique_lobbyists_total": f"{unique_lobbyists_total:,}",
         "unique_lobbyists_tfl": f"{unique_lobbyists_tfl:,}",
         "unique_clients_total": f"{unique_clients_total:,}",
         "unique_clients_tfl": f"{unique_clients_tfl:,}",
+        "top_clients_tfl": top_clients_tfl,
+        "top_clients_private": top_clients_private,
         "chart_compensation_bar": chart_compensation_bar,
         "chart_share": chart_share,
         "chart_entity_types": chart_entity_types,
@@ -5511,7 +6599,7 @@ def _build_report_text(payload: dict) -> str:
         "TAXPAYER-FUNDED LOBBYING IN TEXAS:",
         f"Analysis of the {payload['session_label']} Legislative Session",
         "",
-        "Prepared by Lobby Look-Up",
+        "Prepared by Texas Lobby Data Center",
         f"Generated: {payload['generated_date']}",
         f"Scope: {payload['scope_session_label']}",
         f"Focus: {payload['focus_label']}",
@@ -5801,7 +6889,7 @@ def _build_report_text(payload: dict) -> str:
         "",
         "=====================================================================",
         "",
-        "Prepared by Lobby Look-Up",
+        "Prepared by Texas Lobby Data Center",
         payload["disclaimer_note"],
     ]
     return "\n".join(lines)
@@ -5862,7 +6950,7 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         size=12,
     )
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 5, _pdf_safe_text("Prepared by Lobby Look-Up"), ln=1)
+    pdf.cell(0, 5, _pdf_safe_text("Prepared by Texas Lobby Data Center"), ln=1)
     pdf.cell(0, 5, _pdf_safe_text(f"Generated: {payload['generated_date']}"), ln=1)
     pdf.cell(0, 5, _pdf_safe_text(f"Scope: {payload['scope_session_label']}"), ln=1)
     pdf.cell(0, 5, _pdf_safe_text(f"Focus: {payload['focus_label']}"), ln=1)
@@ -6275,11 +7363,24 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
     )
     pdf.ln(2)
     pdf.set_font("Helvetica", "I", 9)
-    pdf.cell(0, 5, _pdf_safe_text("Prepared by Lobby Look-Up"), ln=1)
+    pdf.cell(0, 5, _pdf_safe_text("Prepared by Texas Lobby Data Center"), ln=1)
     pdf.cell(0, 5, _pdf_safe_text(payload["disclaimer_note"]), ln=1)
 
     output = pdf.output(dest="S")
     return output if isinstance(output, (bytes, bytearray)) else output.encode("latin-1")
+
+def _build_report_html_pdf_bytes(payload: dict) -> bytes | None:
+    """
+    Build a PDF using the HTML/WeasyPrint pipeline. Returns bytes or None if rendering fails.
+    """
+    html = build_html_report(payload)
+    if not html:
+        return None
+    try:
+        return html_to_pdf_bytes(html)
+    except Exception as exc:
+        _record_pdf_chart_error(f"HTML PDF rendering failed: {exc}")
+        return None
 
 def _render_pdf_report_section(
     *,
@@ -6297,23 +7398,44 @@ def _render_pdf_report_section(
     """Render PDF report generation section in an expander."""
     with st.expander("Custom PDF report", expanded=False):
         st.caption("Generate a PDF report using the current filters and selections.")
-        
+
         sig_key = f"{key_prefix}_report_sig"
         pdf_key = f"{key_prefix}_report_pdf"
         name_key = f"{key_prefix}_report_name"
+        html_pdf_key = f"{key_prefix}_report_pdf_html"
+        html_name_key = f"{key_prefix}_report_name_html"
+        save_local_key = f"{key_prefix}_report_save_local"
         signature = f"{session_val}|{scope_label}|{focus_label}"
-        
+
         if st.session_state.get(sig_key) != signature:
             st.session_state[sig_key] = signature
             if pdf_key in st.session_state:
                 del st.session_state[pdf_key]
             if name_key in st.session_state:
                 del st.session_state[name_key]
-        
+            if html_pdf_key in st.session_state:
+                del st.session_state[html_pdf_key]
+            if html_name_key in st.session_state:
+                del st.session_state[html_name_key]
+
+        save_local = st.checkbox("Also save to ./reports for later retrieval", value=False, key=save_local_key)
+
         c1, c2 = st.columns(2)
         with c1:
-            generate_clicked = st.button("Generate report", key=f"{key_prefix}_report_build", use_container_width=True)
-            
+            generate_clicked = st.button(
+                "Generate report",
+                key=f"{key_prefix}_report_build",
+                use_container_width=True,
+                help="Build a PDF using the current filters and selections.",
+            )
+        with c2:
+            generate_html_clicked = st.button(
+                "Generate webpage PDF",
+                key=f"{key_prefix}_report_build_html",
+                use_container_width=True,
+                help="Builds a PDF from the webpage layout (HTML/WeasyPrint).",
+            )
+
         if generate_clicked:
             _clear_pdf_chart_error()
             try:
@@ -6334,17 +7456,47 @@ def _render_pdf_report_section(
                         st.session_state[pdf_key] = pdf_bytes
                         st.session_state[name_key] = f"tfl-report-{_slugify(focus_label)}.pdf"
                         st.success("Report generated")
+                        if save_local and payload.get("report_id"):
+                            path = save_report_pdf(payload["report_id"], pdf_bytes, payload, renderer="fpdf")
+                            st.caption(f"Saved to {path}")
             except Exception as e:
                 st.error(f"Report generation failed: {str(e)}")
 
-        if pdf_key in st.session_state and st.session_state.get(PDF_CHART_ERROR_KEY):
+        if generate_html_clicked:
+            _clear_pdf_chart_error()
+            try:
+                with st.status("Rendering HTML PDF...", expanded=False):
+                    payload = _build_report_payload(
+                        session_val=session_val,
+                        scope_label=scope_label,
+                        focus_label=focus_label,
+                        Lobby_TFL_Client_All=Lobby_TFL_Client_All,
+                        Wit_All=Wit_All,
+                        Bill_Status_All=Bill_Status_All,
+                        Bill_Sub_All=Bill_Sub_All,
+                        tfl_session_val=tfl_session_val,
+                        focus_context=focus_context,
+                    )
+                    pdf_bytes = _coerce_pdf_bytes(_build_report_html_pdf_bytes(payload))
+                    if pdf_bytes and len(pdf_bytes) > 0:
+                        st.session_state[html_pdf_key] = pdf_bytes
+                        st.session_state[html_name_key] = f"tfl-report-{_slugify(focus_label)}-html.pdf"
+                        st.success("HTML PDF generated")
+                        if save_local and payload.get("report_id"):
+                            path = save_report_pdf(payload["report_id"], pdf_bytes, payload, renderer="html")
+                            st.caption(f"Saved to {path}")
+            except Exception as e:
+                st.error(f"HTML report failed: {str(e)}")
+
+        if (pdf_key in st.session_state or html_pdf_key in st.session_state) and st.session_state.get(PDF_CHART_ERROR_KEY):
             st.warning(
-                "PDF charts could not be rendered on this host. "
-                "This usually means Plotly's Kaleido engine is missing or failed to start."
+                "PDF rendering encountered an issue (charts or HTML). "
+                "Common causes: missing Kaleido for Plotly images or WeasyPrint dependencies."
             )
             st.caption(st.session_state[PDF_CHART_ERROR_KEY])
-        
-        with c2:
+
+        dl1, dl2 = st.columns(2)
+        with dl1:
             if pdf_key in st.session_state and isinstance(st.session_state[pdf_key], bytes):
                 st.download_button(
                     "Download PDF",
@@ -6352,6 +7504,16 @@ def _render_pdf_report_section(
                     st.session_state.get(name_key, "report.pdf"),
                     "application/pdf",
                     key=f"{key_prefix}_dl",
+                    use_container_width=True,
+                )
+        with dl2:
+            if html_pdf_key in st.session_state and isinstance(st.session_state[html_pdf_key], bytes):
+                st.download_button(
+                    "Download webpage as PDF",
+                    st.session_state[html_pdf_key],
+                    st.session_state.get(html_name_key, "report-html.pdf"),
+                    "application/pdf",
+                    key=f"{key_prefix}_dl_html",
                     use_container_width=True,
                 )
 
@@ -6430,6 +7592,7 @@ def _apply_plotly_layout(
     )
     return fig
 
+@st.cache_data(show_spinner=False)
 def bill_position_from_flags(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["Session", "Bill", "LobbyShort", "Position"])
@@ -6449,6 +7612,175 @@ def bill_position_from_flags(df: pd.DataFrame) -> pd.DataFrame:
     agg["Position"] = agg.apply(pos_row, axis=1)
     return agg[["Session", "Bill", "LobbyShort", "Position"]]
 
+@st.cache_data(show_spinner=False)
+def build_bills_with_status(
+    wit: pd.DataFrame,
+    bill_status_all: pd.DataFrame,
+    fiscal_impact: pd.DataFrame,
+    session_val: str,
+) -> pd.DataFrame:
+    if wit.empty:
+        return pd.DataFrame(columns=["Session", "Bill", "Position", "Author", "Caption", "Status", "Fiscal Impact H", "Fiscal Impact S"])
+
+    bill_pos = bill_position_from_flags(wit)
+    if bill_pos.empty:
+        return pd.DataFrame(columns=["Session", "Bill", "Position", "Author", "Caption", "Status", "Fiscal Impact H", "Fiscal Impact S"])
+
+    bills = bill_pos.copy()
+    if not bill_status_all.empty and {"Session", "Bill"}.issubset(bill_status_all.columns):
+        bills = bill_pos.merge(bill_status_all, on=["Session", "Bill"], how="left")
+
+    if not fiscal_impact.empty and {"Session", "Bill", "Version", "EstimatedTwoYearNetImpactGR"}.issubset(fiscal_impact.columns):
+        fi = fiscal_impact[fiscal_impact["Session"].astype(str).str.strip() == str(session_val)].copy()
+        fi["Version"] = fi["Version"].astype(str).str.upper().str.strip()
+        fi["EstimatedTwoYearNetImpactGR"] = pd.to_numeric(fi["EstimatedTwoYearNetImpactGR"], errors="coerce").fillna(0)
+        fi_p = (
+            fi.groupby(["Session", "Bill", "Version"], as_index=False)["EstimatedTwoYearNetImpactGR"]
+            .sum()
+            .pivot(index=["Session", "Bill"], columns="Version", values="EstimatedTwoYearNetImpactGR")
+            .reset_index()
+            .rename(columns={"H": "Fiscal Impact H", "S": "Fiscal Impact S"})
+        )
+        bills = bills.merge(fi_p, on=["Session", "Bill"], how="left")
+
+    bills = ensure_cols(bills, {"Author": "", "Caption": "", "Status": "", "Fiscal Impact H": 0, "Fiscal Impact S": 0})
+    return bills
+
+@st.cache_data(show_spinner=False)
+def build_policy_mentions(bills: pd.DataFrame, bill_sub_all: pd.DataFrame, session_val: str) -> pd.DataFrame:
+    if bills.empty or bill_sub_all.empty or "Bill" not in bills.columns:
+        return pd.DataFrame(columns=["Subject", "Mentions", "Share"])
+    if "Subject" not in bill_sub_all.columns:
+        return pd.DataFrame(columns=["Subject", "Mentions", "Share"])
+
+    bill_subjects = bill_sub_all.copy()
+    if "Session" in bill_subjects.columns:
+        bill_subjects = bill_subjects[bill_subjects["Session"].astype(str).str.strip() == str(session_val)].copy()
+    bill_subjects = bill_subjects.merge(
+        bills[["Bill"]].drop_duplicates(), on=["Bill"], how="inner"
+    )
+    if bill_subjects.empty:
+        return pd.DataFrame(columns=["Subject", "Mentions", "Share"])
+
+    mentions = (
+        bill_subjects.groupby("Subject")["Bill"]
+        .nunique()
+        .reset_index(name="Mentions")
+        .sort_values("Mentions", ascending=False)
+    )
+    total_mentions = int(mentions["Mentions"].sum()) or 1
+    mentions["Share"] = (mentions["Mentions"] / total_mentions).fillna(0)
+    return mentions
+
+@st.cache_data(show_spinner=False)
+def build_lobby_subject_counts(
+    lobby_sub_all: pd.DataFrame,
+    session_val: str,
+    lobbyshort: str,
+    lobbyshort_norm: str,
+    selected_filer_ids: tuple[int, ...],
+) -> tuple[pd.DataFrame, float]:
+    if lobby_sub_all.empty:
+        return pd.DataFrame(columns=["Topic", "Mentions"]), 0.0
+
+    lobby_sub = lobby_sub_all.copy()
+    if "Session" in lobby_sub.columns:
+        lobby_sub = lobby_sub[lobby_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+    elif "session" in lobby_sub.columns:
+        lobby_sub = lobby_sub[lobby_sub["session"].astype(str).str.strip() == str(session_val)].copy()
+
+    if selected_filer_ids and "FilerID" in lobby_sub.columns:
+        fid = pd.to_numeric(lobby_sub["FilerID"], errors="coerce").fillna(-1).astype(int)
+        lobby_sub = lobby_sub[fid.isin(selected_filer_ids)].copy()
+    elif "LobbyShortNorm" in lobby_sub.columns:
+        lobby_sub = lobby_sub[lobby_sub["LobbyShortNorm"] == lobbyshort_norm].copy()
+    elif "LobbyShort" in lobby_sub.columns:
+        lobby_sub = lobby_sub[lobby_sub["LobbyShort"].astype(str).str.strip() == lobbyshort].copy()
+    else:
+        lobby_sub = lobby_sub.iloc[0:0].copy()
+
+    if lobby_sub.empty:
+        return pd.DataFrame(columns=["Topic", "Mentions"]), 0.0
+
+    lobby_sub = lobby_sub.assign(
+        Subject=lobby_sub.get("Subject Matter", "").fillna("").astype(str).str.strip(),
+        Other=lobby_sub.get("Other Subject Matter Description", "").fillna("").astype(str).str.strip(),
+        PrimaryBusiness=lobby_sub.get("Primary Business", "").fillna("").astype(str).str.strip(),
+    )
+    for col in ["Subject", "Other"]:
+        series = lobby_sub[col]
+        lobby_sub[col] = series.where(~series.str.lower().isin(["nan", "none"]), "")
+
+    subject_non_empty = lobby_sub["Subject"].ne("").mean() if len(lobby_sub) else 0
+
+    unnamed0 = lobby_sub.get("Unnamed: 0", "").fillna("").astype(str).str.strip()
+    unnamed0 = unnamed0.where(~unnamed0.str.lower().isin(["nan", "none"]), "")
+
+    topic = lobby_sub["Subject"]
+    topic = topic.where(topic != "", lobby_sub["Other"])
+    topic = topic.where(topic != "", unnamed0)
+    topic = topic.where(topic != "", "Unspecified")
+    lobby_sub["Topic"] = topic
+
+    lobby_sub_counts = (
+        lobby_sub.groupby("Topic")
+        .size()
+        .reset_index(name="Mentions")
+        .sort_values("Mentions", ascending=False)
+    )
+    return lobby_sub_counts, subject_non_empty
+
+@st.cache_data(show_spinner=False)
+def build_lobbyist_trend(
+    df: pd.DataFrame,
+    lobbyshort: str,
+    filer_ids: tuple[int, ...] | None = None,
+) -> pd.DataFrame:
+    if df.empty or not lobbyshort:
+        return pd.DataFrame(columns=["Session", "Funding", "Mid", "SessionBase", "SessionLabel"])
+    d = df.copy()
+    d = d[d.get("LobbyShort", pd.Series(dtype=object)).astype(str).str.strip() == str(lobbyshort)].copy()
+    if d.empty:
+        return pd.DataFrame(columns=["Session", "Funding", "Mid", "SessionBase", "SessionLabel"])
+    if filer_ids and "FilerID" in d.columns:
+        fid = pd.to_numeric(d["FilerID"], errors="coerce").fillna(-1).astype(int)
+        d = d[fid.isin(filer_ids)].copy()
+    d = ensure_cols(d, {"IsTFL": 0, "Low_num": 0.0, "High_num": 0.0, "Session": ""})
+    d["Session"] = d["Session"].astype(str).str.strip()
+    d["Low_num"] = pd.to_numeric(d["Low_num"], errors="coerce").fillna(0)
+    d["High_num"] = pd.to_numeric(d["High_num"], errors="coerce").fillna(0)
+    d["Mid"] = (d["Low_num"] + d["High_num"]) / 2
+    g = (
+        d.groupby(["Session", "IsTFL"], as_index=False)
+        .agg(Mid=("Mid", "sum"))
+    )
+    g["Funding"] = g["IsTFL"].map({1: "Taxpayer Funded", 0: "Private"}).fillna("Private")
+    g["SessionBase"] = _session_base_number_series(g["Session"])
+    g = g[g["SessionBase"].notna()].copy()
+    g["SessionLabel"] = g["SessionBase"].apply(_session_base_label)
+    return g[["Session", "Funding", "Mid", "SessionBase", "SessionLabel"]]
+
+@st.cache_data(show_spinner=False)
+def build_top_clients(lt: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
+    if lt.empty or "Client" not in lt.columns:
+        return pd.DataFrame(columns=["Client", "Funding", "Low", "High", "Mid"])
+    d = lt.copy()
+    d["Client"] = d["Client"].fillna("").astype(str).str.strip()
+    d = d[d["Client"] != ""].copy()
+    if d.empty:
+        return pd.DataFrame(columns=["Client", "Funding", "Low", "High", "Mid"])
+    d = ensure_cols(d, {"IsTFL": 0, "Low_num": 0.0, "High_num": 0.0})
+    d["Low_num"] = pd.to_numeric(d["Low_num"], errors="coerce").fillna(0)
+    d["High_num"] = pd.to_numeric(d["High_num"], errors="coerce").fillna(0)
+    d["Mid"] = (d["Low_num"] + d["High_num"]) / 2
+    g = (
+        d.groupby(["Client", "IsTFL"], as_index=False)
+        .agg(Low=("Low_num", "sum"), High=("High_num", "sum"), Mid=("Mid", "sum"))
+    )
+    g["Funding"] = g["IsTFL"].map({1: "Taxpayer Funded", 0: "Private"}).fillna("Private")
+    g = g.sort_values("Mid", ascending=False).head(top_n)
+    return g[["Client", "Funding", "Low", "High", "Mid"]]
+
 def _candidate_label(short_code: str, short_to_names: dict) -> str:
     names = short_to_names.get(short_code, [])
     if names:
@@ -6461,39 +7793,112 @@ def resolve_lobbyshort(user_text: str, lobby_index: pd.DataFrame, name_to_short:
     if not q:
         return "", []
 
+    scores = {}
     if q in known_shorts:
-        return q, []
-
-    norm_variants = norm_person_variants(q)
-    for n in norm_variants:
-        if n in name_to_short:
-            return str(name_to_short[n]), []
+        scores[q] = 100
 
     q_norm = norm_name(q)
-    if not q_norm or lobby_index.empty:
-        return "", []
+    norm_variants = {n for n in norm_person_variants_with_nicknames(q) if n}
+    if q_norm:
+        norm_variants.add(q_norm)
+    for n in norm_variants:
+        if n in name_to_short:
+            short = str(name_to_short[n])
+            if short and short.lower() not in {"nan", "none"}:
+                scores[short] = max(scores.get(short, 0), 95)
 
-    scores = {}
     d = lobby_index
+    if not norm_variants or d.empty:
+        if not scores:
+            return "", []
 
-    # Prefix matches on LobbyShort and Lobby Name
-    prefix_mask = d["LobbyShortNorm"].str.startswith(q_norm) | d["LobbyNameNorm"].str.startswith(q_norm)
-    for short in d.loc[prefix_mask, "LobbyShort"].dropna().unique().tolist():
-        scores[short] = max(scores.get(short, 0), 90)
+    info = parse_person_name(q)
+    q_first = info.get("first_norm", "")
+    q_last = info.get("last_norm", "")
+    q_initial = info.get("first_initial", "")
+    q_first_variants = _nickname_variants(q_first) if q_first else set()
 
-    # Contains matches on LobbyShort and Lobby Name
-    contains_mask = d["LobbyShortNorm"].str.contains(q_norm, na=False) | d["LobbyNameNorm"].str.contains(q_norm, na=False)
-    for short in d.loc[contains_mask, "LobbyShort"].dropna().unique().tolist():
-        scores[short] = max(scores.get(short, 0), 70)
+    if q_norm and "LobbyShortNorm" in d.columns:
+        exact_short = d["LobbyShortNorm"] == q_norm
+        for short in d.loc[exact_short, "LobbyShort"].dropna().unique().tolist():
+            scores[short] = max(scores.get(short, 0), 95)
+
+    # Prefix matches on LobbyShort and Lobby Name keys
+    if not d.empty and norm_variants:
+        prefix_cols = [
+            c for c in [
+                "LobbyShortNorm",
+                "LobbyNameNorm",
+                "LobbyNameCleanNorm",
+                "LastFirstNorm",
+                "FirstLastNorm",
+                "LastFirstInitialNorm",
+            ]
+            if c in d.columns
+        ]
+        if prefix_cols:
+            prefix_mask = pd.Series(False, index=d.index)
+            for n in norm_variants:
+                for col in prefix_cols:
+                    prefix_mask = prefix_mask | d[col].str.startswith(n, na=False)
+            for short in d.loc[prefix_mask, "LobbyShort"].dropna().unique().tolist():
+                scores[short] = max(scores.get(short, 0), 90)
+
+    # Contains matches on LobbyShort and Lobby Name keys
+    if not d.empty and norm_variants:
+        contains_cols = [
+            c for c in [
+                "LobbyShortNorm",
+                "LobbyNameNorm",
+                "LobbyNameCleanNorm",
+                "LastFirstNorm",
+                "FirstLastNorm",
+            ]
+            if c in d.columns
+        ]
+        if contains_cols:
+            contains_mask = pd.Series(False, index=d.index)
+            for n in norm_variants:
+                for col in contains_cols:
+                    contains_mask = contains_mask | d[col].str.contains(n, na=False)
+            for short in d.loc[contains_mask, "LobbyShort"].dropna().unique().tolist():
+                scores[short] = max(scores.get(short, 0), 70)
+
+    # First/last-name alignment
+    if q_last and "LastNorm" in d.columns:
+        last_mask = d["LastNorm"] == q_last
+        for short in d.loc[last_mask, "LobbyShort"].dropna().unique().tolist():
+            scores[short] = max(scores.get(short, 0), 75)
+        if q_first and "FirstNorm" in d.columns:
+            exact_mask = last_mask & (d["FirstNorm"] == q_first)
+            for short in d.loc[exact_mask, "LobbyShort"].dropna().unique().tolist():
+                scores[short] = max(scores.get(short, 0), 96)
+            if q_first_variants:
+                nick_mask = last_mask & d["FirstNorm"].isin(q_first_variants)
+                for short in d.loc[nick_mask, "LobbyShort"].dropna().unique().tolist():
+                    scores[short] = max(scores.get(short, 0), 94)
+            prefix_mask = last_mask & d["FirstNorm"].str.startswith(q_first, na=False)
+            for short in d.loc[prefix_mask, "LobbyShort"].dropna().unique().tolist():
+                scores[short] = max(scores.get(short, 0), 90)
+        if q_initial and "FirstInitial" in d.columns:
+            init_mask = last_mask & (d["FirstInitial"] == q_initial)
+            for short in d.loc[init_mask, "LobbyShort"].dropna().unique().tolist():
+                scores[short] = max(scores.get(short, 0), 86)
 
     # Fuzzy matches against normalized names for minor typos
-    if len(q_norm) >= 3:
-        name_norms = d["LobbyNameNorm"].dropna().unique().tolist()
-        close = difflib.get_close_matches(q_norm, name_norms, n=5, cutoff=0.78)
-        if close:
-            close_set = set(close)
-            for short in d.loc[d["LobbyNameNorm"].isin(close_set), "LobbyShort"].dropna().unique().tolist():
-                scores[short] = max(scores.get(short, 0), 60)
+    if not d.empty and norm_variants:
+        fuzzy_seed = max(norm_variants, key=len, default="")
+        if len(fuzzy_seed) >= 3:
+            name_norms = d.get("LobbyNameCleanNorm", d.get("LobbyNameNorm", pd.Series(dtype=object))).dropna().unique().tolist()
+            close = difflib.get_close_matches(fuzzy_seed, name_norms, n=5, cutoff=0.78)
+            if close:
+                close_set = set(close)
+                if "LobbyNameCleanNorm" in d.columns:
+                    match_mask = d["LobbyNameCleanNorm"].isin(close_set)
+                else:
+                    match_mask = d["LobbyNameNorm"].isin(close_set)
+                for short in d.loc[match_mask, "LobbyShort"].dropna().unique().tolist():
+                    scores[short] = max(scores.get(short, 0), 60)
 
     if not scores:
         return "", []
@@ -6502,10 +7907,10 @@ def resolve_lobbyshort(user_text: str, lobby_index: pd.DataFrame, name_to_short:
     top_score = ranked[0][1]
     top = [s for s, sc in ranked if sc == top_score]
 
-    if len(top) == 1 and top_score >= 90:
-        return top[0], []
-
     suggestions = [_candidate_label(s, short_to_names) for s, _ in ranked][:10]
+    if len(top) == 1 and top_score >= 90:
+        return top[0], suggestions
+
     return "", suggestions
 
 def resolve_lobbyshort_from_wit(user_text: str, wit_all: pd.DataFrame, session_val: str | None) -> tuple[str, list[str]]:
@@ -6523,19 +7928,39 @@ def resolve_lobbyshort_from_wit(user_text: str, wit_all: pd.DataFrame, session_v
     if d.empty:
         return "", []
 
-    d["LobbyShortNorm"] = norm_name_series(d["LobbyShort"])
+    if "LobbyShortNorm" not in d.columns:
+        d["LobbyShortNorm"] = norm_name_series(d["LobbyShort"])
+    q_norms = {n for n in norm_person_variants_with_nicknames(q) if n}
     q_norm = norm_name(q)
-    if not q_norm:
+    if q_norm:
+        q_norms.add(q_norm)
+    if not q_norms:
         return "", []
 
     scores = {}
-    prefix_mask = d["LobbyShortNorm"].str.startswith(q_norm)
+    prefix_mask = pd.Series(False, index=d.index)
+    for n in q_norms:
+        prefix_mask = prefix_mask | d["LobbyShortNorm"].str.startswith(n, na=False)
     for short in d.loc[prefix_mask, "LobbyShort"].dropna().unique().tolist():
         scores[short] = max(scores.get(short, 0), 90)
 
-    contains_mask = d["LobbyShortNorm"].str.contains(q_norm, na=False)
+    contains_mask = pd.Series(False, index=d.index)
+    for n in q_norms:
+        contains_mask = contains_mask | d["LobbyShortNorm"].str.contains(n, na=False)
     for short in d.loc[contains_mask, "LobbyShort"].dropna().unique().tolist():
         scores[short] = max(scores.get(short, 0), 70)
+
+    if "NameNorm" in d.columns or "name" in d.columns:
+        name_norm = d.get("NameNorm", d["name"].fillna("").astype(str).map(norm_name))
+        name_prefix = pd.Series(False, index=d.index)
+        name_contains = pd.Series(False, index=d.index)
+        for n in q_norms:
+            name_prefix = name_prefix | name_norm.str.startswith(n, na=False)
+            name_contains = name_contains | name_norm.str.contains(n, na=False)
+        for short in d.loc[name_prefix, "LobbyShort"].dropna().unique().tolist():
+            scores[short] = max(scores.get(short, 0), 80)
+        for short in d.loc[name_contains, "LobbyShort"].dropna().unique().tolist():
+            scores[short] = max(scores.get(short, 0), 60)
 
     if not scores:
         return "", []
@@ -6549,6 +7974,124 @@ def resolve_lobbyshort_from_wit(user_text: str, wit_all: pd.DataFrame, session_v
 
     suggestions = [s for s, _ in ranked][:10]
     return "", suggestions
+
+def format_lobbyist_label(name: str, lobbyshort: str, filer_id) -> str:
+    base = str(name).strip() if name else str(lobbyshort).strip()
+    short_val = str(lobbyshort).strip()
+    details = []
+    if short_val and name:
+        details.append(f"Last name + first initial: {short_val}")
+    if pd.notna(filer_id):
+        try:
+            fid_val = int(filer_id)
+        except Exception:
+            fid_val = str(filer_id)
+        details.append(f"FilerID {fid_val}")
+    if details:
+        return f"{base} ({' | '.join(details)})" if base else " | ".join(details)
+    return base
+
+def lobby_candidate_key(cand: dict) -> str:
+    short = str(cand.get("lobbyshort", "") or "").strip()
+    fid = cand.get("filerid", None)
+    name = str(cand.get("name", "") or "").strip()
+    try:
+        if pd.notna(fid):
+            return f"fid:{int(fid)}"
+    except Exception:
+        pass
+    if short and name:
+        return f"short:{short}|name:{norm_name(name)}"
+    if short:
+        return f"short:{short}"
+    if name:
+        return f"name:{norm_name(name)}"
+    return "unknown"
+
+def lobbyist_autocomplete_candidates(query: str, lobbyist_index: pd.DataFrame, limit: int = 12) -> list[dict]:
+    q = (query or "").strip()
+    if not q or lobbyist_index.empty:
+        return []
+
+    q_norm = norm_name(q)
+    q_variants = {n for n in norm_person_variants_with_nicknames(q) if n}
+    if q_norm:
+        q_variants.add(q_norm)
+
+    info = parse_person_name(q)
+    q_first = info.get("first_norm", "")
+    q_last = info.get("last_norm", "")
+    q_initial = info.get("first_initial", "")
+    q_first_variants = _nickname_variants(q_first) if q_first else set()
+
+    d = lobbyist_index.copy()
+    d["Score"] = 0
+
+    def apply_score(mask: pd.Series, value: int) -> None:
+        if mask.any():
+            d.loc[mask, "Score"] = d.loc[mask, "Score"].where(d.loc[mask, "Score"] > value, value)
+
+    if q_norm:
+        apply_score(d["LobbyNameNorm"] == q_norm, 100)
+        if "LobbyNameCleanNorm" in d.columns:
+            apply_score(d["LobbyNameCleanNorm"] == q_norm, 100)
+        apply_score(d["LobbyShortNorm"] == q_norm, 95)
+
+    for n in q_variants:
+        if not n:
+            continue
+        if "LobbyNameCleanNorm" in d.columns:
+            apply_score(d["LobbyNameCleanNorm"] == n, 98)
+            apply_score(d["LobbyNameCleanNorm"].str.startswith(n, na=False), 94)
+            if len(n) >= 3:
+                apply_score(d["LobbyNameCleanNorm"].str.contains(n, na=False), 80)
+        apply_score(d["LobbyNameNorm"] == n, 97)
+        apply_score(d["LobbyNameNorm"].str.startswith(n, na=False), 93)
+        if len(n) >= 3:
+            apply_score(d["LobbyNameNorm"].str.contains(n, na=False), 78)
+            apply_score(d["LobbyShortNorm"].str.startswith(n, na=False), 85)
+            apply_score(d["LobbyShortNorm"].str.contains(n, na=False), 65)
+        if "LastFirstNorm" in d.columns:
+            apply_score(d["LastFirstNorm"] == n, 98)
+            apply_score(d["FirstLastNorm"] == n, 98)
+        if "LastFirstInitialNorm" in d.columns:
+            apply_score(d["LastFirstInitialNorm"] == n, 88)
+
+    if q_last:
+        apply_score(d["LastNorm"] == q_last, 75)
+        if q_first:
+            apply_score((d["LastNorm"] == q_last) & (d["FirstNorm"] == q_first), 97)
+            if q_first_variants:
+                apply_score((d["LastNorm"] == q_last) & (d["FirstNorm"].isin(q_first_variants)), 95)
+            apply_score((d["LastNorm"] == q_last) & (d["FirstNorm"].str.startswith(q_first, na=False)), 90)
+        if q_initial:
+            apply_score((d["LastNorm"] == q_last) & (d["FirstInitial"] == q_initial), 86)
+
+    if q_norm and len(q_norm) >= 3:
+        name_norms = d.get("LobbyNameCleanNorm", d.get("LobbyNameNorm", pd.Series(dtype=object))).dropna().unique().tolist()
+        close = difflib.get_close_matches(q_norm, name_norms, n=8, cutoff=0.78)
+        if close:
+            if "LobbyNameCleanNorm" in d.columns:
+                apply_score(d["LobbyNameCleanNorm"].isin(close), 70)
+            else:
+                apply_score(d["LobbyNameNorm"].isin(close), 70)
+
+    d = d[d["Score"] > 0].copy()
+    if d.empty:
+        return []
+
+    d = d.sort_values(["Score", "Lobby Name", "LobbyShort"], ascending=[False, True, True])
+    out = []
+    for _, row in d.head(limit).iterrows():
+        label = format_lobbyist_label(row.get("Lobby Name", ""), row.get("LobbyShort", ""), row.get("FilerID", None))
+        out.append({
+            "label": label,
+            "lobbyshort": row.get("LobbyShort", ""),
+            "filerid": row.get("FilerID", None),
+            "name": row.get("Lobby Name", ""),
+            "score": int(row.get("Score", 0)),
+        })
+    return out
 
 @st.cache_data(show_spinner=False)
 def build_client_index(df: pd.DataFrame) -> pd.DataFrame:
@@ -6680,7 +8223,7 @@ def resolve_member_name(user_text: str, member_index: pd.DataFrame) -> tuple[str
     return "", suggestions
 
 def parse_member_name(member_name: str) -> dict:
-    t = (member_name or "").strip()
+    t = clean_person_name(member_name)
     if not t:
         return {"full_norm": "", "last_norm": "", "first_norm": "", "first_initial": "", "initial_key": ""}
 
@@ -6705,6 +8248,56 @@ def parse_member_name(member_name: str) -> dict:
         "first_initial": first_initial,
         "initial_key": initial_key,
     }
+
+def parse_person_name(person_name: str) -> dict:
+    return parse_member_name(person_name)
+
+@st.cache_data(show_spinner=False)
+def build_lobbyist_index(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or "LobbyShort" not in df.columns or "Lobby Name" not in df.columns:
+        return pd.DataFrame(columns=[
+            "LobbyShort",
+            "LobbyShortNorm",
+            "Lobby Name",
+            "LobbyNameNorm",
+            "LobbyNameClean",
+            "LobbyNameCleanNorm",
+            "FirstNorm",
+            "LastNorm",
+            "FirstInitial",
+            "FirstLastNorm",
+            "LastFirstNorm",
+            "LastFirstInitialNorm",
+            "FilerID",
+        ])
+
+    base = df[["LobbyShort", "Lobby Name", "FilerID"]].dropna(subset=["LobbyShort", "Lobby Name"]).copy()
+    base["LobbyShort"] = base["LobbyShort"].astype(str).str.strip()
+    base["Lobby Name"] = base["Lobby Name"].astype(str).str.strip()
+    base = base[(base["LobbyShort"] != "") & (base["Lobby Name"] != "")]
+    base = base.drop_duplicates()
+    base["FilerID"] = pd.to_numeric(base["FilerID"], errors="coerce")
+    base["LobbyShortNorm"] = base["LobbyShort"].map(norm_name)
+    base["LobbyNameNorm"] = base["Lobby Name"].map(norm_name)
+    base["LobbyNameClean"] = clean_filer_name_series(base["Lobby Name"])
+    base["LobbyNameClean"] = base["LobbyNameClean"].where(base["LobbyNameClean"] != "", base["Lobby Name"])
+    base["LobbyNameCleanNorm"] = norm_name_series(base["LobbyNameClean"])
+
+    parsed = base["LobbyNameClean"].map(parse_person_name)
+    base["FirstNorm"] = parsed.map(lambda d: d.get("first_norm", "")).fillna("")
+    base["LastNorm"] = parsed.map(lambda d: d.get("last_norm", "")).fillna("")
+    base["FirstInitial"] = parsed.map(lambda d: d.get("first_initial", "")).fillna("")
+    base["FirstLastNorm"] = (base["FirstNorm"] + base["LastNorm"]).where(
+        (base["FirstNorm"] != "") & (base["LastNorm"] != ""), ""
+    )
+    base["LastFirstNorm"] = (base["LastNorm"] + base["FirstNorm"]).where(
+        (base["FirstNorm"] != "") & (base["LastNorm"] != ""), ""
+    )
+    base["LastFirstInitialNorm"] = (base["LastNorm"] + base["FirstInitial"]).where(
+        (base["LastNorm"] != "") & (base["FirstInitial"] != ""), ""
+    )
+
+    return base
 
 def member_match_mask(df: pd.DataFrame, member_info: dict) -> pd.Series:
     if df.empty:
@@ -6975,7 +8568,7 @@ def render_bill_search_results(bill_query: str, session_val: str | None, tfl_ses
     if d.empty:
         if total_rows > 0:
             st.info(
-                f"Found {total_rows} witness-list rows for {q}, but none matched a lobbyist in Lobby_TFL_Client_All "
+                f"Found {total_rows} witness-list rows for {q}, but none matched a lobbyist in Texas Ethics Commission filings "
                 "for the selected session."
             )
         else:
@@ -7018,7 +8611,7 @@ def render_bill_search_results(bill_query: str, session_val: str | None, tfl_ses
 # =========================================================
 # FAST MONEY PARSING (vectorized) for Lobby_TFL_Client_All
 # =========================================================
-_MONEY_RANGE = re.compile(r"(-?\d[\d,]*\.?\d*)\s*(?:–|-|to)\s*(-?\d[\d,]*\.?\d*)", re.IGNORECASE)
+_MONEY_RANGE = re.compile(r"(-?\d[\d,]*\.?\d*)\s*(?:-|to)\s*(-?\d[\d,]*\.?\d*)", re.IGNORECASE)
 
 def _to_num_series(s: pd.Series) -> pd.Series:
     """Vectorized $/comma/paren cleanup -> float; blanks->0"""
@@ -7045,7 +8638,11 @@ def add_low_high_numeric(df: pd.DataFrame) -> pd.DataFrame:
     high = _to_num_series(d["High"])
 
     amt = d["Amount"].fillna("").astype(str).str.strip()
-    amt_clean = amt.str.replace("$", "", regex=False).str.replace(",", "", regex=False)
+    amt_clean = (
+        amt.str.replace("$", "", regex=False)
+        .str.replace(",", "", regex=False)
+        .str.replace("\u2013", "-", regex=False)
+    )
 
     # range capture
     rng = amt_clean.str.extract(_MONEY_RANGE)
@@ -7337,51 +8934,75 @@ def load_workbook(path: str) -> dict:
         data["Lobby_TFL_Client_All"] = add_low_high_numeric(data["Lobby_TFL_Client_All"])
 
     # Build mapping from Lobby Name -> LobbyShort (across all sessions)
-    lt = data["Lobby_TFL_Client_All"].dropna(subset=["Lobby Name", "LobbyShort"]).copy()
+    lobby_name_rows = []
+
+    def _append_lobby_names(df: pd.DataFrame, name_col: str, short_col: str, fid_col: str) -> None:
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            return
+        if name_col not in df.columns or short_col not in df.columns:
+            return
+        tmp = df[[name_col, short_col]].copy()
+        tmp = tmp.rename(columns={name_col: "Lobby Name", short_col: "LobbyShort"})
+        tmp["FilerID"] = df[fid_col] if fid_col in df.columns else pd.NA
+        lobby_name_rows.append(tmp)
+
+    _append_lobby_names(data.get("Lobby_TFL_Client_All"), "Lobby Name", "LobbyShort", "FilerID")
+    _append_lobby_names(data.get("Lobby_Sub_All"), "Lobby Name", "LobbyShort", "FilerID")
+    _append_lobby_names(data.get("Lobbyist_Pol_Funds"), "Lobbyist", "LobbyShort", "FilerID")
+
+    if lobby_name_rows:
+        lobby_names = pd.concat(lobby_name_rows, ignore_index=True)
+        lobby_names["LobbyShort"] = lobby_names["LobbyShort"].astype(str).str.strip()
+        lobby_names["Lobby Name"] = lobby_names["Lobby Name"].astype(str).str.strip()
+        lobby_names = lobby_names[(lobby_names["LobbyShort"] != "") & (lobby_names["Lobby Name"] != "")]
+        lobby_names = lobby_names.drop_duplicates()
+    else:
+        lobby_names = pd.DataFrame(columns=["LobbyShort", "Lobby Name", "FilerID"])
+
+    lobbyist_index = build_lobbyist_index(lobby_names)
+    lobby_index = lobbyist_index.copy()
     name_to_short = {}
     short_to_names = {}
-    lobby_index = pd.DataFrame(columns=["LobbyShort", "Lobby Name", "LobbyShortNorm", "LobbyNameNorm"])
     known_shorts = set()
     initial_to_short = {}
-    filerid_to_short = {}
-    if not lt.empty:
-        lt["LobbyNameNorm"] = lt["Lobby Name"].map(norm_name)
 
-        counts = (
-            lt.groupby(["LobbyNameNorm", "LobbyShort"])
-              .size()
-              .reset_index(name="n")
-              .sort_values(["LobbyNameNorm", "n"], ascending=[True, False])
-              .drop_duplicates("LobbyNameNorm")
+    if not lobbyist_index.empty:
+        known_shorts = set(
+            lobbyist_index["LobbyShort"]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .unique()
+            .tolist()
         )
-        name_to_short = dict(zip(counts["LobbyNameNorm"], counts["LobbyShort"]))
 
-        tmp = lt[["LobbyShort", "Lobby Name"]].dropna().copy()
+        tmp = lobbyist_index[["LobbyShort", "Lobby Name"]].dropna().copy()
         tmp["LobbyShort"] = tmp["LobbyShort"].astype(str)
         short_to_names = (
             tmp.groupby("LobbyShort")["Lobby Name"]
-               .agg(lambda s: sorted(set(map(str, s)))[:6])
-               .to_dict()
+            .agg(lambda s: sorted(set(map(str, s)))[:6])
+            .to_dict()
         )
 
-        base = lt[["LobbyShort", "Lobby Name"]].dropna().copy()
-        base["LobbyShort"] = base["LobbyShort"].astype(str).str.strip()
-        base["Lobby Name"] = base["Lobby Name"].astype(str).str.strip()
-        base = base.drop_duplicates()
-        base["LobbyShortNorm"] = base["LobbyShort"].map(norm_name)
-        base["LobbyNameNorm"] = base["Lobby Name"].map(norm_name)
-        lobby_index = base
-        known_shorts = set(base["LobbyShort"].dropna().astype(str).str.strip().unique().tolist())
-
-        # Map FilerID -> LobbyShort (used for activity matching)
-        filerid_to_short = _build_filerid_map([
-            (lt, "FilerID", "LobbyShort"),
-            (data.get("Lobby_Sub_All"), "FilerID", "LobbyShort"),
-            (data.get("Lobbyist_Pol_Funds"), "FilerID", "LobbyShort"),
-        ])
+        key_frames = []
+        for col in ["LobbyNameNorm", "LobbyNameCleanNorm", "LastFirstNorm", "FirstLastNorm", "LastFirstInitialNorm"]:
+            if col in lobbyist_index.columns:
+                key_frames.append(lobbyist_index[[col, "LobbyShort"]].rename(columns={col: "Key"}))
+        if key_frames:
+            all_keys = pd.concat(key_frames, ignore_index=True)
+            all_keys["Key"] = all_keys["Key"].fillna("").astype(str).str.strip()
+            all_keys = all_keys[all_keys["Key"] != ""]
+            counts = (
+                all_keys.groupby(["Key", "LobbyShort"])
+                .size()
+                .reset_index(name="n")
+                .sort_values(["Key", "n"], ascending=[True, False])
+                .drop_duplicates("Key")
+            )
+            name_to_short = dict(zip(counts["Key"], counts["LobbyShort"]))
 
         # Map last name + first initial to LobbyShort (helps when names don't match exactly)
-        tmp_short = lt[["LobbyShort"]].dropna().copy()
+        tmp_short = lobbyist_index[["LobbyShort"]].dropna().copy()
         tmp_short["InitialKey"] = tmp_short["LobbyShort"].map(_last_first_initial_key)
         tmp_short = tmp_short[tmp_short["InitialKey"].astype(str).str.strip() != ""]
         if not tmp_short.empty:
@@ -7394,15 +9015,27 @@ def load_workbook(path: str) -> dict:
             )
             initial_to_short = dict(zip(init_counts["InitialKey"], init_counts["LobbyShort"]))
 
+    # Map FilerID -> LobbyShort (used for activity matching)
+    filerid_to_short = _build_filerid_map([
+        (data.get("Lobby_TFL_Client_All"), "FilerID", "LobbyShort"),
+        (data.get("Lobby_Sub_All"), "FilerID", "LobbyShort"),
+        (data.get("Lobbyist_Pol_Funds"), "FilerID", "LobbyShort"),
+    ])
+
     # Map witness list names/orgs to LobbyShort where possible
     wit = data.get("Wit_All")
     if isinstance(wit, pd.DataFrame) and not wit.empty:
         wit = wit.copy()
         if "LobbyShort" not in wit.columns:
             wit["LobbyShort"] = ""
+        name_series = wit.get("name", pd.Series([""] * len(wit))).fillna("").astype(str)
+        if "name" in wit.columns:
+            wit["NameNorm"] = norm_name_series(name_series)
+            wit["NameLastNorm"] = last_name_norm_series(name_series)
+            wit["NameFirstNorm"] = first_name_norm_series(name_series)
+            wit["NameFirstInitialNorm"] = wit["NameFirstNorm"].str.slice(0, 1)
         if name_to_short:
-            name_series = wit.get("name", pd.Series([""] * len(wit))).fillna("").astype(str)
-            name_norm = name_series.map(norm_name)
+            name_norm = wit.get("NameNorm", name_series.map(norm_name))
             mapped = name_norm.map(name_to_short)
             if initial_to_short:
                 init_key = name_series.map(_last_first_initial_key)
@@ -7410,7 +9043,7 @@ def load_workbook(path: str) -> dict:
                 mapped = mapped.where(mapped.notna() & mapped.astype(str).str.strip().ne(""), mapped_init)
             if "org" in wit.columns:
                 org_series = wit.get("org", pd.Series([""] * len(wit))).fillna("").astype(str)
-                org_norm = org_series.map(norm_name)
+                org_norm = norm_name_series(org_series)
                 mapped = mapped.where(mapped.notna() & mapped.astype(str).str.strip().ne(""), org_norm.map(name_to_short))
             blank = wit["LobbyShort"].isna() | (wit["LobbyShort"].astype(str).str.strip() == "")
             wit.loc[blank, "LobbyShort"] = mapped[blank].fillna("")
@@ -7425,6 +9058,7 @@ def load_workbook(path: str) -> dict:
     data["name_to_short"] = name_to_short
     data["short_to_names"] = short_to_names
     data["lobby_index"] = lobby_index
+    data["lobbyist_index"] = lobbyist_index
     data["known_shorts"] = known_shorts
     data["filerid_to_short"] = filerid_to_short
 
@@ -7438,6 +9072,29 @@ def load_workbook(path: str) -> dict:
             ls.loc[missing, "LobbyShort"] = fid.map(filerid_to_short)
             data["Lobby_Sub_All"] = ls
     return data
+
+DATA_SOURCE_LABELS = {
+    "Wit_All": "Texas Legislature Online (Witness lists)",
+    "Bill_Status_All": "Texas Legislature Online (Bill status)",
+    "Fiscal_Impact": "Texas Legislature Online (Fiscal notes)",
+    "Bill_Sub_All": "Texas Legislature Online (Bill subjects)",
+    "Lobby_Sub_All": "Texas Ethics Commission (Subject matter filings)",
+    "Lobby_TFL_Client_All": "Texas Ethics Commission (Lobbyist filings and compensation)",
+    "Staff_All": "House Research Organization (Legislative staff lists)",
+    "LaFood": "Texas Ethics Commission (Activity: Food)",
+    "LaEnt": "Texas Ethics Commission (Activity: Entertainment)",
+    "LaTran": "Texas Ethics Commission (Activity: Travel)",
+    "LaGift": "Texas Ethics Commission (Activity: Gifts)",
+    "LaEvnt": "Texas Ethics Commission (Activity: Events)",
+    "LaAwrd": "Texas Ethics Commission (Activity: Awards)",
+    "LaCvr": "Texas Ethics Commission (Disclosure: Coverage)",
+    "LaDock": "Texas Ethics Commission (Disclosure: Docket)",
+    "LaI4E": "Texas Ethics Commission (Disclosure: On Behalf)",
+    "LaSub": "Texas Ethics Commission (Disclosure: Subject Matter)",
+}
+
+def _source_label(key: str) -> str:
+    return DATA_SOURCE_LABELS.get(key, key)
 
 def data_health_table(data: dict) -> pd.DataFrame:
     order = [
@@ -7462,27 +9119,28 @@ def data_health_table(data: dict) -> pd.DataFrame:
     rows = []
     for key in order:
         df = data.get(key)
+        label = _source_label(key)
         if isinstance(df, pd.DataFrame):
             sess_count = int(df["Session"].dropna().astype(str).nunique()) if "Session" in df.columns else 0
             lobby_count = int(df["LobbyShort"].dropna().astype(str).nunique()) if "LobbyShort" in df.columns else 0
             rows.append({
-                "Table": key,
+                "Source": label,
                 "Rows": int(len(df)),
                 "Cols": int(len(df.columns)),
                 "Has Session": "Yes" if "Session" in df.columns else "No",
                 "Empty": "Yes" if df.empty else "No",
                 "Sessions": sess_count,
-                "LobbyShorts": lobby_count,
+                "Last name + first initial": lobby_count,
             })
         else:
             rows.append({
-                "Table": key,
+                "Source": label,
                 "Rows": 0,
                 "Cols": 0,
                 "Has Session": "No",
                 "Empty": "Yes",
                 "Sessions": 0,
-                "LobbyShorts": 0,
+                "Last name + first initial": 0,
             })
     return pd.DataFrame(rows)
 
@@ -7492,9 +9150,11 @@ def data_health_table(data: dict) -> pd.DataFrame:
 @st.cache_data(show_spinner=False)
 def build_activities(df_food, df_ent, df_tran, df_gift, df_evnt, df_awrd,
                      lobbyshort: str, session: str | None, name_to_short: dict,
-                     lobbyist_norms_tuple: tuple[str, ...], filerid_to_short: dict | None = None) -> pd.DataFrame:
+                     lobbyist_norms_tuple: tuple[str, ...], filerid_to_short: dict | None = None,
+                     filer_ids: tuple[int, ...] | None = None) -> pd.DataFrame:
 
     lobbyist_norms = set(lobbyist_norms_tuple)
+    filer_ids_set = set(filer_ids) if filer_ids else None
 
     def keep(df: pd.DataFrame) -> pd.DataFrame:
         return filter_filer_rows(
@@ -7504,6 +9164,7 @@ def build_activities(df_food, df_ent, df_tran, df_gift, df_evnt, df_awrd,
             name_to_short=name_to_short,
             lobbyist_norms=lobbyist_norms,
             filerid_to_short=filerid_to_short,
+            filer_ids=filer_ids_set,
             loose=True,
         )
 
@@ -7540,7 +9201,7 @@ def build_activities(df_food, df_ent, df_tran, df_gift, df_evnt, df_awrd,
         desc = d.get("travelPurpose", pd.Series([""] * len(d))).fillna("").astype(str)
         fallback = d.get("transportationTypeDescr", pd.Series([""] * len(d))).fillna("").astype(str)
         desc = desc.where(desc.str.len() > 0, fallback)
-        route = (d.get("departureCity", "").fillna("").astype(str) + " → " + d.get("arrivalCity", "").fillna("").astype(str)).str.strip()
+        route = (d.get("departureCity", "").fillna("").astype(str) + " -> " + d.get("arrivalCity", "").fillna("").astype(str)).str.strip()
         desc2 = (desc + " | " + route).str.replace(r"\s+\|\s+$", "", regex=True)
         date = d.get("departureDt", d.get("checkInDt", d.get("periodStartDt", ""))).fillna("").astype(str)
         out.append(pd.DataFrame({
@@ -7754,11 +9415,13 @@ def build_disclosures(
     name_to_short: dict,
     lobbyist_norms_tuple: tuple[str, ...],
     filerid_to_short: dict | None = None,
+    filer_ids: tuple[int, ...] | None = None,
 ) -> pd.DataFrame:
     lobbyist_norms = set(lobbyist_norms_tuple)
+    filer_ids_set = set(filer_ids) if filer_ids else None
     out = []
 
-    d = filter_filer_rows(df_cvr, session, lobbyshort, name_to_short, lobbyist_norms, filerid_to_short)
+    d = filter_filer_rows(df_cvr, session, lobbyshort, name_to_short, lobbyist_norms, filerid_to_short, filer_ids_set)
     if not d.empty:
         date = d.get("filedDt", d.get("periodStartDt", "")).fillna("").astype(str)
         desc = d.get("subjectMatterMemo", "").fillna("").astype(str)
@@ -7773,7 +9436,7 @@ def build_disclosures(
             "Entity": d.get("filerNameOrganization", "").fillna("").astype(str),
         }))
 
-    d = filter_filer_rows(df_dock, session, lobbyshort, name_to_short, lobbyist_norms, filerid_to_short)
+    d = filter_filer_rows(df_dock, session, lobbyshort, name_to_short, lobbyist_norms, filerid_to_short, filer_ids_set)
     if not d.empty:
         date = d.get("receivedDt", d.get("periodStartDt", "")).fillna("").astype(str)
         out.append(pd.DataFrame({
@@ -7785,14 +9448,14 @@ def build_disclosures(
             "Entity": d.get("agencyName", "").fillna("").astype(str),
         }))
 
-    d = filter_filer_rows(df_i4e, session, lobbyshort, name_to_short, lobbyist_norms, filerid_to_short)
+    d = filter_filer_rows(df_i4e, session, lobbyshort, name_to_short, lobbyist_norms, filerid_to_short, filer_ids_set)
     if not d.empty:
         date = d.get("periodStartDt", "").fillna("").astype(str)
         entity = (
             d.get("onbehalfName", "").fillna("").astype(str)
-            + " — "
+            + " -- "
             + d.get("onbehalfMailingCity", "").fillna("").astype(str)
-        ).str.replace(r"\s+—\s+$", "", regex=True)
+        ).str.replace(r"\s+--\s+$", "", regex=True)
         out.append(pd.DataFrame({
             "Session": d.get("Session", ""),
             "Date": date,
@@ -7802,7 +9465,7 @@ def build_disclosures(
             "Entity": entity,
         }))
 
-    d = filter_filer_rows(df_sub, session, lobbyshort, name_to_short, lobbyist_norms, filerid_to_short)
+    d = filter_filer_rows(df_sub, session, lobbyshort, name_to_short, lobbyist_norms, filerid_to_short, filer_ids_set)
     if not d.empty:
         date = d.get("periodStartDt", "").fillna("").astype(str)
         desc = d.get("subjectMatterCodeValue", "").fillna("").astype(str)
@@ -7938,7 +9601,94 @@ def build_disclosures_multi(
     ).drop(columns=["_date_sort"])
     return result
 
-if nav_search_submitted:
+nav_suggestions = []
+nav_suggestion_map = {}
+if nav_query and len(nav_query) >= 2 and not is_bill_query(nav_query):
+    if PATH and (_is_url(PATH) or os.path.exists(PATH)):
+        data = load_workbook(PATH)
+        client_index = build_client_index(data.get("Lobby_TFL_Client_All", pd.DataFrame()))
+        author_bills_all = build_author_bill_index(data.get("Bill_Status_All", pd.DataFrame()))
+        member_index = build_member_index(author_bills_all)
+
+        _, client_suggestions = resolve_client_name(nav_query, client_index)
+        _, member_suggestions = resolve_member_name(nav_query, member_index)
+        lobby_candidates = lobbyist_autocomplete_candidates(nav_query, data.get("lobbyist_index", pd.DataFrame()))
+        lobby_suggestions = []
+        if not lobby_candidates:
+            _, lobby_suggestions = resolve_lobbyshort(
+                nav_query,
+                data.get("lobby_index", pd.DataFrame()),
+                data.get("name_to_short", {}),
+                data.get("known_shorts", set()),
+                data.get("short_to_names", {}),
+            )
+
+        for s in client_suggestions:
+            label = f"Client: {s}"
+            nav_suggestions.append(label)
+            nav_suggestion_map[label] = ("client", s)
+        for s in member_suggestions:
+            label = f"Legislator: {s}"
+            nav_suggestions.append(label)
+            nav_suggestion_map[label] = ("member", s)
+        if lobby_candidates:
+            for cand in lobby_candidates[:10]:
+                label = f"Lobbyist: {cand['label']}"
+                nav_suggestions.append(label)
+                nav_suggestion_map[label] = ("lobbyist", cand)
+        else:
+            for s in lobby_suggestions:
+                short_code = s.split(" - ")[0]
+                label = f"Lobbyist: {s}"
+                nav_suggestions.append(label)
+                nav_suggestion_map[label] = ("lobbyist", {"lobbyshort": short_code, "name": short_code, "label": s, "filerid": None})
+
+if nav_suggestions:
+    nav_pick = nav_suggest_slot.selectbox(
+        "Nav suggestions",
+        ["Select a match..."] + nav_suggestions,
+        index=0,
+        key="nav_suggestions_select",
+        label_visibility="collapsed",
+    )
+    if nav_pick in nav_suggestion_map:
+        nav_skip_submit = True
+        target, value = nav_suggestion_map[nav_pick]
+        st.session_state.nav_search_query = value
+        st.session_state.nav_search_last = value
+        if target == "client":
+            st.session_state.client_query = value
+            st.session_state.client_query_input = value
+            if _active_page != _client_page:
+                st.switch_page(_client_page)
+                st.stop()
+        elif target == "member":
+            st.session_state.member_query = value
+            st.session_state.member_query_input = value
+            if _active_page != _member_page:
+                st.switch_page(_member_page)
+                st.stop()
+        else:
+            sel = value if isinstance(value, dict) else {"lobbyshort": value, "name": value, "label": value, "filerid": None}
+            sel_name = sel.get("name", "") or sel.get("lobbyshort", "")
+            st.session_state.search_query = sel_name
+            st.session_state.lobby_match_query = sel_name
+            if sel.get("label"):
+                st.session_state.lobby_match_select = sel.get("label")
+            if sel.get("filerid") is not None:
+                try:
+                    st.session_state.lobby_filerid = int(sel.get("filerid"))
+                except Exception:
+                    st.session_state.lobby_filerid = sel.get("filerid")
+            if sel.get("lobbyshort"):
+                st.session_state.lobbyshort = sel.get("lobbyshort")
+            if _active_page != _lobby_page:
+                st.switch_page(_lobby_page)
+                st.stop()
+else:
+    nav_suggest_slot.empty()
+
+if nav_search_submitted and not nav_skip_submit:
     if nav_query:
         bill_norm = normalize_bill(nav_query)
         if bill_norm:
@@ -7963,24 +9713,50 @@ if nav_search_submitted:
 
             resolved_client, client_suggestions = resolve_client_name(nav_query, client_index)
             resolved_member, member_suggestions = resolve_member_name(nav_query, member_index)
-            resolved_lobby, lobby_suggestions = resolve_lobbyshort(
-                nav_query,
-                data.get("lobby_index", pd.DataFrame()),
-                data.get("name_to_short", {}),
-                data.get("known_shorts", set()),
-                data.get("short_to_names", {}),
-            )
+
+            lobby_candidates = lobbyist_autocomplete_candidates(nav_query, data.get("lobbyist_index", pd.DataFrame()))
+            resolved_lobby = ""
+            resolved_lobby_filer = None
+            resolved_lobby_name = ""
+            lobby_suggestions = []
+            if lobby_candidates:
+                lobby_suggestions = [c.get("lobbyshort", "") for c in lobby_candidates if c.get("lobbyshort")]
+                q_info = parse_person_name(nav_query)
+                q_first = q_info.get("first_norm", "")
+                q_last = q_info.get("last_norm", "")
+                q_full = bool(q_first and q_last and len(q_first) >= 2 and len(q_last) >= 2)
+                top = lobby_candidates[0]
+                top_score = top.get("score", 0)
+                if top_score >= 95 or (top_score >= 92 and q_full):
+                    resolved_lobby = top.get("lobbyshort", "")
+                    resolved_lobby_filer = top.get("filerid", None)
+                    resolved_lobby_name = top.get("name", "")
+            else:
+                resolved_lobby, lobby_suggestions = resolve_lobbyshort(
+                    nav_query,
+                    data.get("lobby_index", pd.DataFrame()),
+                    data.get("name_to_short", {}),
+                    data.get("known_shorts", set()),
+                    data.get("short_to_names", {}),
+                )
 
             target_page = _lobby_page
             if resolved_client:
                 target_page = _client_page
                 st.session_state.client_query = resolved_client
+                st.session_state.client_query_input = resolved_client
             elif resolved_member:
                 target_page = _member_page
                 st.session_state.member_query = resolved_member
+                st.session_state.member_query_input = resolved_member
             elif resolved_lobby:
                 target_page = _lobby_page
-                st.session_state.search_query = nav_query
+                st.session_state.search_query = resolved_lobby_name or nav_query
+                if resolved_lobby_filer is not None:
+                    st.session_state.lobby_filerid = resolved_lobby_filer
+                if lobby_candidates:
+                    st.session_state.lobby_match_query = st.session_state.search_query
+                    st.session_state.lobby_match_select = lobby_candidates[0].get("label", "")
             else:
                 if "," in nav_query and member_suggestions:
                     target_page = _member_page
@@ -7997,8 +9773,10 @@ if nav_search_submitted:
 
                 if target_page == _client_page:
                     st.session_state.client_query = nav_query
+                    st.session_state.client_query_input = nav_query
                 elif target_page == _member_page:
                     st.session_state.member_query = nav_query
+                    st.session_state.member_query_input = nav_query
                 else:
                     st.session_state.search_query = nav_query
 
@@ -8016,6 +9794,20 @@ if _active_page != _lobby_page:
 # =========================================================
 st.markdown('<div class="big-title">Lobby Look-Up</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Search any lobbyist and explore clients, witness activity, policy areas, and filings.</div>', unsafe_allow_html=True)
+cta_left, cta_right = st.columns([3, 1])
+with cta_left:
+    st.markdown(
+        """
+<div class="callout fade-up">
+  <div class="callout-title">Why this matters</div>
+  <div class="callout-body">Taxpayer-funded lobbying means public dollars are used to influence public policy. This dashboard shows who is paid, which clients fund the work, and where they show up on legislation so Texans can see the full picture.</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+with cta_right:
+    if st.button("Read the policy fix", use_container_width=True, help="Open the Solutions page."):
+        st.switch_page(_solutions_page)
 
 # Validate workbook path
 if not PATH:
@@ -8047,6 +9839,7 @@ LaSub = data["LaSub"]
 name_to_short = data["name_to_short"]
 short_to_names = data["short_to_names"]
 lobby_index = data["lobby_index"]
+lobbyist_index = data.get("lobbyist_index", pd.DataFrame())
 known_shorts = data["known_shorts"]
 tfl_sessions = set(
     Lobby_TFL_Client_All.get("Session", pd.Series(dtype=object))
@@ -8066,6 +9859,24 @@ if "session" not in st.session_state:
     st.session_state.session = None
 if "lobbyshort" not in st.session_state:
     st.session_state.lobbyshort = ""
+if "lobby_filerid" not in st.session_state:
+    st.session_state.lobby_filerid = None
+if "lobby_selected_key" not in st.session_state:
+    st.session_state.lobby_selected_key = ""
+if "lobby_all_matches" not in st.session_state:
+    st.session_state.lobby_all_matches = False
+if "lobby_merge_keys" not in st.session_state:
+    st.session_state.lobby_merge_keys = []
+if "lobby_candidate_map" not in st.session_state:
+    st.session_state.lobby_candidate_map = {}
+if "lobby_override_same" not in st.session_state:
+    st.session_state.lobby_override_same = {}
+if "lobby_override_diff" not in st.session_state:
+    st.session_state.lobby_override_diff = {}
+if "lobby_match_query" not in st.session_state:
+    st.session_state.lobby_match_query = ""
+if "lobby_match_select" not in st.session_state:
+    st.session_state.lobby_match_select = "No match"
 if "search_query" not in st.session_state:
     st.session_state.search_query = ""
 if "bill_search" not in st.session_state:
@@ -8076,9 +9887,10 @@ if "disclosure_search" not in st.session_state:
     st.session_state.disclosure_search = ""
 if "filter_lobbyshort" not in st.session_state:
     st.session_state.filter_lobbyshort = ""
+if "recent_lobby_searches" not in st.session_state:
+    st.session_state.recent_lobby_searches = []
 
-st.sidebar.header("Filters")
-st.session_state.scope = st.sidebar.radio("Overview scope", ["This Session", "All Sessions"], index=0)
+st.sidebar.header("Data")
 
 sessions = sorted(
     pd.concat([
@@ -8093,17 +9905,49 @@ sessions = sorted(sessions, key=_session_sort_key)
 if not sessions:
     st.error("No sessions found in the workbook.")
     st.stop()
+default_session = _default_session_from_list(sessions)
+default_label = _session_label(default_session)
 
 with st.sidebar.expander("Data health", expanded=False):
     st.caption(f"Data path: {PATH}")
     health = data_health_table(data)
     st.dataframe(health, use_container_width=True, height=260, hide_index=True)
 
+# Dataset snapshot ribbon
+meta_bits = []
+if PATH:
+    meta_bits.append(f"Source: {Path(PATH).name}")
+if not _is_url(PATH):
+    try:
+        stats = Path(PATH).stat()
+        mod_dt = datetime.fromtimestamp(stats.st_mtime)
+        meta_bits.append(f"Updated {mod_dt.strftime('%b %d, %Y')}")
+        meta_bits.append(f"{stats.st_size / (1024 * 1024):.1f} MB")
+    except Exception:
+        pass
+meta_bits.append(f"{len(sessions)} sessions")
+meta_bits.append(f"{len(Lobby_TFL_Client_All):,} lobby rows")
+if not Wit_All.empty:
+    meta_bits.append(f"{len(Wit_All):,} witness rows")
+meta_html = "".join([f'<span class="pill">{html.escape(str(bit))}</span>' for bit in meta_bits if bit])
+if meta_html:
+    st.markdown(
+        f"""
+<div class="card meta-card fade-up">
+  <div class="meta-title">Dataset snapshot</div>
+  <div class="pill-list">{meta_html}</div>
+  <div class="meta-sub">Scope {html.escape(st.session_state.scope)} | Session {_session_label(st.session_state.session) if st.session_state.session else _session_label(default_session)}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
 # =========================================================
 # TOP CONTROLS
 #   - lobbyist name box (optional)
 #   - session selector (All + ordinals)
 # =========================================================
+st.markdown('<div id="filter-bar-marker"></div>', unsafe_allow_html=True)
 top1, top2, top3 = st.columns([2.2, 1.2, 1.2])
 
 with top1:
@@ -8111,6 +9955,7 @@ with top1:
         "Search lobbyist or bill",
         value=st.session_state.search_query,
         placeholder="e.g., Abbott or HB 4",
+        help="Type a lobbyist name as Last, First or First Last. Use Autocomplete matches to pick the exact match.",
     )
 
 with top2:
@@ -8121,9 +9966,6 @@ with top2:
         session_labels.append(lab)
         label_to_session[lab] = s
 
-    default_session = _default_session_from_list(sessions)
-    default_label = _session_label(default_session)
-
     # initialize once
     if st.session_state.session is None or str(st.session_state.session).strip().lower() in {"none", "nan", "null", ""}:
         st.session_state.session = default_session
@@ -8132,71 +9974,395 @@ with top2:
     if current_label not in session_labels:
         current_label = default_label if default_label in session_labels else session_labels[0]
 
-    chosen_label = st.selectbox("Session", session_labels, index=session_labels.index(current_label))
+    chosen_label = st.selectbox(
+        "Session",
+        session_labels,
+        index=session_labels.index(current_label),
+        help="Choose the legislative session used for filters and totals.",
+    )
     st.session_state.session = label_to_session.get(chosen_label, default_session)
 
 with top3:
-    st.markdown('<div class="small-muted">Known name variants</div>', unsafe_allow_html=True)
-    names_hint = short_to_names.get(st.session_state.lobbyshort, [])
-    if not names_hint and st.session_state.lobbyshort and "name" in Wit_All.columns:
-        wit_names = (
-            Wit_All[Wit_All["LobbyShort"].astype(str).str.strip() == str(st.session_state.lobbyshort)]
-            .get("name", pd.Series(dtype=object))
-            .dropna()
-            .astype(str)
-            .str.strip()
-            .unique()
-            .tolist()
-        )
-        names_hint = wit_names[:6]
-    st.write(", ".join(names_hint) if names_hint else "—")
+    scope_opts = ["This Session", "All Sessions"]
+    scope_index = scope_opts.index(st.session_state.scope) if st.session_state.scope in scope_opts else 0
+    st.session_state.scope = st.radio(
+        "Overview scope",
+        scope_opts,
+        index=scope_index,
+        horizontal=True,
+        help="Switch between the selected session only or totals across all sessions.",
+    )
+
+recent = st.session_state.get("recent_lobby_searches", [])
+if recent:
+    st.markdown('<div class="section-sub">Recent lookups</div>', unsafe_allow_html=True)
+    recent_cols = st.columns(min(len(recent), 4))
+    for idx, rec in enumerate(recent[:8]):
+        col = recent_cols[idx % len(recent_cols)]
+        label = rec if len(rec) <= 28 else rec[:25] + "..."
+        if col.button(
+            f"Reuse {label}",
+            key=f"recent_lookup_{idx}",
+            help="Reuse a recent lobbyist or bill search",
+            use_container_width=True,
+        ):
+            st.session_state.search_query = rec
+            st.session_state.lobbyshort = ""
+            st.session_state.lobby_filerid = None
+            st.session_state.lobby_selected_key = ""
+            st.session_state.lobby_all_matches = False
+            st.session_state.lobby_merge_keys = []
+            st.session_state.lobby_candidate_map = {}
+            st.session_state.lobby_match_query = rec
+            st.session_state.lobby_match_select = "No match"
+            st.session_state.bill_search = ""
+            st.session_state.activity_search = ""
+            st.session_state.disclosure_search = ""
+            st.session_state.filter_lobbyshort = ""
 
 tfl_session_val = _tfl_session_for_filter(st.session_state.session, tfl_sessions)
 
 st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
-# Resolve lobbyshort from search (if provided) but do not stop app if missing
+# Resolve lobbyist match (autocomplete + disambiguation)
 bill_mode = is_bill_query(st.session_state.search_query)
-typed_norms = norm_person_variants(st.session_state.search_query) if not bill_mode else set()
+typed_norms = norm_person_variants_with_nicknames(st.session_state.search_query) if not bill_mode else set()
 typed_init_key = _last_first_initial_key(st.session_state.search_query) if not bill_mode else ""
 if typed_init_key:
     typed_norms.add(typed_init_key)
-resolved_short, suggestions = ("", []) if bill_mode else resolve_lobbyshort(
-    st.session_state.search_query,
-    lobby_index,
-    name_to_short,
-    known_shorts,
-    short_to_names,
-)
-if not bill_mode and not resolved_short:
-    resolved_from_wit, wit_suggestions = resolve_lobbyshort_from_wit(
-        st.session_state.search_query,
-        Wit_All,
-        st.session_state.session,
-    )
-    if resolved_from_wit:
-        resolved_short = resolved_from_wit
-    elif not suggestions:
-        suggestions = wit_suggestions
 
-if suggestions:
-    label_to_short = {s: s.split(" - ")[0] for s in suggestions}
-    pick = st.selectbox("Suggestions", ["Select a lobbyist..."] + suggestions, index=0)
-    if pick in label_to_short:
-        resolved_short = label_to_short[pick]
+resolved_short = ""
+resolved_filerid = None
+match_candidates = []
+candidate_map = {}
+fallback_short = ""
+q_norm = norm_name(st.session_state.search_query)
+query_info = parse_person_name(st.session_state.search_query)
+q_first = query_info.get("first_norm", "")
+q_last = query_info.get("last_norm", "")
+selected_match = None
+
+if not bill_mode and st.session_state.search_query.strip():
+    match_candidates = lobbyist_autocomplete_candidates(st.session_state.search_query, lobbyist_index)
+
+    if q_norm and not lobbyist_index.empty:
+        short_hits = lobbyist_index.loc[
+            lobbyist_index["LobbyShortNorm"] == q_norm, "LobbyShort"
+        ].dropna().unique().tolist()
+        if len(short_hits) == 1:
+            fallback_short = short_hits[0]
+
+    if not match_candidates:
+        resolved_from_wit, wit_suggestions = resolve_lobbyshort_from_wit(
+            st.session_state.search_query,
+            Wit_All,
+            st.session_state.session,
+        )
+        if resolved_from_wit:
+            fallback_short = resolved_from_wit
+        for s in wit_suggestions:
+            name_hint = short_to_names.get(s, [])
+            display_name = name_hint[0] if name_hint else s
+            label = format_lobbyist_label(display_name, s, None)
+            match_candidates.append({
+                "label": label,
+                "lobbyshort": s,
+                "filerid": None,
+                "name": display_name,
+                "score": 60,
+            })
+
+    if match_candidates:
+        match_candidates = sorted(
+            match_candidates,
+            key=lambda x: (-int(x.get("score", 0)), str(x.get("label", "")))
+        )
+        for cand in match_candidates:
+            cand["key"] = lobby_candidate_key(cand)
+            if cand.get("key") and not cand.get("all_matches"):
+                candidate_map[cand["key"]] = cand
+        diff_map = st.session_state.lobby_override_diff or {}
+        diff_keys_all = set()
+        for keys in diff_map.values():
+            diff_keys_all |= set(keys or [])
+        shorts_with_diff = set()
+        if diff_keys_all:
+            for key in diff_keys_all:
+                cand = candidate_map.get(key, {})
+                short = cand.get("lobbyshort", "")
+                if short:
+                    shorts_with_diff.add(short)
+        short_groups = {}
+        for cand in match_candidates:
+            short = cand.get("lobbyshort", "")
+            if not short:
+                continue
+            entry = short_groups.get(short, {"count": 0, "score": 0})
+            entry["count"] += 1
+            entry["score"] = max(entry["score"], cand.get("score", 0))
+            short_groups[short] = entry
+
+        short_candidates = []
+        for short, meta in short_groups.items():
+            if meta["count"] > 1:
+                if short in shorts_with_diff:
+                    label = f"{short} (all matches: {meta['count']} variants, overrides set)"
+                else:
+                    label = f"{short} (all matches: {meta['count']} variants)"
+                short_candidates.append({
+                    "label": label,
+                    "lobbyshort": short,
+                    "filerid": None,
+                    "name": "",
+                    "score": meta["score"],
+                    "all_matches": True,
+                    "group_size": meta["count"],
+                    "has_diff_override": short in shorts_with_diff,
+                    "key": f"all:{short}",
+                })
+
+        preferred_all = None
+        if short_candidates:
+            eligible = [c for c in short_candidates if not c.get("has_diff_override")]
+            if eligible:
+                preferred_all = sorted(eligible, key=lambda x: (-x["score"], x["label"]))[0]
+
+        auto_match = preferred_all
+        if auto_match is None:
+            if len(match_candidates) == 1:
+                auto_match = match_candidates[0]
+            if auto_match is None and q_norm:
+                exact_name = [
+                    c for c in match_candidates
+                    if c.get("name") and norm_name(c.get("name")) == q_norm
+                ]
+                if len(exact_name) == 1:
+                    auto_match = exact_name[0]
+            if auto_match is None and q_norm and short_candidates:
+                for cand in short_candidates:
+                    if norm_name(cand["lobbyshort"]) == q_norm:
+                        if not cand.get("has_diff_override"):
+                            auto_match = cand
+                        break
+            if auto_match is None:
+                top_score = match_candidates[0]["score"]
+                top = [c for c in match_candidates if c["score"] == top_score]
+                q_full = bool(q_first and q_last and len(q_first) >= 2 and len(q_last) >= 2)
+                if len(top) == 1 and (top_score >= 95 or (top_score >= 92 and q_full)):
+                    auto_match = top[0]
+        if auto_match is not None and auto_match.get("all_matches") and auto_match.get("has_diff_override"):
+            auto_match = None
+
+        match_options = []
+        match_map = {}
+        for cand in sorted(short_candidates, key=lambda x: (-x["score"], x["label"])):
+            match_options.append(cand["label"])
+            match_map[cand["label"]] = cand
+        for cand in match_candidates:
+            if cand["label"] in match_map:
+                continue
+            match_options.append(cand["label"])
+            match_map[cand["label"]] = cand
+
+        if match_options:
+            match_labels = ["No match"] + match_options
+            default_label = auto_match["label"] if auto_match else "No match"
+            if st.session_state.lobby_match_query != st.session_state.search_query:
+                st.session_state.lobby_match_query = st.session_state.search_query
+                st.session_state.lobby_match_select = default_label if default_label in match_labels else "No match"
+            if st.session_state.lobby_match_select not in match_labels:
+                st.session_state.lobby_match_select = default_label if default_label in match_labels else "No match"
+
+            pick = st.selectbox(
+                "Autocomplete matches (choose one)",
+                match_labels,
+                key="lobby_match_select",
+                help="Pick the exact lobbyist entry. '(all matches)' merges name variants.",
+            )
+            st.caption("Each option lists the last name + first initial (and FilerID when available).")
+            if pick in match_map:
+                chosen = match_map[pick]
+                selected_match = chosen
+                st.session_state.lobby_selected_key = chosen.get("key", "")
+                st.session_state.lobby_all_matches = bool(chosen.get("all_matches"))
+                resolved_short = chosen.get("lobbyshort", "")
+                resolved_filerid = chosen.get("filerid", None)
+            else:
+                resolved_short = ""
+                st.session_state.lobby_selected_key = ""
+                st.session_state.lobby_all_matches = False
+            if st.session_state.search_query.strip() and not resolved_short:
+                st.caption("Select a match to load results. Choose the '(all matches)' option to combine name variants that share the same last name + first initial.")
+
+            if selected_match and selected_match.get("lobbyshort") and not selected_match.get("all_matches"):
+                canon_key = st.session_state.lobby_selected_key
+                if not canon_key:
+                    canon_key = "unknown"
+                canon_key_safe = re.sub(r"[^A-Za-z0-9_]+", "_", canon_key)
+                same_map = st.session_state.lobby_override_same or {}
+                diff_map = st.session_state.lobby_override_diff or {}
+                same_keys = set(same_map.get(canon_key, []))
+                diff_keys = set(diff_map.get(canon_key, []))
+                override_candidates = [
+                    c for c in match_candidates
+                    if not c.get("all_matches")
+                    and c.get("lobbyshort") == selected_match.get("lobbyshort")
+                    and c.get("key") != canon_key
+                ]
+                if override_candidates:
+                    used = {}
+                    option_labels = []
+                    label_to_key = {}
+                    for cand in override_candidates:
+                        base_label = (cand.get("label") or cand.get("name") or cand.get("lobbyshort") or "").strip()
+                        label = base_label if base_label else "Unknown"
+                        if label in used:
+                            used[label] += 1
+                            label = f"{label} ({used[label]})"
+                        else:
+                            used[label] = 1
+                        option_labels.append(label)
+                        label_to_key[label] = cand.get("key", lobby_candidate_key(cand))
+
+                    with st.expander("Match overrides", expanded=False):
+                        st.caption("Use this when you know two names refer to the same lobbyist or are definitely different.")
+                        same_default = [lab for lab in option_labels if label_to_key.get(lab) in same_keys]
+                        diff_default = [lab for lab in option_labels if label_to_key.get(lab) in diff_keys]
+
+                        same_pick = st.multiselect(
+                            "Same lobbyist (merge these into the selection)",
+                            option_labels,
+                            default=same_default,
+                            key=f"lobby_override_same_select_{canon_key_safe}",
+                            help="Treat these names as the same person and merge results.",
+                        )
+                        diff_pick = st.multiselect(
+                            "Different lobbyist (keep these separate)",
+                            option_labels,
+                            default=diff_default,
+                            key=f"lobby_override_diff_select_{canon_key_safe}",
+                            help="Force these names to remain separate from the selection.",
+                        )
+
+                        new_same_keys = {label_to_key.get(lab) for lab in same_pick if label_to_key.get(lab)}
+                        new_diff_keys = {label_to_key.get(lab) for lab in diff_pick if label_to_key.get(lab)}
+                        new_same_keys = new_same_keys - new_diff_keys
+
+                        same_map[canon_key] = sorted(new_same_keys)
+                        diff_map[canon_key] = sorted(new_diff_keys)
+                        st.session_state.lobby_override_same = same_map
+                        st.session_state.lobby_override_diff = diff_map
+                        st.session_state.lobby_merge_keys = sorted(new_same_keys)
+                else:
+                    st.session_state.lobby_merge_keys = []
+            else:
+                st.session_state.lobby_merge_keys = []
+        else:
+            resolved_short = fallback_short
+    else:
+        resolved_short = fallback_short
+else:
+    st.session_state.lobby_selected_key = ""
+    st.session_state.lobby_all_matches = False
+    st.session_state.lobby_merge_keys = []
 
 st.session_state.lobbyshort = resolved_short or ""
+st.session_state.lobby_filerid = resolved_filerid
+st.session_state.lobby_candidate_map = candidate_map
+if st.session_state.lobby_filerid and not lobbyist_index.empty:
+    filer_series = pd.to_numeric(lobbyist_index.get("FilerID", pd.Series(dtype=float)), errors="coerce")
+    match_row = lobbyist_index[
+        (lobbyist_index["LobbyShort"].astype(str).str.strip() == st.session_state.lobbyshort) &
+        (filer_series == int(st.session_state.lobby_filerid))
+    ]
+    if not match_row.empty:
+        typed_norms |= norm_person_variants_with_nicknames(match_row["Lobby Name"].iloc[0])
+merge_keys = st.session_state.lobby_merge_keys or []
+candidate_map = st.session_state.lobby_candidate_map or {}
+for key in merge_keys:
+    cand = candidate_map.get(key, {})
+    name = cand.get("name", "")
+    if name:
+        typed_norms |= norm_person_variants_with_nicknames(name)
 
-# Quick context chips
-chips = [f"Session: {_session_label(st.session_state.session)}", f"Scope: {st.session_state.scope}"]
+# Track recent lookups for quick reuse
 if st.session_state.lobbyshort:
-    chips.append(f"Lobbyist: {st.session_state.lobbyshort}")
-st.markdown("".join([f'<span class="chip">{c}</span>' for c in chips]), unsafe_allow_html=True)
+    _remember_recent_search(st.session_state.search_query or st.session_state.lobbyshort)
+elif st.session_state.search_query.strip():
+    _remember_recent_search(st.session_state.search_query)
+
+# Active filters summary + match details
+match_line = "No match selected"
+if st.session_state.lobbyshort:
+    if st.session_state.lobby_filerid and not lobbyist_index.empty:
+        filer_series = pd.to_numeric(lobbyist_index.get("FilerID", pd.Series(dtype=float)), errors="coerce")
+        match_row = lobbyist_index[
+            (lobbyist_index["LobbyShort"].astype(str).str.strip() == str(st.session_state.lobbyshort)) &
+            (filer_series == int(st.session_state.lobby_filerid))
+        ]
+        if not match_row.empty:
+            match_name = match_row["Lobby Name"].iloc[0]
+            match_line = format_lobbyist_label(match_name, st.session_state.lobbyshort, st.session_state.lobby_filerid)
+        else:
+            match_line = st.session_state.lobbyshort
+    else:
+        match_line = st.session_state.lobbyshort
+
+extra_parts = ["Mode: Bill search"] if bill_mode else []
+active_parts = _current_filter_parts(extra_parts)
+chips_html = "".join([f'<span class="chip">{html.escape(c)}</span>' for c in active_parts])
+
+st.markdown('<div id="filter-summary-marker"></div>', unsafe_allow_html=True)
+f1, f2 = st.columns([3, 1])
+with f1:
+    st.markdown(
+        f'<div class="filter-summary"><span class="filter-summary-label">Active filters</span>{chips_html}</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(f"Selected match: {match_line}")
+    merge_names = []
+    if st.session_state.lobby_merge_keys:
+        cand_map = st.session_state.lobby_candidate_map or {}
+        for key in st.session_state.lobby_merge_keys:
+            cand = cand_map.get(key, {})
+            name = cand.get("name", "")
+            short = cand.get("lobbyshort", "")
+            fid = cand.get("filerid", None)
+            if name or short:
+                merge_names.append(format_lobbyist_label(name, short, fid))
+    if merge_names:
+        st.caption("Merged variants: " + ", ".join(merge_names[:4]))
+        st.caption("Use Autocomplete matches to change the selection.")
+    names_hint = short_to_names.get(st.session_state.lobbyshort, []) if st.session_state.lobbyshort else []
+    if names_hint:
+        st.caption("Also seen as: " + ", ".join(names_hint[:6]))
+with f2:
+    if st.button(
+        "Clear filters",
+        use_container_width=True,
+        help="Reset search, match, and table filters to defaults.",
+    ):
+        reset_filters(default_session)
+if st.session_state.lobbyshort and not st.session_state.lobby_filerid and not lobbyist_index.empty:
+    dup = lobbyist_index[lobbyist_index["LobbyShort"].astype(str).str.strip() == st.session_state.lobbyshort]
+    if dup["FilerID"].nunique(dropna=True) > 1 or dup["Lobby Name"].nunique() > 1:
+        if not st.session_state.lobby_all_matches:
+            st.caption("Note: multiple name variants share this last name + first initial. Choose a specific match above to narrow results. Witness-list and bill activity remain combined.")
 
 focus_label = "All Lobbyists"
 if st.session_state.lobbyshort:
-    name_hint = short_to_names.get(st.session_state.lobbyshort, []) if isinstance(short_to_names, dict) else []
-    display_name = name_hint[0] if name_hint else st.session_state.lobbyshort
+    display_name = ""
+    if st.session_state.lobby_filerid and not lobbyist_index.empty:
+        filer_series = pd.to_numeric(lobbyist_index.get("FilerID", pd.Series(dtype=float)), errors="coerce")
+        match_row = lobbyist_index[
+            (lobbyist_index["LobbyShort"].astype(str).str.strip() == str(st.session_state.lobbyshort)) &
+            (filer_series == int(st.session_state.lobby_filerid))
+        ]
+        if not match_row.empty:
+            display_name = match_row["Lobby Name"].iloc[0]
+    if not display_name:
+        name_hint = short_to_names.get(st.session_state.lobbyshort, []) if isinstance(short_to_names, dict) else []
+        display_name = name_hint[0] if name_hint else st.session_state.lobbyshort
     if display_name != st.session_state.lobbyshort:
         focus_label = f"Lobbyist: {display_name} ({st.session_state.lobbyshort})"
     else:
@@ -8345,10 +10511,11 @@ tab_all, tab_overview, tab_bills, tab_policy, tab_staff, tab_activities, tab_dis
     ["All Lobbyists", "Overview", "Bills", "Policy Areas", "Staff History", "Activities", "Disclosures"]
 )
 
-def kpi_card(title: str, value: str, sub: str = ""):
+def kpi_card(title: str, value: str, sub: str = "", help_text: str = ""):
+    tooltip_attr = f' title="{html.escape(help_text, quote=True)}"' if help_text else ""
     st.markdown(
         f"""
-<div class="card">
+<div class="card"{tooltip_attr}>
   <div class="kpi-title">{title}</div>
   <div class="kpi-value">{value}</div>
   <div class="kpi-sub">{sub}</div>
@@ -8363,27 +10530,152 @@ def kpi_card(title: str, value: str, sub: str = ""):
 with tab_all:
     st.markdown('<div class="section-title">All Lobbyists Overview</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="section-sub">Scope: {st.session_state.scope}</div>', unsafe_allow_html=True)
+    st.markdown(
+        """
+<div class="callout fade-up">
+  <div class="callout-title">What this means</div>
+<div class="callout-body">Totals are reported compensation ranges from Texas Ethics Commission lobby filings. Use Scope to switch between session-only and all-session aggregates, then narrow by last name + initial below.</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
-    if all_pivot.empty:
-        st.info("No Lobby_TFL_Client_All rows found for the selected scope/session.")
+    if not require_columns(
+        Lobby_TFL_Client_All,
+        ["Session", "LobbyShort"],
+        "All Lobbyists overview",
+        "Check Texas Ethics Commission lobby filings in Data health.",
+    ):
+        st.info("This view needs Texas Ethics Commission lobby filings with Session and LobbyShort columns.")
+    elif all_pivot.empty:
+        st.info("No Texas Ethics Commission lobby filing rows found for the selected scope/session. Try a different session or verify the data path.")
     else:
+        total_low = all_stats.get("tfl_low_total", 0.0) + all_stats.get("pri_low_total", 0.0)
+        total_high = all_stats.get("tfl_high_total", 0.0) + all_stats.get("pri_high_total", 0.0)
+        tfl_mid = (all_stats.get("tfl_low_total", 0.0) + all_stats.get("tfl_high_total", 0.0)) / 2
+        pri_mid = (all_stats.get("pri_low_total", 0.0) + all_stats.get("pri_high_total", 0.0)) / 2
+        total_mid = tfl_mid + pri_mid
+        tfl_share_pct = (tfl_mid / total_mid * 100) if total_mid else 0.0
+        lobby_total = all_stats.get("total_lobbyists", 0) or 0
+        lobby_with_tfl = all_stats.get("has_tfl", 0) or 0
+        lobby_with_tfl_pct = (lobby_with_tfl / lobby_total * 100) if lobby_total else 0.0
+        mixed_pct = (all_stats.get("mixed", 0) / lobby_total * 100) if lobby_total else 0.0
+        only_tfl_pct = (all_stats.get("only_tfl", 0) / lobby_total * 100) if lobby_total else 0.0
+
+        insight_items = [
+            f"Reported compensation ranges total {fmt_usd(total_low)} to {fmt_usd(total_high)} across this scope.",
+            f"Taxpayer-funded clients account for about {tfl_share_pct:.0f}% of midpoint totals.",
+            f"{lobby_with_tfl:,} lobbyists ({lobby_with_tfl_pct:.0f}%) work for at least one taxpayer-funded client.",
+            f"Only taxpayer-funded: {only_tfl_pct:.0f}% of lobbyists; mixed funding: {mixed_pct:.0f}%.",
+        ]
+        insight_html = "".join([f"<li>{html.escape(item)}</li>" for item in insight_items])
+        st.markdown(
+            f"""
+<div class="insight-panel fade-up">
+  <div class="insight-card">
+    <div class="insight-kicker">Statewide Snapshot</div>
+    <div class="insight-title">Taxpayer-funded lobbying footprint</div>
+    <ul class="insight-list">{insight_html}</ul>
+  </div>
+  <div class="insight-card">
+    <div class="insight-kicker">Key ratios</div>
+    <div class="mini-kpi-grid">
+      <div class="mini-kpi">
+        <div class="label">TFL Share</div>
+        <div class="value">{tfl_share_pct:.0f}%</div>
+        <div class="sub">Midpoint of total compensation</div>
+      </div>
+      <div class="mini-kpi">
+        <div class="label">TFL Lobbyists</div>
+        <div class="value">{lobby_with_tfl:,}</div>
+        <div class="sub">{lobby_with_tfl_pct:.0f}% of all lobbyists</div>
+      </div>
+      <div class="mini-kpi">
+        <div class="label">Only TFL</div>
+        <div class="value">{all_stats.get('only_tfl', 0):,}</div>
+        <div class="sub">{only_tfl_pct:.0f}% of all lobbyists</div>
+      </div>
+      <div class="mini-kpi">
+        <div class="label">Mixed Funding</div>
+        <div class="value">{all_stats.get('mixed', 0):,}</div>
+        <div class="sub">{mixed_pct:.0f}% of all lobbyists</div>
+      </div>
+    </div>
+  </div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
         a1, a2, a3, a4 = st.columns(4)
         with a1:
             kpi_card(
                 "Total Taxpayer Funded",
                 f"{fmt_usd(all_stats.get('tfl_low_total', 0.0))} - {fmt_usd(all_stats.get('tfl_high_total', 0.0))}",
+                help_text="Sum of reported low/high compensation for taxpayer-funded clients in this scope.",
             )
         with a2:
             kpi_card(
                 "Total Private",
                 f"{fmt_usd(all_stats.get('pri_low_total', 0.0))} - {fmt_usd(all_stats.get('pri_high_total', 0.0))}",
+                help_text="Sum of reported low/high compensation for private clients in this scope.",
             )
         with a3:
-            kpi_card("Total Lobbyists", f"{all_stats.get('total_lobbyists', 0):,}")
-            kpi_card("Lobbyists w/ ≥1 Taxpayer Funded client", f"{all_stats.get('has_tfl', 0):,}")
+            kpi_card(
+                "Total Lobbyists",
+                f"{all_stats.get('total_lobbyists', 0):,}",
+                help_text="Unique lobbyists in the selected scope.",
+            )
+            kpi_card(
+                "Lobbyists w/ >=1 Taxpayer Funded client",
+                f"{all_stats.get('has_tfl', 0):,}",
+                help_text="Lobbyists with at least one taxpayer-funded client in this scope.",
+            )
         with a4:
-            kpi_card("Only Private", f"{all_stats.get('only_private', 0):,}")
-            kpi_card("Only Taxpayer Funded", f"{all_stats.get('only_tfl', 0):,}", f"Mixed: {all_stats.get('mixed', 0):,}")
+            kpi_card(
+                "Only Private",
+                f"{all_stats.get('only_private', 0):,}",
+                help_text="Lobbyists with only private clients in this scope.",
+            )
+            kpi_card(
+                "Only Taxpayer Funded",
+                f"{all_stats.get('only_tfl', 0):,}",
+                f"Mixed: {all_stats.get('mixed', 0):,}",
+                help_text="Lobbyists with only taxpayer-funded clients; mixed count shown below.",
+            )
+
+        st.markdown('<div class="section-sub">Funding Mix (Midpoint)</div>', unsafe_allow_html=True)
+        mix_df = pd.DataFrame(
+            {
+                "Funding": ["Taxpayer Funded", "Private"],
+                "Total": [tfl_mid, pri_mid],
+            }
+        )
+        if mix_df["Total"].sum() > 0:
+            fig_mix = px.pie(
+                mix_df,
+                names="Funding",
+                values="Total",
+                hole=0.6,
+                color="Funding",
+                color_discrete_map=FUNDING_COLOR_MAP,
+            )
+            fig_mix.update_traces(
+                textposition="inside",
+                textinfo="percent+label",
+                insidetextorientation="radial",
+                marker=dict(line=dict(color="rgba(7,22,39,0.9)", width=2)),
+                hovertemplate="%{label}: %{percent}<extra></extra>",
+            )
+            _apply_plotly_layout(fig_mix, showlegend=False, margin_top=12)
+            fig_mix.update_layout(uniformtext_minsize=10, uniformtext_mode="hide")
+            st.plotly_chart(fig_mix, use_container_width=True, config=PLOTLY_CONFIG)
+            st.markdown(
+                '<div class="section-caption">Funding mix uses midpoint totals to compare taxpayer-funded vs private compensation ranges.</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("No totals available for funding mix in this scope.")
 
         st.markdown('<div class="section-sub">Taxpayer Funded Compensation Trend (85th-89th)</div>', unsafe_allow_html=True)
         trend_base = Lobby_TFL_Client_All.copy()
@@ -8428,6 +10720,7 @@ with tab_all:
                 gridcolor="rgba(255,255,255,0.08)",
             )
             st.plotly_chart(fig_trend, use_container_width=True, config=PLOTLY_CONFIG)
+            st.markdown('<div class="section-caption">Trend uses midpoint totals for taxpayer-funded clients across the 85th-89th sessions.</div>', unsafe_allow_html=True)
         else:
             st.info("No taxpayer funded totals available for 85th-89th sessions.")
 
@@ -8502,20 +10795,41 @@ with tab_all:
                 st.info("No taxpayer funded clients found for the selected scope/session.")
 
         st.session_state.filter_lobbyshort = st.text_input(
-            "Filter LobbyShort (contains)",
+            "Filter last name + first initial (contains)",
             value=st.session_state.filter_lobbyshort,
             placeholder="e.g., Abbott",
+            help="Filter the All Lobbyists table by a name substring.",
         )
+        st.markdown('<div class="section-caption">Tip: Use the table filters to narrow the list; CSV exports include the active scope and session.</div>', unsafe_allow_html=True)
         flt = st.session_state.filter_lobbyshort
         c1, c2, c3 = st.columns(3)
         with c1:
-            only_tfl = st.checkbox("Only taxpayer funded", value=False)
+            only_tfl = st.checkbox(
+                "Only taxpayer funded",
+                value=False,
+                help="Show lobbyists with taxpayer-funded clients only.",
+            )
         with c2:
-            only_private = st.checkbox("Only private", value=False)
+            only_private = st.checkbox(
+                "Only private",
+                value=False,
+                help="Show lobbyists with private clients only.",
+            )
         with c3:
-            mixed_only = st.checkbox("Mixed only", value=False)
+            mixed_only = st.checkbox(
+                "Mixed only",
+                value=False,
+                help="Show lobbyists with both taxpayer-funded and private clients.",
+            )
 
         view = all_pivot.copy()
+        view["Total_Low"] = view["Low_TFL"] + view["Low_Private"]
+        view["Total_High"] = view["High_TFL"] + view["High_Private"]
+        view["TFL_Mid"] = (view["Low_TFL"] + view["High_TFL"]) / 2
+        view["Private_Mid"] = (view["Low_Private"] + view["High_Private"]) / 2
+        view["Total_Mid"] = view["TFL_Mid"] + view["Private_Mid"]
+        view["TFL_Share"] = view["TFL_Mid"] / view["Total_Mid"].where(view["Total_Mid"] != 0, 1)
+        view["TFL_Share"] = view["TFL_Share"].fillna(0)
         if flt.strip():
             view = view[view["LobbyShort"].astype(str).str.contains(flt.strip(), case=False, na=False)].copy()
         if only_tfl:
@@ -8525,45 +10839,109 @@ with tab_all:
         if mixed_only:
             view = view[view.get("Mixed", False)].copy()
 
+        threshold_col1, threshold_col2 = st.columns(2)
+        with threshold_col1:
+            max_mid = int(view["Total_Mid"].max()) if not view.empty else 0
+            min_mid = 0
+            if max_mid > 0:
+                step = max(int(max_mid / 50), 1000)
+                step = min(step, max_mid)
+                min_mid = st.slider(
+                    "Minimum midpoint total",
+                    0,
+                    max_mid,
+                    0,
+                    step=step,
+                    format="$%d",
+                    help="Filter lobbyists by midpoint totals (uses low/high averages).",
+                )
+            else:
+                st.caption("No compensation totals available for threshold filtering.")
+        with threshold_col2:
+            share_opts = {"Any": 0.0, ">= 50% TFL": 0.5, ">= 75% TFL": 0.75}
+            share_choice = st.selectbox(
+                "Taxpayer-funded share filter",
+                list(share_opts.keys()),
+                index=0,
+                help="Limit lobbyists by share of taxpayer-funded midpoint totals.",
+            )
+            share_threshold = share_opts.get(share_choice, 0.0)
+
+        if min_mid > 0:
+            view = view[view["Total_Mid"] >= min_mid].copy()
+        if share_threshold > 0:
+            view = view[view["TFL_Share"] >= share_threshold].copy()
+
         view_disp = view.copy()
         for c in ["Low_TFL", "High_TFL", "Low_Private", "High_Private"]:
             if c in view_disp.columns:
                 view_disp[c] = view_disp[c].astype(float).apply(lambda x: fmt_usd(x))
+        if "Total_Mid" in view_disp.columns:
+            view_disp["Total_Mid"] = view_disp["Total_Mid"].astype(float).apply(lambda x: fmt_usd(x))
+        if "TFL_Share" in view_disp.columns:
+            view_disp["TFL_Share"] = (
+                (view_disp["TFL_Share"].fillna(0) * 100).round(0).astype("Int64").astype(str) + "%"
+            )
 
         rename_cols = {
+            "LobbyShort": "Last name + first initial",
             "Has_TFL": "Has Taxpayer Funded",
             "Only_TFL": "Only Taxpayer Funded",
             "Clients_TFL": "Taxpayer Funded Clients",
             "Low_TFL": "Taxpayer Funded Low",
             "High_TFL": "Taxpayer Funded High",
+            "Total_Mid": "Midpoint Total",
+            "TFL_Share": "Taxpayer Funded Share",
         }
         view_disp = view_disp.rename(columns=rename_cols)
 
         cols = [
             "LobbyShort",
             "Has_TFL", "Has_Private", "Only_TFL", "Only_Private", "Mixed",
+            "Total_Mid", "TFL_Share",
             "Clients_TFL", "Low_TFL", "High_TFL",
             "Clients_Private", "Low_Private", "High_Private",
         ]
         cols = [rename_cols.get(c, c) for c in cols]
         cols = [c for c in cols if c in view_disp.columns]
 
+        sort_cols = [c for c in ["Has Taxpayer Funded", "Mixed", "Last name + first initial"] if c in view_disp.columns]
+        if sort_cols:
+            view_disp = view_disp.sort_values(sort_cols, ascending=[False, False, True][:len(sort_cols)])
         st.dataframe(
-            view_disp[cols].sort_values(["Has Taxpayer Funded", "Mixed", "LobbyShort"], ascending=[False, False, True]),
+            view_disp[cols],
             use_container_width=True,
             height=560,
             hide_index=True,
         )
-        _ = export_dataframe(view_disp[cols], "all_lobbyists_overview.csv", label="Download overview CSV")
+        export_context = []
+        if flt.strip():
+            export_context.append(f"Name filter: {_shorten_text(flt, 24)}")
+        if only_tfl:
+            export_context.append("Only taxpayer funded")
+        if only_private:
+            export_context.append("Only private")
+        if mixed_only:
+            export_context.append("Mixed only")
+        if min_mid > 0:
+            export_context.append(f"Min midpoint: {fmt_usd(min_mid)}")
+        if share_threshold > 0:
+            export_context.append(f"TFL share: {share_choice}")
+        _ = export_dataframe(
+            view_disp[cols],
+            "all_lobbyists_overview.csv",
+            label="Download overview CSV",
+            context=export_context,
+        )
 
 # -----------------------------
 # Per-lobbyist tabs: only compute when lobbyist is selected AND session != All
 # -----------------------------
 def _no_lobbyist_msg():
-    st.info("Type a lobbyist name at the top to view details. The All Lobbyists tab is available without a selection.")
+    st.info("Type a lobbyist name at the top to view details. Use Clear filters to reset or switch to All Lobbyists for a full overview.")
 
 def _need_specific_session_msg():
-    st.info("Select a specific session (e.g., 89th) to view lobbyist details. 'All' is for overview only.")
+    st.info("Select a specific session (e.g., 89th) to view lobbyist details. Use All Sessions for high-level totals only.")
 
 if st.session_state.session is None:
     with tab_overview:
@@ -8596,106 +10974,117 @@ else:
         session = str(st.session_state.session).strip()
         lobbyshort = str(st.session_state.lobbyshort).strip()
         typed_norms_tuple = tuple(sorted(typed_norms))
+        selected_filer_ids = set()
+        if st.session_state.lobby_filerid is not None:
+            try:
+                selected_filer_ids = {int(st.session_state.lobby_filerid)}
+            except Exception:
+                selected_filer_ids = set()
+        lobbyist_label = lobbyshort
+        selected_names = []
+        candidate_map = st.session_state.lobby_candidate_map or {}
+        merge_keys = st.session_state.lobby_merge_keys or []
+        if st.session_state.lobby_filerid and not lobbyist_index.empty:
+            filer_series = pd.to_numeric(lobbyist_index.get("FilerID", pd.Series(dtype=float)), errors="coerce")
+            match_row = lobbyist_index[
+                (lobbyist_index["LobbyShort"].astype(str).str.strip() == lobbyshort) &
+                (filer_series == int(st.session_state.lobby_filerid))
+            ]
+            if not match_row.empty:
+                lobbyist_label = match_row["Lobby Name"].iloc[0]
+                selected_names = match_row["Lobby Name"].dropna().astype(str).unique().tolist()
+
+        if merge_keys:
+            for key in merge_keys:
+                cand = candidate_map.get(key, {})
+                name = cand.get("name", "")
+                if name and name not in selected_names:
+                    selected_names.append(name)
+                fid = cand.get("filerid", None)
+                if fid is not None:
+                    try:
+                        selected_filer_ids.add(int(fid))
+                    except Exception:
+                        pass
 
         # Wit_All filtered
         lobbyshort_norm = norm_name(lobbyshort)
-        wit_all = Wit_All
+        wit_all = ensure_cols(
+            Wit_All,
+            {"Session": "", "Bill": "", "LobbyShort": "", "IsFor": 0, "IsAgainst": 0, "IsOn": 0},
+        )
         if "LobbyShortNorm" not in wit_all.columns:
             wit_all = wit_all.copy()
             wit_all["LobbyShortNorm"] = norm_name_series(wit_all["LobbyShort"])
         session_col = wit_all["Session"].astype(str).str.strip()
-        if "LobbyShortNorm" in wit_all.columns:
-            wit = wit_all[
-                (session_col == session) &
-                (wit_all["LobbyShortNorm"] == lobbyshort_norm)
-            ].copy()
-            if not wit.empty:
+        base_wit = wit_all[session_col == session].copy()
+        witness_match_note = ""
+        if selected_names:
+            name_variants = set()
+            name_pairs = []
+            for name in selected_names:
+                if not name:
+                    continue
+                name_variants |= norm_person_variants_with_nicknames(name)
+                info = parse_person_name(name)
+                first_norm = info.get("first_norm", "")
+                last_norm = info.get("last_norm", "")
+                first_initial = info.get("first_initial", "")
+                if first_norm and last_norm:
+                    name_pairs.append((first_norm, last_norm, first_initial))
+
+            name_mask = pd.Series(False, index=base_wit.index)
+            if name_variants:
+                name_norm = base_wit.get("NameNorm")
+                if not isinstance(name_norm, pd.Series):
+                    name_norm = base_wit.get("name", pd.Series([""] * len(base_wit))).fillna("").astype(str).map(norm_name)
+                name_mask = name_mask | name_norm.isin(name_variants)
+            if name_pairs and "NameLastNorm" in base_wit.columns:
+                name_last = base_wit.get("NameLastNorm")
+                name_first = base_wit.get("NameFirstNorm")
+                name_first_initial = base_wit.get("NameFirstInitialNorm")
+                if isinstance(name_last, pd.Series) and isinstance(name_first, pd.Series):
+                    for first_norm, last_norm, first_initial in name_pairs:
+                        first_match = name_first == first_norm
+                        if first_initial and isinstance(name_first_initial, pd.Series):
+                            first_match = first_match | (name_first_initial == first_initial)
+                        name_mask = name_mask | ((name_last == last_norm) & first_match)
+
+            if "LobbyShortNorm" in base_wit.columns:
+                short_norm = base_wit["LobbyShortNorm"].fillna("")
+                short_mask = short_norm == lobbyshort_norm
+                if short_mask.any():
+                    name_mask = name_mask & (short_mask | (short_norm == ""))
+
+            if name_mask.any():
+                wit = base_wit[name_mask].copy()
                 wit["LobbyShort"] = lobbyshort
+                wit["LobbyShortNorm"] = lobbyshort_norm
+                witness_match_note = "Witness list filtered to the selected name."
+            else:
+                wit = base_wit.iloc[0:0].copy()
+                witness_match_note = "No witness-list rows matched the selected name. Clear the specific match to see all rows for that last name + first initial."
         else:
-            wit = wit_all[
-                (session_col == session) &
-                (wit_all["LobbyShort"].astype(str).str.strip() == lobbyshort)
-            ].copy()
+            if "LobbyShortNorm" in base_wit.columns:
+                wit = base_wit[base_wit["LobbyShortNorm"] == lobbyshort_norm].copy()
+                if not wit.empty:
+                    wit["LobbyShort"] = lobbyshort
+            else:
+                wit = base_wit[
+                    base_wit["LobbyShort"].astype(str).str.strip() == lobbyshort
+                ].copy()
 
-        bill_pos = bill_position_from_flags(wit)
-        bills = (
-            bill_pos.merge(Bill_Status_All, on=["Session", "Bill"], how="left")
-            if not bill_pos.empty else
-            pd.DataFrame(columns=["Session", "Bill", "Position", "Author", "Caption", "Status"])
-        )
-
-        # Fiscal impacts (Version = H/S)
-        fi = Fiscal_Impact[Fiscal_Impact["Session"].astype(str).str.strip() == session].copy()
-        if not fi.empty and {"Version", "EstimatedTwoYearNetImpactGR"}.issubset(fi.columns):
-            fi["Version"] = fi["Version"].astype(str).str.upper().str.strip()
-            fi["EstimatedTwoYearNetImpactGR"] = pd.to_numeric(fi["EstimatedTwoYearNetImpactGR"], errors="coerce").fillna(0)
-            fi_p = (
-                fi.groupby(["Session", "Bill", "Version"], as_index=False)["EstimatedTwoYearNetImpactGR"]
-                  .sum()
-                  .pivot(index=["Session", "Bill"], columns="Version", values="EstimatedTwoYearNetImpactGR")
-                  .reset_index()
-                  .rename(columns={"H": "Fiscal Impact H", "S": "Fiscal Impact S"})
-            )
-            bills = bills.merge(fi_p, on=["Session", "Bill"], how="left")
-        bills = ensure_cols(bills, {"Fiscal Impact H": 0, "Fiscal Impact S": 0})
-
-        # Policy mentions/share
-        bill_subjects = Bill_Sub_All[Bill_Sub_All["Session"].astype(str).str.strip() == session].merge(
-            bills[["Session", "Bill"]].drop_duplicates(), on=["Session", "Bill"], how="inner"
-        )
-        if not bill_subjects.empty:
-            mentions = (
-                bill_subjects.groupby("Subject")["Bill"]
-                .nunique()
-                .reset_index(name="Mentions")
-                .sort_values("Mentions", ascending=False)
-            )
-            total_mentions = int(mentions["Mentions"].sum()) or 1
-            mentions["Share"] = (mentions["Mentions"] / total_mentions).fillna(0)
-        else:
-            mentions = pd.DataFrame(columns=["Subject", "Mentions", "Share"])
+        bills = build_bills_with_status(wit, Bill_Status_All, Fiscal_Impact, session)
+        mentions = build_policy_mentions(bills, Bill_Sub_All, session)
 
         # Lobbyist-reported subject matters (Lobby_Sub_All)
-        lobby_sub = Lobby_Sub_All.copy()
-        if "Session" in lobby_sub.columns:
-            lobby_sub = lobby_sub[lobby_sub["Session"].astype(str).str.strip() == session].copy()
-        elif "session" in lobby_sub.columns:
-            lobby_sub = lobby_sub[lobby_sub["session"].astype(str).str.strip() == session].copy()
-        if "LobbyShortNorm" in lobby_sub.columns:
-            lobby_sub = lobby_sub[lobby_sub["LobbyShortNorm"] == lobbyshort_norm].copy()
-        elif "LobbyShort" in lobby_sub.columns:
-            lobby_sub = lobby_sub[lobby_sub["LobbyShort"].astype(str).str.strip() == lobbyshort].copy()
-        else:
-            lobby_sub = lobby_sub.iloc[0:0].copy()
-        if not lobby_sub.empty:
-            lobby_sub = lobby_sub.assign(
-                Subject=lobby_sub.get("Subject Matter", "").fillna("").astype(str).str.strip(),
-                Other=lobby_sub.get("Other Subject Matter Description", "").fillna("").astype(str).str.strip(),
-                PrimaryBusiness=lobby_sub.get("Primary Business", "").fillna("").astype(str).str.strip(),
-            )
-            for col in ["Subject", "Other"]:
-                series = lobby_sub[col]
-                lobby_sub[col] = series.where(~series.str.lower().isin(["nan", "none"]), "")
-            subject_non_empty = lobby_sub["Subject"].ne("").mean() if len(lobby_sub) else 0
-
-            unnamed0 = lobby_sub.get("Unnamed: 0", "").fillna("").astype(str).str.strip()
-            unnamed0 = unnamed0.where(~unnamed0.str.lower().isin(["nan", "none"]), "")
-
-            topic = lobby_sub["Subject"]
-            topic = topic.where(topic != "", lobby_sub["Other"])
-            topic = topic.where(topic != "", unnamed0)
-            topic = topic.where(topic != "", "Unspecified")
-            lobby_sub["Topic"] = topic
-
-            lobby_sub_counts = (
-                lobby_sub.groupby("Topic")
-                .size()
-                .reset_index(name="Mentions")
-                .sort_values("Mentions", ascending=False)
-            )
-        else:
-            lobby_sub_counts = pd.DataFrame(columns=["Topic", "Mentions"])
-            subject_non_empty = 0
+        lobby_sub_counts, subject_non_empty = build_lobby_subject_counts(
+            Lobby_Sub_All,
+            session,
+            lobbyshort,
+            lobbyshort_norm,
+            tuple(sorted(selected_filer_ids)) if selected_filer_ids else tuple(),
+        )
 
         # Lobbyist clients + totals (use precomputed Low_num/High_num)
         tfl_session = str(tfl_session_val) if tfl_session_val is not None else session
@@ -8703,6 +11092,9 @@ else:
             (Lobby_TFL_Client_All["Session"].astype(str).str.strip() == tfl_session) &
             (Lobby_TFL_Client_All["LobbyShort"].astype(str).str.strip() == lobbyshort)
         ].copy()
+        if selected_filer_ids and "FilerID" in lt.columns:
+            fid = pd.to_numeric(lt["FilerID"], errors="coerce").fillna(-1).astype(int)
+            lt = lt[fid.isin(selected_filer_ids)].copy()
         lt = ensure_cols(lt, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0})
 
         has_tfl = bool((lt["IsTFL"] == 1).any()) if not lt.empty else False
@@ -8783,6 +11175,7 @@ else:
             name_to_short=name_to_short,
             lobbyist_norms_tuple=typed_norms_tuple,
             filerid_to_short=data.get("filerid_to_short", {}),
+            filer_ids=tuple(sorted(selected_filer_ids)) if selected_filer_ids else None,
         )
 
         disclosures = build_disclosures(
@@ -8792,34 +11185,243 @@ else:
             name_to_short=name_to_short,
             lobbyist_norms_tuple=typed_norms_tuple,
             filerid_to_short=data.get("filerid_to_short", {}),
+            filer_ids=tuple(sorted(selected_filer_ids)) if selected_filer_ids else None,
         )
 
         # ---- Overview tab
         with tab_overview:
             st.markdown('<div class="section-title">Overview</div>', unsafe_allow_html=True)
+            st.markdown(
+                """
+<div class="callout fade-up">
+  <div class="callout-title">What this means</div>
+  <div class="callout-body">Client totals are reported ranges (low-high). Funding mix uses midpoints to show relative share, not exact spend.</div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+            _ = require_columns(
+                Lobby_TFL_Client_All,
+                ["Client", "IsTFL"],
+                "Overview",
+                "Texas Ethics Commission lobby filings are required for compensation and client totals.",
+            )
+            passed = int((bills.get("Status", pd.Series(dtype=object)) == "Passed").sum()) if not bills.empty else 0
+            failed = int((bills.get("Status", pd.Series(dtype=object)) == "Failed").sum()) if not bills.empty else 0
+            total_clients = len(set(tfl_clients + private_clients))
+            total_low = tfl_low + pri_low
+            total_high = tfl_high + pri_high
+            tfl_mid = (tfl_low + tfl_high) / 2
+            pri_mid = (pri_low + pri_high) / 2
+            total_mid = tfl_mid + pri_mid
+            tfl_share_pct = (tfl_mid / total_mid * 100) if total_mid else 0.0
+            top_clients = build_top_clients(lt, top_n=10)
+            top_client_label = ""
+            top_client_range = ""
+            if not top_clients.empty:
+                top_row = top_clients.iloc[0]
+                top_client_label = str(top_row.get("Client", "")).strip()
+                top_client_range = f"{fmt_usd(float(top_row.get('Low', 0.0)))} - {fmt_usd(float(top_row.get('High', 0.0)))}"
+            top_subject = ""
+            top_subject_pct = None
+            if not mentions.empty:
+                top_subject = str(mentions.iloc[0].get("Subject", "")).strip()
+                try:
+                    top_subject_pct = float(mentions.iloc[0].get("Share", 0.0)) * 100
+                except Exception:
+                    top_subject_pct = None
+
+            insight_items = []
+            if total_clients:
+                insight_items.append(
+                    f"{total_clients} unique clients this session: {len(tfl_clients)} taxpayer funded and {len(private_clients)} private."
+                )
+            if total_mid > 0:
+                insight_items.append(
+                    f"Reported compensation ranges total {fmt_usd(total_low)} to {fmt_usd(total_high)}; taxpayer funded share is about {tfl_share_pct:.0f}%."
+                )
+            if top_client_label:
+                insight_items.append(f"Largest client by midpoint: {top_client_label} ({top_client_range}).")
+            if top_subject:
+                if top_subject_pct is not None:
+                    insight_items.append(f"Top policy area: {top_subject} ({top_subject_pct:.1f}% of witness-list bills).")
+                else:
+                    insight_items.append(f"Top policy area: {top_subject}.")
+            if bills.empty:
+                insight_items.append("No witness-list bills recorded for this session.")
+
+            insight_html = "".join([f"<li>{html.escape(item)}</li>" for item in insight_items]) or "<li>No summary available.</li>"
+            focus_title = "Top Policy Area" if top_subject else "Top Client"
+            focus_value = _shorten_text(top_subject, 28) if top_subject else (_shorten_text(top_client_label, 28) if top_client_label else "--")
+            focus_sub = f"{top_subject_pct:.1f}% of bills" if top_subject and top_subject_pct is not None else (top_client_range if top_client_label else "")
+
+            st.markdown(
+                f"""
+<div class="insight-panel fade-up">
+  <div class="insight-card">
+    <div class="insight-kicker">Insight Briefing</div>
+    <div class="insight-title">Session highlights for this lobbyist</div>
+    <ul class="insight-list">{insight_html}</ul>
+  </div>
+  <div class="insight-card">
+    <div class="insight-kicker">At a glance</div>
+    <div class="mini-kpi-grid">
+      <div class="mini-kpi">
+        <div class="label">Clients</div>
+        <div class="value">{total_clients:,}</div>
+        <div class="sub">TFL {len(tfl_clients)} / Private {len(private_clients)}</div>
+      </div>
+      <div class="mini-kpi">
+        <div class="label">Total Range</div>
+        <div class="value">{fmt_usd(total_low)} - {fmt_usd(total_high)}</div>
+        <div class="sub">Midpoint share {tfl_share_pct:.0f}% TFL</div>
+      </div>
+      <div class="mini-kpi">
+        <div class="label">Bills</div>
+        <div class="value">{len(bills):,}</div>
+        <div class="sub">Passed {passed:,} / Failed {failed:,}</div>
+      </div>
+      <div class="mini-kpi">
+        <div class="label">{focus_title}</div>
+        <div class="value">{html.escape(focus_value) if focus_value else "--"}</div>
+        <div class="sub">{html.escape(focus_sub) if focus_sub else ""}</div>
+      </div>
+    </div>
+  </div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
             o1, o2, o3, o4 = st.columns(4)
             with o1:
-                kpi_card("Session", session, f"Scope: {st.session_state.scope}")
+                kpi_card(
+                    "Session",
+                    session,
+                    f"Scope: {st.session_state.scope}",
+                    help_text="Session used for detail tables; scope shows whether totals are this session or all sessions.",
+                )
             with o2:
-                kpi_card("Lobbyist", lobbyshort, st.session_state.search_query.strip() or "—")
+                kpi_card(
+                    "Lobbyist",
+                    lobbyist_label,
+                    st.session_state.search_query.strip() or "--",
+                    help_text="Resolved lobbyist selection; subtitle shows the search query.",
+                )
             with o3:
-                kpi_card("Taxpayer Funded Totals", f"{fmt_usd(tfl_low)} - {fmt_usd(tfl_high)}")
+                kpi_card(
+                    "Taxpayer Funded Totals",
+                    f"{fmt_usd(tfl_low)} - {fmt_usd(tfl_high)}",
+                    help_text="Sum of reported low/high totals for taxpayer-funded clients tied to this lobbyist.",
+                )
             with o4:
-                kpi_card("Private Totals", f"{fmt_usd(pri_low)} - {fmt_usd(pri_high)}")
+                kpi_card(
+                    "Private Totals",
+                    f"{fmt_usd(pri_low)} - {fmt_usd(pri_high)}",
+                    help_text="Sum of reported low/high totals for private clients tied to this lobbyist.",
+                )
 
             st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
             s1, s2, s3, s4 = st.columns(4)
             with s1:
-                kpi_card("Taxpayer Funded?", "Yes" if has_tfl else "No")
+                kpi_card(
+                    "Taxpayer Funded?",
+                    "Yes" if has_tfl else "No",
+                    help_text="Whether this lobbyist has any taxpayer-funded clients in the selected scope.",
+                )
             with s2:
-                kpi_card("Private Funded?", "Yes" if has_private else "No")
+                kpi_card(
+                    "Private Funded?",
+                    "Yes" if has_private else "No",
+                    help_text="Whether this lobbyist has any private clients in the selected scope.",
+                )
             with s3:
-                kpi_card("Total Bills (Witness Lists)", f"{len(bills):,}")
+                kpi_card(
+                    "Total Bills (Witness Lists)",
+                    f"{len(bills):,}",
+                    help_text="Witness list rows tied to this lobbyist in the selected session.",
+                )
             with s4:
-                passed = int((bills.get("Status", pd.Series(dtype=object)) == "Passed").sum()) if not bills.empty else 0
-                failed = int((bills.get("Status", pd.Series(dtype=object)) == "Failed").sum()) if not bills.empty else 0
-                kpi_card("Passed / Failed", f"{passed:,} / {failed:,}")
+                kpi_card(
+                    "Passed / Failed",
+                    f"{passed:,} / {failed:,}",
+                    help_text="Bill outcomes among witness list rows in this view.",
+                )
+
+            st.markdown('<div class="section-sub">Activity & Filings tempo</div>', unsafe_allow_html=True)
+            act_rows = len(activities) if isinstance(activities, pd.DataFrame) else 0
+            disc_rows = len(disclosures) if isinstance(disclosures, pd.DataFrame) else 0
+            activity_timeline = build_timeline_counts(activities, "Date") if isinstance(activities, pd.DataFrame) else pd.DataFrame()
+            disclosure_timeline = build_timeline_counts(disclosures, "Date") if isinstance(disclosures, pd.DataFrame) else pd.DataFrame()
+            if not activity_timeline.empty or not disclosure_timeline.empty:
+                act_merge = activity_timeline.rename(columns={"Count": "Activities"})[["Period", "Label", "Activities"]] if not activity_timeline.empty else pd.DataFrame(columns=["Period", "Label", "Activities"])
+                disc_merge = disclosure_timeline.rename(columns={"Count": "Disclosures"})[["Period", "Label", "Disclosures"]] if not disclosure_timeline.empty else pd.DataFrame(columns=["Period", "Label", "Disclosures"])
+                tempo = act_merge.merge(disc_merge, on=["Period", "Label"], how="outer").fillna(0)
+                tempo = tempo.sort_values("Period")
+                tempo_long = tempo.melt(id_vars=["Period", "Label"], value_vars=["Activities", "Disclosures"], var_name="Type", value_name="Count")
+                tempo_long["Count"] = pd.to_numeric(tempo_long["Count"], errors="coerce").fillna(0)
+                fig_tempo = px.line(
+                    tempo_long,
+                    x="Period",
+                    y="Count",
+                    color="Type",
+                    markers=True,
+                    color_discrete_map={"Activities": "#00e0b8", "Disclosures": "#8cc9ff"},
+                )
+                fig_tempo.update_traces(
+                    mode="lines+markers",
+                    line=dict(width=3),
+                    marker=dict(size=6),
+                    hovertemplate="%{x|%b %Y}: %{y} %{fullData.name}<extra></extra>",
+                )
+                _apply_plotly_layout(fig_tempo, showlegend=True, legend_title="", margin_top=8)
+                fig_tempo.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.08)", title_text="")
+                fig_tempo.update_xaxes(title_text="")
+                st.plotly_chart(fig_tempo, use_container_width=True, config=PLOTLY_CONFIG)
+                st.caption(f"Activities: {act_rows:,} rows | Disclosures: {disc_rows:,} rows")
+            else:
+                st.info("No activities or disclosures recorded for this lobbyist/session.")
+
+            st.markdown('<div class="section-sub">Compensation Trend by Session (Midpoint)</div>', unsafe_allow_html=True)
+            trend_df = build_lobbyist_trend(
+                Lobby_TFL_Client_All,
+                lobbyshort,
+                tuple(sorted(selected_filer_ids)) if selected_filer_ids else None,
+            )
+            if not trend_df.empty:
+                session_order = sorted(trend_df["SessionBase"].dropna().unique().tolist())
+                session_labels = [_session_base_label(s) for s in session_order]
+                fig_trend = px.line(
+                    trend_df,
+                    x="SessionLabel",
+                    y="Mid",
+                    color="Funding",
+                    markers=True,
+                    category_orders={"SessionLabel": session_labels},
+                    color_discrete_map=FUNDING_COLOR_MAP,
+                )
+                fig_trend.update_traces(
+                    mode="lines+markers",
+                    line=dict(width=3),
+                    marker=dict(size=6),
+                    hovertemplate="%{x} - %{fullData.name}: $%{y:,.0f}<extra></extra>",
+                )
+                _apply_plotly_layout(fig_trend, showlegend=True, legend_title="", margin_top=12)
+                fig_trend.update_layout(hovermode="x unified")
+                fig_trend.update_yaxes(
+                    tickprefix="$",
+                    tickformat="~s",
+                    showgrid=True,
+                    gridcolor="rgba(255,255,255,0.08)",
+                )
+                fig_trend.update_xaxes(title_text="")
+                st.plotly_chart(fig_trend, use_container_width=True, config=PLOTLY_CONFIG)
+                st.markdown(
+                    '<div class="section-caption">Trend shows midpoint totals for taxpayer funded vs private clients across sessions.</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.info("No multi-session trend available for this lobbyist.")
 
             st.markdown('<div class="section-sub">Funding Mix (Midpoint)</div>', unsafe_allow_html=True)
             lobby_mix = pd.DataFrame(
@@ -8850,28 +11452,80 @@ else:
                 _apply_plotly_layout(fig_lobby_mix, showlegend=False, margin_top=12)
                 fig_lobby_mix.update_layout(uniformtext_minsize=10, uniformtext_mode="hide")
                 st.plotly_chart(fig_lobby_mix, use_container_width=True, config=PLOTLY_CONFIG)
+                st.markdown('<div class="section-caption">Funding mix uses midpoint values to highlight relative scale.</div>', unsafe_allow_html=True)
             else:
-                st.info("No totals available for funding mix.")
+                st.info("No totals available for funding mix. Try selecting a different session or clearing the lobbyist filter.")
+
+            st.markdown('<div class="section-sub">Top Clients by Reported Compensation (Midpoint)</div>', unsafe_allow_html=True)
+            if not top_clients.empty:
+                top_clients = top_clients.sort_values("Mid", ascending=True)
+                fig_clients = px.bar(
+                    top_clients,
+                    x="Mid",
+                    y="Client",
+                    orientation="h",
+                    color="Funding",
+                    color_discrete_map=FUNDING_COLOR_MAP,
+                    text="Mid",
+                )
+                fig_clients.update_traces(
+                    texttemplate="$%{text:,.0f}",
+                    textposition="outside",
+                    cliponaxis=False,
+                    hovertemplate="%{y}<br>%{fullData.name}: $%{x:,.0f}<extra></extra>",
+                )
+                _apply_plotly_layout(fig_clients, showlegend=True, legend_title="", margin_top=12)
+                fig_clients.update_layout(margin=dict(l=8, r=48, t=12, b=8))
+                fig_clients.update_xaxes(
+                    tickprefix="$",
+                    tickformat="~s",
+                    showgrid=True,
+                    gridcolor="rgba(255,255,255,0.08)",
+                    title_text="Midpoint total",
+                )
+                fig_clients.update_yaxes(title_text="")
+                st.plotly_chart(fig_clients, use_container_width=True, config=PLOTLY_CONFIG)
+            else:
+                st.info("No client totals available to rank for this session.")
 
             st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
             cA, cB = st.columns(2)
             with cA:
                 st.subheader("Taxpayer Funded Clients")
-                st.write(", ".join(tfl_clients) if tfl_clients else "—")
+                st.markdown(render_pill_list(tfl_clients, limit=14), unsafe_allow_html=True)
             with cB:
                 st.subheader("Private Clients")
-                st.write(", ".join(private_clients) if private_clients else "—")
+                st.markdown(render_pill_list(private_clients, limit=14), unsafe_allow_html=True)
 
         # ---- Bills tab
         with tab_bills:
             st.markdown('<div class="section-title">Bills with Witness-List Activity</div>', unsafe_allow_html=True)
-            if bills.empty:
-                st.info("No witness-list rows found for this lobbyist/session in Wit_All.")
+            st.markdown(
+                """
+<div class="callout fade-up">
+  <div class="callout-title">What this means</div>
+  <div class="callout-body">Witness-list rows indicate where a lobbyist filed testimony or positions. Use status/position filters to focus on the most relevant activity.</div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+            if witness_match_note:
+                st.caption(witness_match_note)
+            if not require_columns(
+                bills,
+                ["Bill", "Position"],
+                "Bills view",
+                "Texas Legislature Online witness lists and bill status data are required for bill-level activity.",
+            ):
+                st.info("Bills view needs Texas Legislature Online witness-list data. Check the Data health panel.")
+            elif bills.empty:
+                st.info("No witness-list rows found for this lobbyist/session. Try another session or clear the specific match.")
             else:
                 st.session_state.bill_search = st.text_input(
                     "Search bills (Bill / Author / Caption)",
                     value=st.session_state.bill_search,
                     placeholder="e.g., HB 4 or Bettencourt or housing",
+                    help="Filter bills by bill number, author, or caption text.",
                 )
                 filtered = bills.copy()
                 if st.session_state.bill_search.strip():
@@ -8888,18 +11542,94 @@ else:
                         filtered.get("Status", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
                     )
                     status_opts = sorted(status_opts)
-                    status_sel = st.multiselect("Filter by status", status_opts, default=status_opts)
+                    status_sel = st.multiselect(
+                        "Filter by status",
+                        status_opts,
+                        default=status_opts,
+                        help="Limit results to selected bill statuses.",
+                    )
                 with f2:
                     pos_opts = _clean_options(
                         filtered.get("Position", pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
                     )
                     pos_opts = sorted(pos_opts)
-                    pos_sel = st.multiselect("Filter by position", pos_opts, default=pos_opts)
+                    pos_sel = st.multiselect(
+                        "Filter by position",
+                        pos_opts,
+                        default=pos_opts,
+                        help="Limit results to selected witness positions.",
+                    )
 
                 if status_sel:
                     filtered = filtered[filtered["Status"].astype(str).isin(status_sel)].copy()
                 if pos_sel:
                     filtered = filtered[filtered["Position"].astype(str).isin(pos_sel)].copy()
+
+                bsum1, bsum2 = st.columns(2)
+                with bsum1:
+                    if "Status" in filtered.columns:
+                        status_counts = (
+                            filtered["Status"]
+                            .fillna("Unknown")
+                            .astype(str)
+                            .str.strip()
+                            .replace("", "Unknown")
+                            .value_counts()
+                            .reset_index()
+                        )
+                        status_counts.columns = ["Status", "Count"]
+                        fig_status = px.bar(
+                            status_counts.sort_values("Count"),
+                            x="Count",
+                            y="Status",
+                            orientation="h",
+                            text="Count",
+                        )
+                        fig_status.update_traces(
+                            textposition="outside",
+                            marker_color="#8cc9ff",
+                            cliponaxis=False,
+                            hovertemplate="%{y}: %{x}<extra></extra>",
+                        )
+                        _apply_plotly_layout(fig_status, showlegend=False, height=220, margin_top=8)
+                        fig_status.update_layout(margin=dict(l=8, r=28, t=8, b=8))
+                        fig_status.update_xaxes(showgrid=False, title_text="")
+                        fig_status.update_yaxes(title_text="")
+                        st.plotly_chart(fig_status, use_container_width=True, config=PLOTLY_CONFIG)
+                    else:
+                        st.info("Status summary unavailable.")
+                with bsum2:
+                    if "Position" in filtered.columns:
+                        pos_counts = (
+                            filtered["Position"]
+                            .fillna("Unknown")
+                            .astype(str)
+                            .str.strip()
+                            .replace("", "Unknown")
+                            .value_counts()
+                            .reset_index()
+                        )
+                        pos_counts.columns = ["Position", "Count"]
+                        fig_pos = px.bar(
+                            pos_counts.sort_values("Count"),
+                            x="Count",
+                            y="Position",
+                            orientation="h",
+                            text="Count",
+                        )
+                        fig_pos.update_traces(
+                            textposition="outside",
+                            marker_color="#1e90ff",
+                            cliponaxis=False,
+                            hovertemplate="%{y}: %{x}<extra></extra>",
+                        )
+                        _apply_plotly_layout(fig_pos, showlegend=False, height=220, margin_top=8)
+                        fig_pos.update_layout(margin=dict(l=8, r=28, t=8, b=8))
+                        fig_pos.update_xaxes(showgrid=False, title_text="")
+                        fig_pos.update_yaxes(title_text="")
+                        st.plotly_chart(fig_pos, use_container_width=True, config=PLOTLY_CONFIG)
+                    else:
+                        st.info("Position summary unavailable.")
 
                 for col in ["Fiscal Impact H", "Fiscal Impact S"]:
                     if col in filtered.columns:
@@ -8908,14 +11638,44 @@ else:
                 show_cols = ["Bill", "Author", "Caption", "Position", "Fiscal Impact H", "Fiscal Impact S", "Status"]
                 show_cols = [c for c in show_cols if c in filtered.columns]
 
+                st.caption(f"{len(filtered):,} bills")
                 st.dataframe(filtered[show_cols].sort_values(["Bill"]), use_container_width=True, height=520, hide_index=True)
-                _ = export_dataframe(filtered[show_cols], "bills.csv")
+                export_context = []
+                if st.session_state.bill_search.strip():
+                    export_context.append(f"Bill search: {_shorten_text(st.session_state.bill_search, 28)}")
+                if status_sel and len(status_sel) != len(status_opts):
+                    status_label = ", ".join(status_sel[:3])
+                    if len(status_sel) > 3:
+                        status_label += "..."
+                    export_context.append(f"Status: {status_label}")
+                if pos_sel and len(pos_sel) != len(pos_opts):
+                    pos_label = ", ".join(pos_sel[:3])
+                    if len(pos_sel) > 3:
+                        pos_label += "..."
+                    export_context.append(f"Position: {pos_label}")
+                _ = export_dataframe(filtered[show_cols], "bills.csv", context=export_context)
 
         # ---- Policy tab
         with tab_policy:
             st.markdown('<div class="section-title">Policy Areas</div>', unsafe_allow_html=True)
-            if mentions.empty:
-                st.info("No subjects found (Bill_Sub_All join returned 0 rows).")
+            st.markdown(
+                """
+<div class="callout fade-up">
+  <div class="callout-title">What this means</div>
+  <div class="callout-body">Policy areas are derived from subjects tied to bills where the lobbyist appeared on a witness list. Counts reflect unique bills, not dollars.</div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+            if not require_columns(
+                Bill_Sub_All,
+                ["Bill", "Subject"],
+                "Policy areas",
+                "Texas Legislature Online bill subject data is required for policy analysis.",
+            ):
+                st.info("Policy area view needs Texas Legislature Online bill subject data with Bill and Subject columns.")
+            elif mentions.empty:
+                st.info("No subjects found (Texas Legislature Online bill subject data returned 0 rows). Try another session or clear the lobbyist filter.")
             else:
                 chart_mentions = mentions.copy()
                 chart_mentions["SharePct"] = (chart_mentions["Share"] * 100).round(1)
@@ -8969,9 +11729,9 @@ else:
                 _ = export_dataframe(m2, "policy_areas.csv")
 
             st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
-            st.subheader("Reported Subject Matters (Lobby_Sub_All)")
+            st.subheader("Reported Subject Matters (Texas Ethics Commission filings)")
             if lobby_sub_counts.empty:
-                st.info("No Lobby_Sub_All rows found for this lobbyist/session.")
+                st.info("No Texas Ethics Commission subject-matter rows found for this lobbyist/session. Try a different session or verify the Texas Ethics Commission subject-matter data in Data health.")
             else:
                 if subject_non_empty < 0.05:
                     st.caption("Note: Subject Matter is largely blank for this session in the source data. Showing Other Subject Matter Description or Unnamed: 0 when available.")
@@ -9020,8 +11780,24 @@ else:
         # ---- Staff tab
         with tab_staff:
             st.markdown('<div class="section-title">Legislative Staffer History</div>', unsafe_allow_html=True)
-            if staff_pick.empty:
-                st.info("No staff-history rows matched for this lobbyist in Staff_All.")
+            st.markdown(
+                """
+<div class="callout fade-up">
+  <div class="callout-title">What this means</div>
+  <div class="callout-body">Staff history shows overlap between lobbyist names and legislative staff records. Use it to identify staff-to-lobbyist transitions.</div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+            if not require_columns(
+                Staff_All,
+                ["Legislator", "Staffer"],
+                "Staff history",
+                "House Research Organization staff lists are required for staff history.",
+            ):
+                st.info("Staff view needs House Research Organization staff lists with Legislator and Staffer columns.")
+            elif staff_pick.empty:
+                st.info("No staff-history rows matched for this lobbyist. Try a broader lobbyist match or check House Research Organization staff data.")
             else:
                 st.caption("Showing staff history across all sessions.")
                 cols = ["Session", "Legislator", "Title", "Staffer"]
@@ -9033,7 +11809,7 @@ else:
                 st.caption("Session-specific staff metrics are not shown because there are no matches for the selected session.")
             elif not staff_stats.empty:
                 st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
-                st.caption("Computed from authored bills intersected with this lobbyist’s witness activity.")
+                st.caption("Computed from authored bills intersected with this lobbyist's witness activity.")
                 s2 = staff_stats.copy()
                 for col in ["% Against that Failed", "% For that Passed"]:
                     s2[col] = pd.to_numeric(s2[col], errors="coerce")
@@ -9044,20 +11820,42 @@ else:
         # ---- Activities tab
         with tab_activities:
             st.markdown('<div class="section-title">Lobbying Expenditures / Activity</div>', unsafe_allow_html=True)
-            if activities.empty:
-                st.info("No activity rows found for this lobbyist/session in activity sheets (after improved matching).")
+            st.markdown(
+                """
+<div class="callout fade-up">
+  <div class="callout-title">What this means</div>
+  <div class="callout-body">Activity rows summarize reportable expenditures (food, travel, gifts, events). Use type and date filters to focus on a specific time window.</div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+            if not require_columns(
+                activities,
+                ["Date", "Type", "Description"],
+                "Activities view",
+                "Texas Ethics Commission activity reports (Food, Entertainment, Travel, Gifts, Events, Awards) are required.",
+            ):
+                st.info("Activities view needs the Texas Ethics Commission activity reports listed in Data health.")
+            elif activities.empty:
+                st.info("No activity rows found for this lobbyist/session (after matching). Try a different session or clear the specific match.")
                 st.caption("If Excel still shows rows, your workbook may key activities on a different ID (e.g., filerID).")
             else:
                 filt = activities.copy()
                 t_opts = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
                 t_opts = sorted(t_opts)
-                sel_types = st.multiselect("Filter by activity type", t_opts, default=t_opts)
+                sel_types = st.multiselect(
+                    "Filter by activity type",
+                    t_opts,
+                    default=t_opts,
+                    help="Limit results to selected activity categories.",
+                )
                 if sel_types:
                     filt = filt[filt["Type"].isin(sel_types)].copy()
 
                 st.session_state.activity_search = st.text_input(
                     "Search activities (filer, member, description)",
                     value=st.session_state.activity_search,
+                    help="Search activity rows by filer, member, or description.",
                 )
                 if st.session_state.activity_search.strip():
                     q = st.session_state.activity_search.strip()
@@ -9068,34 +11866,127 @@ else:
                     ].copy()
 
                 date_parsed = pd.to_datetime(filt["Date"], errors="coerce")
+                d_from = None
+                d_to = None
                 if date_parsed.notna().any():
                     min_d = date_parsed.min().date()
                     max_d = date_parsed.max().date()
-                    d_from, d_to = st.date_input("Date range", (min_d, max_d))
+                    d_from, d_to = st.date_input(
+                        "Date range",
+                        (min_d, max_d),
+                        help="Restrict results to activities within this date range.",
+                    )
                     if d_from and d_to:
                         mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
                         filt = filt[mask].copy()
 
+                a1, a2 = st.columns(2)
+                with a1:
+                    type_counts = (
+                        filt["Type"]
+                        .fillna("Unknown")
+                        .astype(str)
+                        .str.strip()
+                        .replace("", "Unknown")
+                        .value_counts()
+                        .reset_index()
+                    )
+                    type_counts.columns = ["Type", "Count"]
+                    if not type_counts.empty:
+                        fig_type = px.bar(
+                            type_counts.sort_values("Count"),
+                            x="Count",
+                            y="Type",
+                            orientation="h",
+                            text="Count",
+                        )
+                        fig_type.update_traces(
+                            textposition="outside",
+                            marker_color="#00e0b8",
+                            cliponaxis=False,
+                            hovertemplate="%{y}: %{x}<extra></extra>",
+                        )
+                        _apply_plotly_layout(fig_type, showlegend=False, height=220, margin_top=8)
+                        fig_type.update_layout(margin=dict(l=8, r=28, t=8, b=8))
+                        fig_type.update_xaxes(showgrid=False, title_text="")
+                        fig_type.update_yaxes(title_text="")
+                        st.plotly_chart(fig_type, use_container_width=True, config=PLOTLY_CONFIG)
+                    else:
+                        st.info("No activity types to summarize.")
+                with a2:
+                    timeline = build_timeline_counts(filt, "Date")
+                    if not timeline.empty:
+                        fig_time = px.line(
+                            timeline,
+                            x="Period",
+                            y="Count",
+                            markers=True,
+                        )
+                        fig_time.update_traces(
+                            line=dict(width=3, color="#1e90ff"),
+                            marker=dict(size=6),
+                            hovertemplate="%{x|%b %Y}: %{y}<extra></extra>",
+                        )
+                        _apply_plotly_layout(fig_time, showlegend=False, height=220, margin_top=8)
+                        fig_time.update_layout(margin=dict(l=8, r=16, t=8, b=8))
+                        fig_time.update_xaxes(title_text="")
+                        fig_time.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.08)", title_text="")
+                        st.plotly_chart(fig_time, use_container_width=True, config=PLOTLY_CONFIG)
+                    else:
+                        st.info("No activity timeline available.")
+
                 st.caption(f"{len(filt):,} rows")
                 st.dataframe(filt, use_container_width=True, height=560, hide_index=True)
-                _ = export_dataframe(filt, "activities.csv")
+                export_context = []
+                if sel_types and len(sel_types) != len(t_opts):
+                    type_label = ", ".join(sel_types[:3])
+                    if len(sel_types) > 3:
+                        type_label += "..."
+                    export_context.append(f"Types: {type_label}")
+                if st.session_state.activity_search.strip():
+                    export_context.append(f"Search: {_shorten_text(st.session_state.activity_search, 28)}")
+                if d_from and d_to:
+                    export_context.append(f"Dates: {d_from} to {d_to}")
+                _ = export_dataframe(filt, "activities.csv", context=export_context)
 
         # ---- Disclosures tab
         with tab_disclosures:
             st.markdown('<div class="section-title">Disclosures & Subject Matter Filings</div>', unsafe_allow_html=True)
-            if disclosures.empty:
-                st.info("No disclosure rows found for this lobbyist/session.")
+            st.markdown(
+                """
+<div class="callout fade-up">
+  <div class="callout-title">What this means</div>
+  <div class="callout-body">Disclosures capture coverage, dockets, and subject-matter filings tied to lobbyist activity. Use date filters to align with the reporting period.</div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+            if not require_columns(
+                disclosures,
+                ["Date", "Type", "Description"],
+                "Disclosures view",
+                "Texas Ethics Commission disclosure filings (Coverage, Docket, On Behalf, Subject Matter) are required.",
+            ):
+                st.info("Disclosures view needs Texas Ethics Commission disclosure filings (Coverage, Docket, On Behalf, Subject Matter) in the workbook.")
+            elif disclosures.empty:
+                st.info("No disclosure rows found for this lobbyist/session. Try another session or clear the specific match.")
             else:
                 filt = disclosures.copy()
                 d_types = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
                 d_types = sorted(d_types)
-                sel_types = st.multiselect("Filter by disclosure type", d_types, default=d_types)
+                sel_types = st.multiselect(
+                    "Filter by disclosure type",
+                    d_types,
+                    default=d_types,
+                    help="Limit results to selected disclosure categories.",
+                )
                 if sel_types:
                     filt = filt[filt["Type"].isin(sel_types)].copy()
 
                 st.session_state.disclosure_search = st.text_input(
                     "Search disclosures (filer, description, entity)",
                     value=st.session_state.disclosure_search,
+                    help="Search disclosure rows by filer, description, or entity.",
                 )
                 if st.session_state.disclosure_search.strip():
                     q = st.session_state.disclosure_search.strip()
@@ -9106,17 +11997,89 @@ else:
                     ].copy()
 
                 date_parsed = pd.to_datetime(filt["Date"], errors="coerce")
+                d_from = None
+                d_to = None
                 if date_parsed.notna().any():
                     min_d = date_parsed.min().date()
                     max_d = date_parsed.max().date()
-                    d_from, d_to = st.date_input("Date range", (min_d, max_d), key="disclosure_dates")
+                    d_from, d_to = st.date_input(
+                        "Date range",
+                        (min_d, max_d),
+                        key="disclosure_dates",
+                        help="Restrict results to disclosures within this date range.",
+                    )
                     if d_from and d_to:
                         mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
                         filt = filt[mask].copy()
 
+                d1, d2 = st.columns(2)
+                with d1:
+                    type_counts = (
+                        filt["Type"]
+                        .fillna("Unknown")
+                        .astype(str)
+                        .str.strip()
+                        .replace("", "Unknown")
+                        .value_counts()
+                        .reset_index()
+                    )
+                    type_counts.columns = ["Type", "Count"]
+                    if not type_counts.empty:
+                        fig_type = px.bar(
+                            type_counts.sort_values("Count"),
+                            x="Count",
+                            y="Type",
+                            orientation="h",
+                            text="Count",
+                        )
+                        fig_type.update_traces(
+                            textposition="outside",
+                            marker_color="#1e90ff",
+                            cliponaxis=False,
+                            hovertemplate="%{y}: %{x}<extra></extra>",
+                        )
+                        _apply_plotly_layout(fig_type, showlegend=False, height=220, margin_top=8)
+                        fig_type.update_layout(margin=dict(l=8, r=28, t=8, b=8))
+                        fig_type.update_xaxes(showgrid=False, title_text="")
+                        fig_type.update_yaxes(title_text="")
+                        st.plotly_chart(fig_type, use_container_width=True, config=PLOTLY_CONFIG)
+                    else:
+                        st.info("No disclosure types to summarize.")
+                with d2:
+                    timeline = build_timeline_counts(filt, "Date")
+                    if not timeline.empty:
+                        fig_time = px.line(
+                            timeline,
+                            x="Period",
+                            y="Count",
+                            markers=True,
+                        )
+                        fig_time.update_traces(
+                            line=dict(width=3, color="#00e0b8"),
+                            marker=dict(size=6),
+                            hovertemplate="%{x|%b %Y}: %{y}<extra></extra>",
+                        )
+                        _apply_plotly_layout(fig_time, showlegend=False, height=220, margin_top=8)
+                        fig_time.update_layout(margin=dict(l=8, r=16, t=8, b=8))
+                        fig_time.update_xaxes(title_text="")
+                        fig_time.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.08)", title_text="")
+                        st.plotly_chart(fig_time, use_container_width=True, config=PLOTLY_CONFIG)
+                    else:
+                        st.info("No disclosure timeline available.")
+
                 st.caption(f"{len(filt):,} rows")
                 st.dataframe(filt, use_container_width=True, height=560, hide_index=True)
-                _ = export_dataframe(filt, "disclosures.csv")
+                export_context = []
+                if sel_types and len(sel_types) != len(d_types):
+                    type_label = ", ".join(sel_types[:3])
+                    if len(sel_types) > 3:
+                        type_label += "..."
+                    export_context.append(f"Types: {type_label}")
+                if st.session_state.disclosure_search.strip():
+                    export_context.append(f"Search: {_shorten_text(st.session_state.disclosure_search, 28)}")
+                if d_from and d_to:
+                    export_context.append(f"Dates: {d_from} to {d_to}")
+                _ = export_dataframe(filt, "disclosures.csv", context=export_context)
 
 # Hide Streamlit chrome
 st.markdown(
