@@ -3699,10 +3699,8 @@ footer {visibility: hidden;}
         unsafe_allow_html=True,
     )
 
-def _page_lobby_lookup():
-    pass
-
-_lobby_page = st.Page(_page_lobby_lookup, title="Lobby Look-Up", url_path="lobbyists", default=True)
+# Lobby content renders in the main body below; this stub keeps navigation wiring intact.
+_lobby_page = st.Page(lambda: None, title="Lobby Look-Up", url_path="lobbyists", default=True)
 _client_page = st.Page(_page_client_lookup, title="Client Look-Up", url_path="clients")
 _member_page = st.Page(_page_member_lookup, title="Legislators", url_path="legislators")
 _about_page = st.Page(_page_about, title="About", url_path="about")
