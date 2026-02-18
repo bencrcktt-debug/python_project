@@ -42,21 +42,6 @@ streamlit run main.py
 - CSV exports include active filter context in the label and filename.
 - PDF reports include a cover, contents, executive summary, and sectioned tables/charts.
 
-## Architecture scaffold (in progress)
-
-The redesign toward a Bloomberg-grade reporting experience is modularized under `app/`:
-
-- `config.py` centralizes defaults for data paths, output folders, and Plotly config.
-- `context.py` defines `FilterState` and `ReportContext` objects that carry provenance through data, charts, and PDF layers.
-- `data_loader.py` resolves data paths, creates a cached DuckDB connection, and exposes a place to register materialized views.
-- `metrics.py` houses reusable analytics (taxpayer dependency, stance efficacy, policy concentration) returning structured results.
-- `report_queue.py` provides a threaded queue for asynchronous PDF generation.
-- `report_presets.py` standardizes report types (lobbyist, client, session, aggregate) and their section stacks.
-- `charts.py` centralizes Plotly layout helpers and sparklines for consistent visuals.
-- `layout.py` offers a shared filter bar that returns a `FilterState` for both explore and report-builder views.
-
-These modules are scaffolding only; wire them into `main.py` incrementally by routing data access through `data_loader` and driving views from `ReportContext`.
-
 ## Deployment (Streamlit Community Cloud)
 
 1. Push this repo to GitHub.
