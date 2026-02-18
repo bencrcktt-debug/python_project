@@ -10,7 +10,7 @@ import streamlit as st
 import plotly.express as px
 import plotly.io as pio
 import altair as alt
-from fpdf import FPDF
+from fpdf import FPDF, XPos, YPos
 from app.html_report import build_html_report
 from app.pdf import html_to_pdf_bytes
 
@@ -1547,7 +1547,7 @@ def _page_client_lookup():
     with st.sidebar.expander("Data health", expanded=False):
         st.caption(f"Data path: {PATH}")
         health = data_health_table(data)
-        st.dataframe(health, use_container_width=True, height=260, hide_index=True)
+        st.dataframe(health, width="stretch", height=260, hide_index=True)
 
     st.markdown('<div id="filter-bar-marker"></div>', unsafe_allow_html=True)
     top1, top2, top3 = st.columns([2.2, 1.2, 1.2])
@@ -1627,7 +1627,7 @@ def _page_client_lookup():
                 f"Reuse {label}",
                 key=f"recent_client_lookup_{idx}",
                 help="Reuse a recent client search",
-                use_container_width=True,
+                width="stretch",
             ):
                 st.session_state.client_query = rec
                 st.session_state.client_query_input = rec
@@ -1657,7 +1657,7 @@ def _page_client_lookup():
     with f2:
         if st.button(
             "Clear filters",
-            use_container_width=True,
+            width="stretch",
             help="Reset client search and primary filters to defaults.",
         ):
             reset_client_filters(default_session)
@@ -1833,7 +1833,7 @@ def _page_client_lookup():
                     )
                     _apply_plotly_layout(fig_mix, showlegend=False, margin_top=12)
                     fig_mix.update_layout(uniformtext_minsize=10, uniformtext_mode="hide")
-                    st.plotly_chart(fig_mix, use_container_width=True, config=PLOTLY_CONFIG)
+                    st.plotly_chart(fig_mix, width="stretch", config=PLOTLY_CONFIG)
                 else:
                     st.info("No totals available for funding mix.")
 
@@ -1898,7 +1898,7 @@ def _page_client_lookup():
                         gridcolor="rgba(255,255,255,0.08)",
                     )
                     fig_cat.update_xaxes(title_text="", tickfont=dict(color="rgba(235,245,255,0.8)"))
-                    st.plotly_chart(fig_cat, use_container_width=True, config=PLOTLY_CONFIG)
+                    st.plotly_chart(fig_cat, width="stretch", config=PLOTLY_CONFIG)
                 else:
                     st.info("No taxpayer funded category totals available for 85th-89th sessions.")
 
@@ -1915,7 +1915,7 @@ def _page_client_lookup():
                     )
                     st.dataframe(
                         top_tfl[["Client", "Taxpayer Funded Total"]],
-                        use_container_width=True,
+                        width="stretch",
                         height=240,
                         hide_index=True,
                     )
@@ -1932,7 +1932,7 @@ def _page_client_lookup():
                     )
                     st.dataframe(
                         top_pri[["Client", "Private Total"]],
-                        use_container_width=True,
+                        width="stretch",
                         height=240,
                         hide_index=True,
                     )
@@ -1972,7 +1972,7 @@ def _page_client_lookup():
                     st.markdown('<div class="section-sub">By Category</div>', unsafe_allow_html=True)
                     st.dataframe(
                         by_category[["Category", "Clients", "Total Compensation"]],
-                        use_container_width=True,
+                        width="stretch",
                         height=360,
                         hide_index=True,
                     )
@@ -1980,7 +1980,7 @@ def _page_client_lookup():
                     st.markdown('<div class="section-sub">By Entity Type</div>', unsafe_allow_html=True)
                     st.dataframe(
                         by_type[["Entity Type", "Clients", "Total Compensation"]],
-                        use_container_width=True,
+                        width="stretch",
                         height=360,
                         hide_index=True,
                     )
@@ -2007,7 +2007,7 @@ def _page_client_lookup():
             show_cols = ["Client", "Taxpayer Funded", "Lobbyists", "Low", "High"]
             st.dataframe(
                 view_disp[show_cols].sort_values(["Taxpayer Funded", "Client"], ascending=[False, True]),
-                use_container_width=True,
+                width="stretch",
                 height=560,
                 hide_index=True,
             )
@@ -2374,7 +2374,7 @@ def _page_client_lookup():
             )
             _apply_plotly_layout(fig_client_mix, showlegend=False, margin_top=12)
             fig_client_mix.update_layout(uniformtext_minsize=10, uniformtext_mode="hide")
-            st.plotly_chart(fig_client_mix, use_container_width=True, config=PLOTLY_CONFIG)
+            st.plotly_chart(fig_client_mix, width="stretch", config=PLOTLY_CONFIG)
         else:
             st.info("No totals available for funding mix.")
 
@@ -2393,7 +2393,7 @@ def _page_client_lookup():
             view_disp = view.rename(columns={"LobbyShort": "Last name + first initial"})
             show_cols = ["Lobbyist", "Last name + first initial", "Low", "High"]
             show_cols = [c for c in show_cols if c in view_disp.columns]
-            st.dataframe(view_disp[show_cols], use_container_width=True, height=520, hide_index=True)
+            st.dataframe(view_disp[show_cols], width="stretch", height=520, hide_index=True)
             _ = export_dataframe(view_disp[show_cols], "client_lobbyists.csv")
 
     with tab_bills:
@@ -2470,7 +2470,7 @@ def _page_client_lookup():
 
             show_cols = ["Bill", "Lobbyist", "Organization", "Position", "Author", "Caption", "Fiscal Impact H", "Fiscal Impact S", "Status"]
             show_cols = [c for c in show_cols if c in filtered.columns]
-            st.dataframe(filtered[show_cols].sort_values(["Bill", "Lobbyist"]), use_container_width=True, height=520, hide_index=True)
+            st.dataframe(filtered[show_cols].sort_values(["Bill", "Lobbyist"]), width="stretch", height=520, hide_index=True)
             _ = export_dataframe(filtered[show_cols], "client_bills.csv")
 
     with tab_policy:
@@ -2507,7 +2507,7 @@ def _page_client_lookup():
                     title_text="Share (%)",
                 )
                 fig_share.update_yaxes(title_text="", categoryorder="total descending")
-                st.plotly_chart(fig_share, use_container_width=True, config=PLOTLY_CONFIG)
+                st.plotly_chart(fig_share, width="stretch", config=PLOTLY_CONFIG)
             with c2:
                 fig_tree = px.treemap(
                     top_mentions,
@@ -2521,12 +2521,12 @@ def _page_client_lookup():
                 )
                 _apply_plotly_layout(fig_tree, showlegend=False, margin_top=12)
                 fig_tree.update_layout(coloraxis_showscale=False)
-                st.plotly_chart(fig_tree, use_container_width=True, config=PLOTLY_CONFIG)
+                st.plotly_chart(fig_tree, width="stretch", config=PLOTLY_CONFIG)
 
             m2 = mentions.copy()
             m2["Share"] = (m2["Share"] * 100).round(0).astype("Int64").astype(str) + "%"
             m2 = m2.rename(columns={"Subject": "Policy Area"})
-            st.dataframe(m2[["Policy Area", "Mentions", "Share"]], use_container_width=True, height=520, hide_index=True)
+            st.dataframe(m2[["Policy Area", "Mentions", "Share"]], width="stretch", height=520, hide_index=True)
             _ = export_dataframe(m2, "client_policy_areas.csv")
 
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
@@ -2566,11 +2566,11 @@ def _page_client_lookup():
                         categoryorder="total ascending",
                         tickfont=dict(size=11, color="rgba(235,245,255,0.75)"),
                     )
-                    col.plotly_chart(fig_topic, use_container_width=True, config=PLOTLY_CONFIG)
+                    col.plotly_chart(fig_topic, width="stretch", config=PLOTLY_CONFIG)
 
             st.dataframe(
                 lobby_sub_counts.rename(columns={"Topic": "Subject Matter"}),
-                use_container_width=True,
+                width="stretch",
                 height=420,
                 hide_index=True,
             )
@@ -2588,7 +2588,7 @@ def _page_client_lookup():
             sort_cols = [c for c in ["Session", "Legislator", "Title"] if c in staff_view.columns]
             if sort_cols:
                 staff_view = staff_view.sort_values(sort_cols)
-            st.dataframe(staff_view, use_container_width=True, height=380, hide_index=True)
+            st.dataframe(staff_view, width="stretch", height=380, hide_index=True)
             _ = export_dataframe(staff_view, "client_staff_history.csv")
 
         if staff_pick_session.empty:
@@ -2600,7 +2600,7 @@ def _page_client_lookup():
             for col in ["% Against that Failed", "% For that Passed"]:
                 s2[col] = pd.to_numeric(s2[col], errors="coerce")
                 s2[col] = (s2[col] * 100).round(0)
-            st.dataframe(s2, use_container_width=True, height=320, hide_index=True)
+            st.dataframe(s2, width="stretch", height=320, hide_index=True)
             _ = export_dataframe(s2, "client_staff_stats.csv")
 
     with tab_activities:
@@ -2663,7 +2663,7 @@ def _page_client_lookup():
                     filt = filt[mask].copy()
 
             st.caption(f"{len(filt):,} rows")
-            st.dataframe(filt, use_container_width=True, height=560, hide_index=True)
+            st.dataframe(filt, width="stretch", height=560, hide_index=True)
             _ = export_dataframe(filt, "client_activities.csv")
 
     with tab_disclosures:
@@ -2726,7 +2726,7 @@ def _page_client_lookup():
                     filt = filt[mask].copy()
 
             st.caption(f"{len(filt):,} rows")
-            st.dataframe(filt, use_container_width=True, height=560, hide_index=True)
+            st.dataframe(filt, width="stretch", height=560, hide_index=True)
             _ = export_dataframe(filt, "client_disclosures.csv")
 
     st.markdown(
@@ -2812,7 +2812,7 @@ def _page_member_lookup():
     with st.sidebar.expander("Data health", expanded=False):
         st.caption(f"Data path: {PATH}")
         health = data_health_table(data)
-        st.dataframe(health, use_container_width=True, height=260, hide_index=True)
+        st.dataframe(health, width="stretch", height=260, hide_index=True)
 
     st.markdown('<div id="filter-bar-marker"></div>', unsafe_allow_html=True)
     top1, top2, top3 = st.columns([2.2, 1.2, 1.2])
@@ -2893,7 +2893,7 @@ def _page_member_lookup():
                 f"Reuse {label}",
                 key=f"recent_member_lookup_{idx}",
                 help="Reuse a recent legislator search",
-                use_container_width=True,
+                width="stretch",
             ):
                 st.session_state.member_query = rec
                 st.session_state.member_query_input = rec
@@ -2920,7 +2920,7 @@ def _page_member_lookup():
     with f2:
         if st.button(
             "Clear filters",
-            use_container_width=True,
+            width="stretch",
             help="Reset legislator search and primary filters to defaults.",
         ):
             reset_member_filters(default_session)
@@ -3130,7 +3130,7 @@ def _page_member_lookup():
                 top_bills = all_legislators.sort_values(["Bills", "Legislator"], ascending=[False, True]).head(5)
                 st.dataframe(
                     top_bills[["Legislator", "Bills", "Passed", "Failed"]],
-                    use_container_width=True,
+                    width="stretch",
                     height=240,
                     hide_index=True,
                 )
@@ -3149,7 +3149,7 @@ def _page_member_lookup():
                     )
                     st.dataframe(
                         top_witness[["Legislator", "Witness Rows", "Unique Lobbyists", "Bills w/ Witness"]],
-                        use_container_width=True,
+                        width="stretch",
                         height=240,
                         hide_index=True,
                     )
@@ -3205,7 +3205,7 @@ def _page_member_lookup():
             show_cols = [c for c in show_cols if c in view_disp.columns]
             st.dataframe(
                 view_disp[show_cols],
-                use_container_width=True,
+                width="stretch",
                 height=560,
                 hide_index=True,
             )
@@ -3482,7 +3482,7 @@ def _page_member_lookup():
                     )
                     _apply_plotly_layout(fig_tfl, showlegend=False, margin_top=12)
                     fig_tfl.update_layout(uniformtext_minsize=10, uniformtext_mode="hide")
-                    st.plotly_chart(fig_tfl, use_container_width=True, config=PLOTLY_CONFIG)
+                    st.plotly_chart(fig_tfl, width="stretch", config=PLOTLY_CONFIG)
                 with c2:
                     summary_df = pd.DataFrame(
                         {
@@ -3495,7 +3495,7 @@ def _page_member_lookup():
                             "Count": [total_bills, any_witness, tfl_any, tfl_opposed],
                         }
                     )
-                    st.dataframe(summary_df, use_container_width=True, height=200, hide_index=True)
+                    st.dataframe(summary_df, width="stretch", height=200, hide_index=True)
 
         with tab_bills:
             st.markdown('<div class="section-title">Bills Authored</div>', unsafe_allow_html=True)
@@ -3522,7 +3522,7 @@ def _page_member_lookup():
                 bill_view = bill_view.drop_duplicates(subset=["Bill"])
                 st.dataframe(
                     bill_view[show_cols].sort_values(["Bill"]),
-                    use_container_width=True,
+                    width="stretch",
                     height=520,
                     hide_index=True,
                 )
@@ -3607,7 +3607,7 @@ def _page_member_lookup():
             show_cols = [c for c in show_cols if c in witness_view.columns]
             st.dataframe(
                 witness_view[show_cols].sort_values(["Bill", "Lobbyist"]),
-                use_container_width=True,
+                width="stretch",
                 height=560,
                 hide_index=True,
             )
@@ -3674,7 +3674,7 @@ def _page_member_lookup():
             show_cols = ["Date", "Type", "Lobbyist", "Has TFL Client", "Description", "Amount"]
             show_cols = [c for c in show_cols if c in filt.columns]
             st.caption(f"{len(filt):,} rows")
-            st.dataframe(filt[show_cols], use_container_width=True, height=560, hide_index=True)
+            st.dataframe(filt[show_cols], width="stretch", height=560, hide_index=True)
             _ = export_dataframe(filt[show_cols], "member_activities.csv")
 
     with tab_staff:
@@ -3688,7 +3688,7 @@ def _page_member_lookup():
             sort_cols = [c for c in ["Session", "Legislator", "Staffer"] if c in staff_view.columns]
             if sort_cols:
                 staff_view = staff_view.sort_values(sort_cols)
-            st.dataframe(staff_view, use_container_width=True, height=420, hide_index=True)
+            st.dataframe(staff_view, width="stretch", height=420, hide_index=True)
             _ = export_dataframe(staff_view, "member_staff_to_lobbyists.csv")
 
     st.markdown(
@@ -4844,34 +4844,34 @@ def _pdf_add_heading(pdf: FPDF, text: str, size: int = 13) -> None:
     pdf.set_font("Helvetica", "B", size)
     max_w = pdf.w - pdf.l_margin - pdf.r_margin
     for line in _wrap_pdf_line(pdf, text, max_w):
-        pdf.cell(0, 7, line, ln=1)
+        pdf.cell(0, 7, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(1)
 
 def _pdf_add_subheading(pdf: FPDF, text: str, size: int = 11) -> None:
     pdf.set_font("Helvetica", "B", size)
     max_w = pdf.w - pdf.l_margin - pdf.r_margin
     for line in _wrap_pdf_line(pdf, text, max_w):
-        pdf.cell(0, 6, line, ln=1)
+        pdf.cell(0, 6, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(1)
 
 def _pdf_add_paragraph(pdf: FPDF, text: str, size: int = 11, line_h: int = 6) -> None:
     pdf.set_font("Helvetica", "", size)
     max_w = pdf.w - pdf.l_margin - pdf.r_margin
     for line in _wrap_pdf_line(pdf, text, max_w):
-        pdf.cell(0, line_h, line, ln=1)
+        pdf.cell(0, line_h, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(2)
 
 def _pdf_add_bullets(pdf: FPDF, bullets: list[str], size: int = 10, line_h: int = 5) -> None:
     pdf.set_font("Helvetica", "", size)
     max_w = pdf.w - pdf.l_margin - pdf.r_margin - 6
     for bullet in bullets:
-        pdf.cell(4, line_h, "-", ln=0)
+        pdf.cell(4, line_h, "-", new_x=XPos.RIGHT, new_y=YPos.TOP)
         lines = _wrap_pdf_line(pdf, bullet, max_w)
         if lines:
-            pdf.cell(0, line_h, lines[0], ln=1)
+            pdf.cell(0, line_h, lines[0], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             for cont in lines[1:]:
-                pdf.cell(4, line_h, "", ln=0)
-                pdf.cell(0, line_h, cont, ln=1)
+                pdf.cell(4, line_h, "", new_x=XPos.RIGHT, new_y=YPos.TOP)
+                pdf.cell(0, line_h, cont, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         else:
             pdf.ln(line_h)
     pdf.ln(2)
@@ -4885,9 +4885,9 @@ def _pdf_add_kpi_table(pdf: FPDF, rows: list[tuple[str, str]], size: int = 10) -
     for label, value in rows:
         pdf.set_fill_color(245, 246, 248) if fill else pdf.set_fill_color(255, 255, 255)
         pdf.set_font("Helvetica", "B", size)
-        pdf.cell(label_w, 6, _pdf_safe_text(label), ln=0, fill=fill)
+        pdf.cell(label_w, 6, _pdf_safe_text(label), new_x=XPos.RIGHT, new_y=YPos.TOP, fill=fill)
         pdf.set_font("Helvetica", "", size)
-        pdf.cell(value_w, 6, _pdf_safe_text(value), ln=1, fill=fill)
+        pdf.cell(value_w, 6, _pdf_safe_text(value), new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=fill)
         fill = not fill
     pdf.ln(2)
 
@@ -4899,22 +4899,22 @@ def _pdf_add_chart(pdf: FPDF, fig, caption: str, width_px: int = 900, height_px:
     png = _fig_to_png_bytes(fig, width=width_px, height=height_px, scale=2)
     if not png:
         pdf.set_font("Helvetica", "I", 9)
-        pdf.cell(0, 5, _pdf_safe_text(f"{caption} (chart unavailable)"), ln=1)
+        pdf.cell(0, 5, _pdf_safe_text(f"{caption} (chart unavailable)"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(2)
         return
     img_w = pdf.w - pdf.l_margin - pdf.r_margin
     img_h = img_w * (height_px / width_px)
     _pdf_ensure_space(pdf, img_h + 12)
     pdf.set_font("Helvetica", "I", 9)
-    pdf.cell(0, 5, _pdf_safe_text(caption), ln=1)
-    pdf.image(BytesIO(png), x=pdf.l_margin, w=img_w, h=img_h, type="PNG")
+    pdf.cell(0, 5, _pdf_safe_text(caption), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.image(BytesIO(png), x=pdf.l_margin, w=img_w, h=img_h)
     pdf.ln(4)
 
 def _pdf_add_section_title(pdf: FPDF, text: str) -> None:
     pdf.set_fill_color(230, 238, 246)
     pdf.set_text_color(16, 35, 58)
     pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, _pdf_safe_text(text), ln=1, fill=True)
+    pdf.cell(0, 8, _pdf_safe_text(text), new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
     pdf.set_text_color(0, 0, 0)
     pdf.ln(2)
 
@@ -6906,12 +6906,12 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
                 return
             self.set_text_color(60, 60, 60)
             self.set_font("Helvetica", "B", 9)
-            self.cell(0, 5, _pdf_safe_text(self.header_title), ln=1)
+            self.cell(0, 5, _pdf_safe_text(self.header_title), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             self.set_font("Helvetica", "", 8)
             subtitle = str(self.header_subtitle or "")
             if len(subtitle) > 110:
                 subtitle = subtitle[:107].rstrip() + "..."
-            self.cell(0, 4, _pdf_safe_text(subtitle), ln=1)
+            self.cell(0, 4, _pdf_safe_text(subtitle), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             self.set_draw_color(200, 200, 200)
             self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
             self.ln(3)
@@ -6924,8 +6924,8 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
             w = self.w - self.l_margin - self.r_margin
             left_w = w * 0.6
             right_w = w - left_w
-            self.cell(left_w, 4, _pdf_safe_text(f"Generated {self.generated_date}"), ln=0, align="L")
-            self.cell(right_w, 4, _pdf_safe_text(f"Page {self.page_no()}"), ln=0, align="R")
+            self.cell(left_w, 4, _pdf_safe_text(f"Generated {self.generated_date}"), new_x=XPos.RIGHT, new_y=YPos.TOP, align="L")
+            self.cell(right_w, 4, _pdf_safe_text(f"Page {self.page_no()}"), new_x=XPos.RIGHT, new_y=YPos.TOP, align="R")
             self.set_text_color(0, 0, 0)
 
     header_title = payload.get("report_title", "Lobby Look-Up Report")
@@ -6949,10 +6949,10 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         size=12,
     )
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 5, _pdf_safe_text("Prepared by Texas Lobby Data Center"), ln=1)
-    pdf.cell(0, 5, _pdf_safe_text(f"Generated: {payload['generated_date']}"), ln=1)
-    pdf.cell(0, 5, _pdf_safe_text(f"Scope: {payload['scope_session_label']}"), ln=1)
-    pdf.cell(0, 5, _pdf_safe_text(f"Focus: {payload['focus_label']}"), ln=1)
+    pdf.cell(0, 5, _pdf_safe_text("Prepared by Texas Lobby Data Center"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 5, _pdf_safe_text(f"Generated: {payload['generated_date']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 5, _pdf_safe_text(f"Scope: {payload['scope_session_label']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 5, _pdf_safe_text(f"Focus: {payload['focus_label']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(2)
     _pdf_add_rule(pdf)
 
@@ -7362,10 +7362,10 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
     )
     pdf.ln(2)
     pdf.set_font("Helvetica", "I", 9)
-    pdf.cell(0, 5, _pdf_safe_text("Prepared by Texas Lobby Data Center"), ln=1)
-    pdf.cell(0, 5, _pdf_safe_text(payload["disclaimer_note"]), ln=1)
+    pdf.cell(0, 5, _pdf_safe_text("Prepared by Texas Lobby Data Center"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 5, _pdf_safe_text(payload["disclaimer_note"]), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-    output = pdf.output(dest="S")
+    output = pdf.output()
     return output if isinstance(output, (bytes, bytearray)) else output.encode("latin-1")
 
 def _build_report_html_pdf_bytes(payload: dict) -> bytes | None:
@@ -7421,14 +7421,14 @@ def _render_pdf_report_section(
             generate_clicked = st.button(
                 "Generate report",
                 key=f"{key_prefix}_report_build",
-                use_container_width=True,
+                width="stretch",
                 help="Build a PDF using the current filters and selections.",
             )
         with c2:
             generate_html_clicked = st.button(
                 "Generate webpage PDF",
                 key=f"{key_prefix}_report_build_html",
-                use_container_width=True,
+                width="stretch",
                 help="Builds a PDF from the webpage layout (HTML/WeasyPrint).",
             )
 
@@ -7494,7 +7494,7 @@ def _render_pdf_report_section(
                     st.session_state.get(name_key, "report.pdf"),
                     "application/pdf",
                     key=f"{key_prefix}_dl",
-                    use_container_width=True,
+                    width="stretch",
                 )
         with dl2:
             if html_pdf_key in st.session_state and isinstance(st.session_state[html_pdf_key], bytes):
@@ -7504,7 +7504,7 @@ def _render_pdf_report_section(
                     st.session_state.get(html_name_key, "report-html.pdf"),
                     "application/pdf",
                     key=f"{key_prefix}_dl_html",
-                    use_container_width=True,
+                    width="stretch",
                 )
 
 PLOTLY_CONFIG = {"displayModeBar": False, "responsive": True, "displaylogo": False}
@@ -8594,7 +8594,7 @@ def render_bill_search_results(bill_query: str, session_val: str | None, tfl_ses
         ascending=[False, True, True, True],
     )
     view = view.drop(columns=["_tfl_sort"])
-    st.dataframe(view, use_container_width=True, height=520, hide_index=True)
+    st.dataframe(view, width="stretch", height=520, hide_index=True)
     _ = export_dataframe(view, "bill_lobbyists.csv")
     return True
 
@@ -9796,7 +9796,7 @@ with cta_left:
         unsafe_allow_html=True,
     )
 with cta_right:
-    if st.button("Read the policy fix", use_container_width=True, help="Open the Solutions page."):
+    if st.button("Read the policy fix", width="stretch", help="Open the Solutions page."):
         st.switch_page(_solutions_page)
 
 # Validate workbook path
@@ -9901,7 +9901,7 @@ default_label = _session_label(default_session)
 with st.sidebar.expander("Data health", expanded=False):
     st.caption(f"Data path: {PATH}")
     health = data_health_table(data)
-    st.dataframe(health, use_container_width=True, height=260, hide_index=True)
+    st.dataframe(health, width="stretch", height=260, hide_index=True)
 
 
 # =========================================================
@@ -9966,7 +9966,7 @@ if recent:
             f"Reuse {label}",
             key=f"recent_lookup_{idx}",
             help="Reuse a recent lobbyist or bill search",
-            use_container_width=True,
+            width="stretch",
         ):
             st.session_state.search_query = rec
             st.session_state.lobbyshort = ""
@@ -10301,7 +10301,7 @@ with f1:
 with f2:
     if st.button(
         "Clear filters",
-        use_container_width=True,
+        width="stretch",
         help="Reset search, match, and table filters to defaults.",
     ):
         reset_filters(default_session)
@@ -10631,7 +10631,7 @@ with tab_all:
             )
             _apply_plotly_layout(fig_mix, showlegend=False, margin_top=12)
             fig_mix.update_layout(uniformtext_minsize=10, uniformtext_mode="hide")
-            st.plotly_chart(fig_mix, use_container_width=True, config=PLOTLY_CONFIG)
+            st.plotly_chart(fig_mix, width="stretch", config=PLOTLY_CONFIG)
             st.markdown(
                 '<div class="section-caption">Funding mix uses midpoint totals to compare taxpayer-funded vs private compensation ranges.</div>',
                 unsafe_allow_html=True,
@@ -10681,7 +10681,7 @@ with tab_all:
                 showgrid=True,
                 gridcolor="rgba(255,255,255,0.08)",
             )
-            st.plotly_chart(fig_trend, use_container_width=True, config=PLOTLY_CONFIG)
+            st.plotly_chart(fig_trend, width="stretch", config=PLOTLY_CONFIG)
             st.markdown('<div class="section-caption">Trend uses midpoint totals for taxpayer-funded clients across the 85th-89th sessions.</div>', unsafe_allow_html=True)
         else:
             st.info("No taxpayer funded totals available for 85th-89th sessions.")
@@ -10722,7 +10722,7 @@ with tab_all:
                 )
                 st.dataframe(
                     top_lobbyists[["Lobbyist", "Taxpayer Funded Total"]],
-                    use_container_width=True,
+                    width="stretch",
                     height=240,
                     hide_index=True,
                 )
@@ -10749,7 +10749,7 @@ with tab_all:
                 )
                 st.dataframe(
                     top_clients[["Client", "Taxpayer Funded Total"]],
-                    use_container_width=True,
+                    width="stretch",
                     height=240,
                     hide_index=True,
                 )
@@ -10872,7 +10872,7 @@ with tab_all:
             view_disp = view_disp.sort_values(sort_cols, ascending=[False, False, True][:len(sort_cols)])
         st.dataframe(
             view_disp[cols],
-            use_container_width=True,
+            width="stretch",
             height=560,
             hide_index=True,
         )
@@ -11339,7 +11339,7 @@ else:
                 _apply_plotly_layout(fig_tempo, showlegend=True, legend_title="", margin_top=8)
                 fig_tempo.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.08)", title_text="")
                 fig_tempo.update_xaxes(title_text="")
-                st.plotly_chart(fig_tempo, use_container_width=True, config=PLOTLY_CONFIG)
+                st.plotly_chart(fig_tempo, width="stretch", config=PLOTLY_CONFIG)
                 st.caption(f"Activities: {act_rows:,} rows | Disclosures: {disc_rows:,} rows")
             else:
                 st.info("No activities or disclosures recorded for this lobbyist/session.")
@@ -11377,7 +11377,7 @@ else:
                     gridcolor="rgba(255,255,255,0.08)",
                 )
                 fig_trend.update_xaxes(title_text="")
-                st.plotly_chart(fig_trend, use_container_width=True, config=PLOTLY_CONFIG)
+                st.plotly_chart(fig_trend, width="stretch", config=PLOTLY_CONFIG)
                 st.markdown(
                     '<div class="section-caption">Trend shows midpoint totals for taxpayer funded vs private clients across sessions.</div>',
                     unsafe_allow_html=True,
@@ -11413,7 +11413,7 @@ else:
                 )
                 _apply_plotly_layout(fig_lobby_mix, showlegend=False, margin_top=12)
                 fig_lobby_mix.update_layout(uniformtext_minsize=10, uniformtext_mode="hide")
-                st.plotly_chart(fig_lobby_mix, use_container_width=True, config=PLOTLY_CONFIG)
+                st.plotly_chart(fig_lobby_mix, width="stretch", config=PLOTLY_CONFIG)
                 st.markdown('<div class="section-caption">Funding mix uses midpoint values to highlight relative scale.</div>', unsafe_allow_html=True)
             else:
                 st.info("No totals available for funding mix. Try selecting a different session or clearing the lobbyist filter.")
@@ -11446,7 +11446,7 @@ else:
                     title_text="Midpoint total",
                 )
                 fig_clients.update_yaxes(title_text="")
-                st.plotly_chart(fig_clients, use_container_width=True, config=PLOTLY_CONFIG)
+                st.plotly_chart(fig_clients, width="stretch", config=PLOTLY_CONFIG)
             else:
                 st.info("No client totals available to rank for this session.")
 
@@ -11557,7 +11557,7 @@ else:
                         fig_status.update_layout(margin=dict(l=8, r=28, t=8, b=8))
                         fig_status.update_xaxes(showgrid=False, title_text="")
                         fig_status.update_yaxes(title_text="")
-                        st.plotly_chart(fig_status, use_container_width=True, config=PLOTLY_CONFIG)
+                        st.plotly_chart(fig_status, width="stretch", config=PLOTLY_CONFIG)
                     else:
                         st.info("Status summary unavailable.")
                 with bsum2:
@@ -11589,7 +11589,7 @@ else:
                         fig_pos.update_layout(margin=dict(l=8, r=28, t=8, b=8))
                         fig_pos.update_xaxes(showgrid=False, title_text="")
                         fig_pos.update_yaxes(title_text="")
-                        st.plotly_chart(fig_pos, use_container_width=True, config=PLOTLY_CONFIG)
+                        st.plotly_chart(fig_pos, width="stretch", config=PLOTLY_CONFIG)
                     else:
                         st.info("Position summary unavailable.")
 
@@ -11601,7 +11601,7 @@ else:
                 show_cols = [c for c in show_cols if c in filtered.columns]
 
                 st.caption(f"{len(filtered):,} bills")
-                st.dataframe(filtered[show_cols].sort_values(["Bill"]), use_container_width=True, height=520, hide_index=True)
+                st.dataframe(filtered[show_cols].sort_values(["Bill"]), width="stretch", height=520, hide_index=True)
                 export_context = []
                 if st.session_state.bill_search.strip():
                     export_context.append(f"Bill search: {_shorten_text(st.session_state.bill_search, 28)}")
@@ -11668,7 +11668,7 @@ else:
                         title_text="Share (%)",
                     )
                     fig_share.update_yaxes(title_text="", categoryorder="total descending")
-                    st.plotly_chart(fig_share, use_container_width=True, config=PLOTLY_CONFIG)
+                    st.plotly_chart(fig_share, width="stretch", config=PLOTLY_CONFIG)
                 with c2:
                     fig_tree = px.treemap(
                         top_mentions,
@@ -11682,12 +11682,12 @@ else:
                     )
                     _apply_plotly_layout(fig_tree, showlegend=False, margin_top=12)
                     fig_tree.update_layout(coloraxis_showscale=False)
-                    st.plotly_chart(fig_tree, use_container_width=True, config=PLOTLY_CONFIG)
+                    st.plotly_chart(fig_tree, width="stretch", config=PLOTLY_CONFIG)
 
                 m2 = mentions.copy()
                 m2["Share"] = (m2["Share"] * 100).round(0).astype("Int64").astype(str) + "%"
                 m2 = m2.rename(columns={"Subject": "Policy Area"})
-                st.dataframe(m2[["Policy Area", "Mentions", "Share"]], use_container_width=True, height=520, hide_index=True)
+                st.dataframe(m2[["Policy Area", "Mentions", "Share"]], width="stretch", height=520, hide_index=True)
                 _ = export_dataframe(m2, "policy_areas.csv")
 
             st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
@@ -11729,11 +11729,11 @@ else:
                             categoryorder="total ascending",
                             tickfont=dict(size=11, color="rgba(235,245,255,0.75)"),
                         )
-                        col.plotly_chart(fig_topic, use_container_width=True, config=PLOTLY_CONFIG)
+                        col.plotly_chart(fig_topic, width="stretch", config=PLOTLY_CONFIG)
 
                 st.dataframe(
                     lobby_sub_counts.rename(columns={"Topic": "Subject Matter"}),
-                    use_container_width=True,
+                    width="stretch",
                     height=420,
                     hide_index=True,
                 )
@@ -11764,7 +11764,7 @@ else:
                 st.caption("Showing staff history across all sessions.")
                 cols = ["Session", "Legislator", "Title", "Staffer"]
                 staff_view = staff_pick[cols].drop_duplicates().sort_values(["Session", "Legislator", "Title"])
-                st.dataframe(staff_view, use_container_width=True, height=380, hide_index=True)
+                st.dataframe(staff_view, width="stretch", height=380, hide_index=True)
                 _ = export_dataframe(staff_view, "staff_history.csv")
 
             if staff_pick_session.empty:
@@ -11776,7 +11776,7 @@ else:
                 for col in ["% Against that Failed", "% For that Passed"]:
                     s2[col] = pd.to_numeric(s2[col], errors="coerce")
                     s2[col] = (s2[col] * 100).round(0)
-                st.dataframe(s2, use_container_width=True, height=320, hide_index=True)
+                st.dataframe(s2, width="stretch", height=320, hide_index=True)
                 _ = export_dataframe(s2, "staff_stats.csv")
 
         # ---- Activities tab
@@ -11872,7 +11872,7 @@ else:
                         fig_type.update_layout(margin=dict(l=8, r=28, t=8, b=8))
                         fig_type.update_xaxes(showgrid=False, title_text="")
                         fig_type.update_yaxes(title_text="")
-                        st.plotly_chart(fig_type, use_container_width=True, config=PLOTLY_CONFIG)
+                        st.plotly_chart(fig_type, width="stretch", config=PLOTLY_CONFIG)
                     else:
                         st.info("No activity types to summarize.")
                 with a2:
@@ -11893,12 +11893,12 @@ else:
                         fig_time.update_layout(margin=dict(l=8, r=16, t=8, b=8))
                         fig_time.update_xaxes(title_text="")
                         fig_time.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.08)", title_text="")
-                        st.plotly_chart(fig_time, use_container_width=True, config=PLOTLY_CONFIG)
+                        st.plotly_chart(fig_time, width="stretch", config=PLOTLY_CONFIG)
                     else:
                         st.info("No activity timeline available.")
 
                 st.caption(f"{len(filt):,} rows")
-                st.dataframe(filt, use_container_width=True, height=560, hide_index=True)
+                st.dataframe(filt, width="stretch", height=560, hide_index=True)
                 export_context = []
                 if sel_types and len(sel_types) != len(t_opts):
                     type_label = ", ".join(sel_types[:3])
@@ -12004,7 +12004,7 @@ else:
                         fig_type.update_layout(margin=dict(l=8, r=28, t=8, b=8))
                         fig_type.update_xaxes(showgrid=False, title_text="")
                         fig_type.update_yaxes(title_text="")
-                        st.plotly_chart(fig_type, use_container_width=True, config=PLOTLY_CONFIG)
+                        st.plotly_chart(fig_type, width="stretch", config=PLOTLY_CONFIG)
                     else:
                         st.info("No disclosure types to summarize.")
                 with d2:
@@ -12025,12 +12025,12 @@ else:
                         fig_time.update_layout(margin=dict(l=8, r=16, t=8, b=8))
                         fig_time.update_xaxes(title_text="")
                         fig_time.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.08)", title_text="")
-                        st.plotly_chart(fig_time, use_container_width=True, config=PLOTLY_CONFIG)
+                        st.plotly_chart(fig_time, width="stretch", config=PLOTLY_CONFIG)
                     else:
                         st.info("No disclosure timeline available.")
 
                 st.caption(f"{len(filt):,} rows")
-                st.dataframe(filt, use_container_width=True, height=560, hide_index=True)
+                st.dataframe(filt, width="stretch", height=560, hide_index=True)
                 export_context = []
                 if sel_types and len(sel_types) != len(d_types):
                     type_label = ", ".join(sel_types[:3])
