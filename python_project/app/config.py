@@ -4,9 +4,8 @@ from pathlib import Path
 DEFAULT_DATA_FILENAME = "TFL Webstite books - combined.parquet"
 ENV_DATA_PATH = "DATA_PATH"
 
-# Output locations for PDFs and HTML templates.
+# Output locations for PDFs.
 DEFAULT_REPORT_DIR = Path(__file__).resolve().parent.parent / "reports"
-DEFAULT_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 
 # Shared Plotly defaults so charts look consistent across app and PDF.
 PLOTLY_CONFIG = {

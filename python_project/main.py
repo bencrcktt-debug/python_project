@@ -11,8 +11,6 @@ import plotly.express as px
 import plotly.io as pio
 import altair as alt
 from fpdf import FPDF, XPos, YPos
-from app.html_report import build_html_report
-from app.pdf import html_to_pdf_bytes
 
 # =========================================================
 # CONFIG
@@ -7368,19 +7366,6 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
     output = pdf.output()
     return output if isinstance(output, (bytes, bytearray)) else output.encode("latin-1")
 
-def _build_report_html_pdf_bytes(payload: dict) -> bytes | None:
-    """
-    Build a PDF using the HTML/WeasyPrint pipeline. Returns bytes or None if rendering fails.
-    """
-    html = build_html_report(payload)
-    if not html:
-        return None
-    try:
-        return html_to_pdf_bytes(html)
-    except Exception as exc:
-        _record_pdf_chart_error(f"HTML PDF rendering failed: {exc}")
-        return None
-
 def _render_pdf_report_section(
     *,
     key_prefix: str,
@@ -7401,8 +7386,6 @@ def _render_pdf_report_section(
         sig_key = f"{key_prefix}_report_sig"
         pdf_key = f"{key_prefix}_report_pdf"
         name_key = f"{key_prefix}_report_name"
-        html_pdf_key = f"{key_prefix}_report_pdf_html"
-        html_name_key = f"{key_prefix}_report_name_html"
         signature = f"{session_val}|{scope_label}|{focus_label}"
 
         if st.session_state.get(sig_key) != signature:
@@ -7411,26 +7394,13 @@ def _render_pdf_report_section(
                 del st.session_state[pdf_key]
             if name_key in st.session_state:
                 del st.session_state[name_key]
-            if html_pdf_key in st.session_state:
-                del st.session_state[html_pdf_key]
-            if html_name_key in st.session_state:
-                del st.session_state[html_name_key]
 
-        c1, c2 = st.columns(2)
-        with c1:
-            generate_clicked = st.button(
-                "Generate report",
-                key=f"{key_prefix}_report_build",
-                width="stretch",
-                help="Build a PDF using the current filters and selections.",
-            )
-        with c2:
-            generate_html_clicked = st.button(
-                "Generate webpage PDF",
-                key=f"{key_prefix}_report_build_html",
-                width="stretch",
-                help="Builds a PDF from the webpage layout (HTML/WeasyPrint).",
-            )
+        generate_clicked = st.button(
+            "Generate report",
+            key=f"{key_prefix}_report_build",
+            width="stretch",
+            help="Build a PDF using the current filters and selections.",
+        )
 
         if generate_clicked:
             _clear_pdf_chart_error()
@@ -7455,57 +7425,22 @@ def _render_pdf_report_section(
             except Exception as e:
                 st.error(f"Report generation failed: {str(e)}")
 
-        if generate_html_clicked:
-            _clear_pdf_chart_error()
-            try:
-                with st.status("Rendering HTML PDF...", expanded=False):
-                    payload = _build_report_payload(
-                        session_val=session_val,
-                        scope_label=scope_label,
-                        focus_label=focus_label,
-                        Lobby_TFL_Client_All=Lobby_TFL_Client_All,
-                        Wit_All=Wit_All,
-                        Bill_Status_All=Bill_Status_All,
-                        Bill_Sub_All=Bill_Sub_All,
-                        tfl_session_val=tfl_session_val,
-                        focus_context=focus_context,
-                    )
-                    pdf_bytes = _coerce_pdf_bytes(_build_report_html_pdf_bytes(payload))
-                    if pdf_bytes and len(pdf_bytes) > 0:
-                        st.session_state[html_pdf_key] = pdf_bytes
-                        st.session_state[html_name_key] = f"tfl-report-{_slugify(focus_label)}-html.pdf"
-                        st.success("HTML PDF generated")
-            except Exception as e:
-                st.error(f"HTML report failed: {str(e)}")
-
-        if (pdf_key in st.session_state or html_pdf_key in st.session_state) and st.session_state.get(PDF_CHART_ERROR_KEY):
+        if pdf_key in st.session_state and st.session_state.get(PDF_CHART_ERROR_KEY):
             st.warning(
-                "PDF rendering encountered an issue (charts or HTML). "
-                "Common causes: missing Kaleido for Plotly images or WeasyPrint dependencies."
+                "PDF rendering encountered an issue (charts). "
+                "Common cause: missing Kaleido for Plotly images."
             )
             st.caption(st.session_state[PDF_CHART_ERROR_KEY])
 
-        dl1, dl2 = st.columns(2)
-        with dl1:
-            if pdf_key in st.session_state and isinstance(st.session_state[pdf_key], bytes):
-                st.download_button(
-                    "Download PDF",
-                    st.session_state[pdf_key],
-                    st.session_state.get(name_key, "report.pdf"),
-                    "application/pdf",
-                    key=f"{key_prefix}_dl",
-                    width="stretch",
-                )
-        with dl2:
-            if html_pdf_key in st.session_state and isinstance(st.session_state[html_pdf_key], bytes):
-                st.download_button(
-                    "Download webpage as PDF",
-                    st.session_state[html_pdf_key],
-                    st.session_state.get(html_name_key, "report-html.pdf"),
-                    "application/pdf",
-                    key=f"{key_prefix}_dl_html",
-                    width="stretch",
-                )
+        if pdf_key in st.session_state and isinstance(st.session_state[pdf_key], bytes):
+            st.download_button(
+                "Download PDF",
+                st.session_state[pdf_key],
+                st.session_state.get(name_key, "report.pdf"),
+                "application/pdf",
+                key=f"{key_prefix}_dl",
+                width="stretch",
+            )
 
 PLOTLY_CONFIG = {"displayModeBar": False, "responsive": True, "displaylogo": False}
 CHART_COLORS = [
