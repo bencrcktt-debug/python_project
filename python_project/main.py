@@ -9903,34 +9903,6 @@ with st.sidebar.expander("Data health", expanded=False):
     health = data_health_table(data)
     st.dataframe(health, use_container_width=True, height=260, hide_index=True)
 
-# Dataset snapshot ribbon
-meta_bits = []
-if PATH:
-    meta_bits.append(f"Source: {Path(PATH).name}")
-if not _is_url(PATH):
-    try:
-        stats = Path(PATH).stat()
-        mod_dt = datetime.fromtimestamp(stats.st_mtime)
-        meta_bits.append(f"Updated {mod_dt.strftime('%b %d, %Y')}")
-        meta_bits.append(f"{stats.st_size / (1024 * 1024):.1f} MB")
-    except Exception:
-        pass
-meta_bits.append(f"{len(sessions)} sessions")
-meta_bits.append(f"{len(Lobby_TFL_Client_All):,} lobby rows")
-if not Wit_All.empty:
-    meta_bits.append(f"{len(Wit_All):,} witness rows")
-meta_html = "".join([f'<span class="pill">{html.escape(str(bit))}</span>' for bit in meta_bits if bit])
-if meta_html:
-    st.markdown(
-        f"""
-<div class="card meta-card fade-up">
-  <div class="meta-title">Dataset snapshot</div>
-  <div class="pill-list">{meta_html}</div>
-  <div class="meta-sub">Scope {html.escape(st.session_state.scope)} | Session {_session_label(st.session_state.session) if st.session_state.session else _session_label(default_session)}</div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
 
 # =========================================================
 # TOP CONTROLS
