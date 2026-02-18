@@ -2649,12 +2649,13 @@ def _page_client_lookup():
             if date_parsed.notna().any():
                 min_d = date_parsed.min().date()
                 max_d = date_parsed.max().date()
-                d_from, d_to = st.date_input(
+                _date_val = st.date_input(
                     "Date range",
                     (min_d, max_d),
                     key="client_activity_dates",
                     help="Restrict results to activities within this date range.",
                 )
+                d_from, d_to = (_date_val if isinstance(_date_val, (list, tuple)) and len(_date_val) == 2 else (min_d, max_d))
                 if d_from and d_to:
                     mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
                     filt = filt[mask].copy()
@@ -2712,12 +2713,13 @@ def _page_client_lookup():
             if date_parsed.notna().any():
                 min_d = date_parsed.min().date()
                 max_d = date_parsed.max().date()
-                d_from, d_to = st.date_input(
+                _date_val = st.date_input(
                     "Date range",
                     (min_d, max_d),
                     key="client_disclosure_dates",
                     help="Restrict results to disclosures within this date range.",
                 )
+                d_from, d_to = (_date_val if isinstance(_date_val, (list, tuple)) and len(_date_val) == 2 else (min_d, max_d))
                 if d_from and d_to:
                     mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
                     filt = filt[mask].copy()
@@ -3658,12 +3660,13 @@ def _page_member_lookup():
             if date_parsed.notna().any():
                 min_d = date_parsed.min().date()
                 max_d = date_parsed.max().date()
-                d_from, d_to = st.date_input(
+                _date_val = st.date_input(
                     "Date range",
                     (min_d, max_d),
                     key="member_activity_dates",
                     help="Restrict results to activities within this date range.",
                 )
+                d_from, d_to = (_date_val if isinstance(_date_val, (list, tuple)) and len(_date_val) == 2 else (min_d, max_d))
                 if d_from and d_to:
                     mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
                     filt = filt[mask].copy()
@@ -8322,7 +8325,7 @@ def read_parquet_cols(path: Path, cols: list[str]) -> pd.DataFrame:
         except Exception:
             return pd.DataFrame(columns=cols)
 
-@st.cache_data(show_spinner=False, ttl=600, max_entries=2)
+@st.cache_resource(show_spinner=False, ttl=600, max_entries=2)
 def load_workbook(path: str) -> dict:
     cfg = {
         "Wit_All": ["session", "bill", "position", "LobbyShort", "name", "org"],
@@ -11465,11 +11468,12 @@ else:
                 if date_parsed.notna().any():
                     min_d = date_parsed.min().date()
                     max_d = date_parsed.max().date()
-                    d_from, d_to = st.date_input(
+                    _date_val = st.date_input(
                         "Date range",
                         (min_d, max_d),
                         help="Restrict results to activities within this date range.",
                     )
+                    d_from, d_to = (_date_val if isinstance(_date_val, (list, tuple)) and len(_date_val) == 2 else (min_d, max_d))
                     if d_from and d_to:
                         mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
                         filt = filt[mask].copy()
@@ -11596,12 +11600,13 @@ else:
                 if date_parsed.notna().any():
                     min_d = date_parsed.min().date()
                     max_d = date_parsed.max().date()
-                    d_from, d_to = st.date_input(
+                    _date_val = st.date_input(
                         "Date range",
                         (min_d, max_d),
                         key="disclosure_dates",
                         help="Restrict results to disclosures within this date range.",
                     )
+                    d_from, d_to = (_date_val if isinstance(_date_val, (list, tuple)) and len(_date_val) == 2 else (min_d, max_d))
                     if d_from and d_to:
                         mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
                         filt = filt[mask].copy()
