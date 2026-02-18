@@ -7585,9 +7585,7 @@ def _apply_plotly_layout(
     )
     return fig
 
-@st.cache_resource(show_spinner=False)
-def bill_position_from_flags(_df: pd.DataFrame) -> pd.DataFrame:
-    df = _df
+def bill_position_from_flags(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["Session", "Bill", "LobbyShort", "Position"])
     agg = (
@@ -7606,14 +7604,12 @@ def bill_position_from_flags(_df: pd.DataFrame) -> pd.DataFrame:
     agg["Position"] = agg.apply(pos_row, axis=1)
     return agg[["Session", "Bill", "LobbyShort", "Position"]]
 
-@st.cache_resource(show_spinner=False)
 def build_bills_with_status(
-    _wit: pd.DataFrame,
-    _bill_status_all: pd.DataFrame,
-    _fiscal_impact: pd.DataFrame,
+    wit: pd.DataFrame,
+    bill_status_all: pd.DataFrame,
+    fiscal_impact: pd.DataFrame,
     session_val: str,
 ) -> pd.DataFrame:
-    wit, bill_status_all, fiscal_impact = _wit, _bill_status_all, _fiscal_impact
     if wit.empty:
         return pd.DataFrame(columns=["Session", "Bill", "Position", "Author", "Caption", "Status", "Fiscal Impact H", "Fiscal Impact S"])
 
@@ -7641,10 +7637,7 @@ def build_bills_with_status(
     bills = ensure_cols(bills, {"Author": "", "Caption": "", "Status": "", "Fiscal Impact H": 0, "Fiscal Impact S": 0})
     return bills
 
-@st.cache_resource(show_spinner=False)
-def build_policy_mentions(_bills: pd.DataFrame, _bill_sub_all: pd.DataFrame, session_val: str) -> pd.DataFrame:
-    bills = _bills
-    bill_sub_all = _bill_sub_all
+def build_policy_mentions(bills: pd.DataFrame, bill_sub_all: pd.DataFrame, session_val: str) -> pd.DataFrame:
     if bills.empty or bill_sub_all.empty or "Bill" not in bills.columns:
         return pd.DataFrame(columns=["Subject", "Mentions", "Share"])
     if "Subject" not in bill_sub_all.columns:
@@ -7759,9 +7752,7 @@ def build_lobbyist_trend(
     g["SessionLabel"] = g["SessionBase"].apply(_session_base_label)
     return g[["Session", "Funding", "Mid", "SessionBase", "SessionLabel"]]
 
-@st.cache_resource(show_spinner=False)
-def build_top_clients(_lt: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
-    lt = _lt
+def build_top_clients(lt: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
     if lt.empty or "Client" not in lt.columns:
         return pd.DataFrame(columns=["Client", "Funding", "Low", "High", "Mid"])
     d = lt.copy()
