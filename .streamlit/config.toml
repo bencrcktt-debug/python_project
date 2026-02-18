@@ -14,10 +14,7 @@ level = "warning"
 
 [server]
 headless = true
-port = 8501
 maxUploadSize = 200
-enableCORS = false
-enableXsrfProtection = false
 
 [browser]
-serverAddress = "localhost"
+gatherUsageStats = false
