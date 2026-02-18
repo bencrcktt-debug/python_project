@@ -13,7 +13,6 @@ import altair as alt
 from fpdf import FPDF
 from app.html_report import build_html_report
 from app.pdf import html_to_pdf_bytes
-from app.report_store import save_report_pdf
 
 # =========================================================
 # CONFIG
@@ -7404,7 +7403,6 @@ def _render_pdf_report_section(
         name_key = f"{key_prefix}_report_name"
         html_pdf_key = f"{key_prefix}_report_pdf_html"
         html_name_key = f"{key_prefix}_report_name_html"
-        save_local_key = f"{key_prefix}_report_save_local"
         signature = f"{session_val}|{scope_label}|{focus_label}"
 
         if st.session_state.get(sig_key) != signature:
@@ -7417,8 +7415,6 @@ def _render_pdf_report_section(
                 del st.session_state[html_pdf_key]
             if html_name_key in st.session_state:
                 del st.session_state[html_name_key]
-
-        save_local = st.checkbox("Also save to ./reports for later retrieval", value=False, key=save_local_key)
 
         c1, c2 = st.columns(2)
         with c1:
@@ -7456,9 +7452,6 @@ def _render_pdf_report_section(
                         st.session_state[pdf_key] = pdf_bytes
                         st.session_state[name_key] = f"tfl-report-{_slugify(focus_label)}.pdf"
                         st.success("Report generated")
-                        if save_local and payload.get("report_id"):
-                            path = save_report_pdf(payload["report_id"], pdf_bytes, payload, renderer="fpdf")
-                            st.caption(f"Saved to {path}")
             except Exception as e:
                 st.error(f"Report generation failed: {str(e)}")
 
@@ -7482,9 +7475,6 @@ def _render_pdf_report_section(
                         st.session_state[html_pdf_key] = pdf_bytes
                         st.session_state[html_name_key] = f"tfl-report-{_slugify(focus_label)}-html.pdf"
                         st.success("HTML PDF generated")
-                        if save_local and payload.get("report_id"):
-                            path = save_report_pdf(payload["report_id"], pdf_bytes, payload, renderer="html")
-                            st.caption(f"Saved to {path}")
             except Exception as e:
                 st.error(f"HTML report failed: {str(e)}")
 

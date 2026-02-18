@@ -42,7 +42,6 @@ streamlit run main.py
 - CSV exports include active filter context in the label and filename.
 - PDF reports include a cover, contents, executive summary, and sectioned tables/charts.
 - Custom PDF export now offers an HTML/WeasyPrint (beta) option for richer layout alongside the legacy FPDF path.
-- PDFs can optionally be saved to `./reports` with a JSON metadata sidecar (report ID, renderer, filters).
 
 ## Architecture scaffold (in progress)
 
@@ -53,10 +52,9 @@ The redesign toward a Bloomberg-grade reporting experience is modularized under 
 - `data_loader.py` resolves data paths, creates a cached DuckDB connection, and exposes a place to register materialized views.
 - `metrics.py` houses reusable analytics (taxpayer dependency, stance efficacy, policy concentration) returning structured results.
 - `narrative.py` wraps Jinja2 templates for exec summaries, reform arguments, and methodology text.
-- `pdf.py` converts HTML to PDF (WeasyPrint) and saves to `./reports`.
+- `pdf.py` converts HTML to PDF (WeasyPrint).
 - `html_report.py` renders the Jinja HTML template (`templates/report.html`) that powers the HTML/WeasyPrint PDF path.
 - `report_queue.py` provides a threaded queue for asynchronous PDF generation.
-- `report_store.py` saves generated PDFs (FPDF or HTML/WeasyPrint) and a JSON metadata sidecar under `./reports`.
 - `report_presets.py` standardizes report types (lobbyist, client, session, aggregate) and their section stacks.
 - `charts.py` centralizes Plotly layout helpers and sparklines for consistent visuals.
 - `layout.py` offers a shared filter bar that returns a `FilterState` for both explore and report-builder views.
