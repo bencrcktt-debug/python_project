@@ -3,6 +3,7 @@ headless = true
 enableCORS = false
 enableXsrfProtection = true
 runOnSave = false
+maxMessageSize = 200
 
 [browser]
 gatherUsageStats = false

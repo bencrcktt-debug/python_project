@@ -1699,7 +1699,7 @@ def _page_client_lookup():
         focus_context=focus_context,
     )
 
-    @st.cache_data(show_spinner=False)
+    @st.cache_data(show_spinner=False, ttl=300, max_entries=4)
     def build_all_clients_overview(df: pd.DataFrame, session_val: str | None, scope_val: str) -> tuple[pd.DataFrame, dict]:
         if df.empty:
             return pd.DataFrame(), {}
@@ -2246,7 +2246,7 @@ def _page_client_lookup():
             .fillna(staff_pick.get("StaffLastNorm", pd.Series([""] * len(staff_pick))).map(last_map))
         )
 
-    @st.cache_data(show_spinner=False)
+    @st.cache_data(show_spinner=False, ttl=300, max_entries=4)
     def staff_metrics(staff_rows: pd.DataFrame, bills_df: pd.DataFrame, session_val: str, bs_all: pd.DataFrame) -> pd.DataFrame:
         if staff_rows.empty or bills_df.empty:
             return pd.DataFrame(columns=["Legislator", "% Against that Failed", "% For that Passed"])
@@ -2961,7 +2961,7 @@ def _page_member_lookup():
         focus_context=focus_context,
     )
 
-    @st.cache_data(show_spinner=False)
+    @st.cache_data(show_spinner=False, ttl=300, max_entries=4)
     def build_all_legislators_overview(
         author_bills: pd.DataFrame,
         wit_all: pd.DataFrame,
@@ -7214,7 +7214,7 @@ def _apply_plotly_layout(
     )
     return fig
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=8)
 def bill_position_from_flags(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["Session", "Bill", "LobbyShort", "Position"])
@@ -7234,7 +7234,7 @@ def bill_position_from_flags(df: pd.DataFrame) -> pd.DataFrame:
     agg["Position"] = agg.apply(pos_row, axis=1)
     return agg[["Session", "Bill", "LobbyShort", "Position"]]
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=8)
 def build_bills_with_status(
     wit: pd.DataFrame,
     bill_status_all: pd.DataFrame,
@@ -7268,7 +7268,7 @@ def build_bills_with_status(
     bills = ensure_cols(bills, {"Author": "", "Caption": "", "Status": "", "Fiscal Impact H": 0, "Fiscal Impact S": 0})
     return bills
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=8)
 def build_policy_mentions(bills: pd.DataFrame, bill_sub_all: pd.DataFrame, session_val: str) -> pd.DataFrame:
     if bills.empty or bill_sub_all.empty or "Bill" not in bills.columns:
         return pd.DataFrame(columns=["Subject", "Mentions", "Share"])
@@ -7294,7 +7294,7 @@ def build_policy_mentions(bills: pd.DataFrame, bill_sub_all: pd.DataFrame, sessi
     mentions["Share"] = (mentions["Mentions"] / total_mentions).fillna(0)
     return mentions
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=8)
 def build_lobby_subject_counts(
     lobby_sub_all: pd.DataFrame,
     session_val: str,
@@ -7352,7 +7352,7 @@ def build_lobby_subject_counts(
     )
     return lobby_sub_counts, subject_non_empty
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=8)
 def build_lobbyist_trend(
     df: pd.DataFrame,
     lobbyshort: str,
@@ -7382,7 +7382,7 @@ def build_lobbyist_trend(
     g["SessionLabel"] = g["SessionBase"].apply(_session_base_label)
     return g[["Session", "Funding", "Mid", "SessionBase", "SessionLabel"]]
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=8)
 def build_top_clients(lt: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
     if lt.empty or "Client" not in lt.columns:
         return pd.DataFrame(columns=["Client", "Funding", "Low", "High", "Mid"])
@@ -7715,7 +7715,7 @@ def lobbyist_autocomplete_candidates(query: str, lobbyist_index: pd.DataFrame, l
         })
     return out
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=4)
 def build_client_index(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "Client" not in df.columns:
         return pd.DataFrame(columns=["Client", "ClientNorm"])
@@ -7768,7 +7768,7 @@ def _split_authors(text: str) -> list[str]:
     parts = [p.strip() for p in s.split("|")]
     return [p for p in parts if p and p.lower() not in {"nan", "none"}]
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=4)
 def build_author_bill_index(bs: pd.DataFrame) -> pd.DataFrame:
     if bs.empty:
         return pd.DataFrame(columns=["Session", "Bill", "Author", "AuthorNorm", "Status", "Caption", "Link", "Chamber"])
@@ -7788,7 +7788,7 @@ def build_author_bill_index(bs: pd.DataFrame) -> pd.DataFrame:
     cols = [c for c in ["Session", "Bill", "Author", "AuthorNorm", "Status", "Caption", "Link", "Chamber"] if c in d.columns]
     return d[cols].drop_duplicates()
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=4)
 def build_member_index(author_bills: pd.DataFrame) -> pd.DataFrame:
     if author_bills.empty or "Author" not in author_bills.columns:
         return pd.DataFrame(columns=["Member", "MemberNorm"])
@@ -7874,7 +7874,7 @@ def parse_member_name(member_name: str) -> dict:
 def parse_person_name(person_name: str) -> dict:
     return parse_member_name(person_name)
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=4)
 def build_lobbyist_index(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "LobbyShort" not in df.columns or "Lobby Name" not in df.columns:
         return pd.DataFrame(columns=[
@@ -7989,7 +7989,7 @@ def map_filer_to_lobbyshort(df: pd.DataFrame, name_to_short: dict, filerid_to_sh
     d["LobbyShort"] = short.fillna("")
     return d
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=8)
 def build_member_activities(
     df_food,
     df_ent,
@@ -8322,7 +8322,7 @@ def read_parquet_cols(path: Path, cols: list[str]) -> pd.DataFrame:
         except Exception:
             return pd.DataFrame(columns=cols)
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=600, max_entries=2)
 def load_workbook(path: str) -> dict:
     cfg = {
         "Wit_All": ["session", "bill", "position", "LobbyShort", "name", "org"],
@@ -8769,7 +8769,7 @@ def data_health_table(data: dict) -> pd.DataFrame:
 # =========================================================
 # ACTIVITIES (unchanged logic, still cached)
 # =========================================================
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=8)
 def build_activities(df_food, df_ent, df_tran, df_gift, df_evnt, df_awrd,
                      lobbyshort: str, session: str | None, name_to_short: dict,
                      lobbyist_norms_tuple: tuple[str, ...], filerid_to_short: dict | None = None,
@@ -8887,7 +8887,7 @@ def build_activities(df_food, df_ent, df_tran, df_gift, df_evnt, df_awrd,
     ).drop(columns=["_date_sort"])
     return result
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=8)
 def build_activities_multi(
     df_food,
     df_ent,
@@ -9026,7 +9026,7 @@ def build_activities_multi(
     ).drop(columns=["_date_sort"])
     return result
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=8)
 def build_disclosures(
     df_cvr: pd.DataFrame,
     df_dock: pd.DataFrame,
@@ -9113,7 +9113,7 @@ def build_disclosures(
     ).drop(columns=["_date_sort"])
     return result
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=8)
 def build_disclosures_multi(
     df_cvr: pd.DataFrame,
     df_dock: pd.DataFrame,
@@ -10029,7 +10029,7 @@ _ = _render_pdf_report_section(
 # =========================================================
 # FAST ALL-LOBBYISTS OVERVIEW (cached and uses Low_num/High_num)
 # =========================================================
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300, max_entries=4)
 def build_all_lobbyists_overview_fast(df: pd.DataFrame, session_val: str | None, scope_val: str) -> tuple[pd.DataFrame, dict]:
     if df.empty:
         return pd.DataFrame(), {}
@@ -10728,7 +10728,7 @@ else:
         staff_pick = staff_df[match_mask].copy()
         staff_pick_session = staff_df[staff_session & match_mask].copy()
 
-        @st.cache_data(show_spinner=False)
+        @st.cache_data(show_spinner=False, ttl=300, max_entries=4)
         def staff_metrics(staff_rows: pd.DataFrame, bills_df: pd.DataFrame, session_val: str, bs_all: pd.DataFrame) -> pd.DataFrame:
             if staff_rows.empty or bills_df.empty:
                 return pd.DataFrame(columns=["Legislator", "% Against that Failed", "% For that Passed"])
