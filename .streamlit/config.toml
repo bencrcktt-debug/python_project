@@ -1,9 +1,9 @@
 [theme]
 base="dark"
-primaryColor="#1e90ff"
-backgroundColor="#071627"
-secondaryBackgroundColor="#0f2139"
-textColor="#ffffff"
+primaryColor="#8caed3"
+backgroundColor="#0f1824"
+secondaryBackgroundColor="#162437"
+textColor="#eef4fb"
 
 [client]
 showErrorDetails = false

@@ -2,11 +2,15 @@ import os
 import re
 import difflib
 import html
+import json
+import urllib.parse
+import urllib.request
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 import plotly.express as px
 import plotly.io as pio
 from fpdf import FPDF, XPos, YPos
@@ -15,6 +19,159 @@ from fpdf import FPDF, XPos, YPos
 # CONFIG
 # =========================================================
 DEFAULT_DATA_FILENAME = "TFL Webstite books - combined.parquet"
+TEA_ARCGIS_WEBAPP_URL = "https://tea-texas.maps.arcgis.com/apps/webappviewer/index.html?id=51f0c8fa684c4d399d8d182e6edd5d97"
+TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL = "https://services2.arcgis.com/5MVN2jsqIrNZD4tP/arcgis/rest/services/Map/FeatureServer/0"
+TEA_ARCGIS_COUNTY_LAYER_URL = "https://services2.arcgis.com/5MVN2jsqIrNZD4tP/arcgis/rest/services/Counties2019/FeatureServer/0"
+CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Places_CouSub_ConCity_SubMCD/MapServer/25"
+ARCGIS_GEOCODER_URL = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates"
+TCEQ_WATER_DISTRICTS_LAYER_URL = "https://services2.arcgis.com/LYMgRMwHfrWWEg3s/arcgis/rest/services/TCEQ_Water_Districts/FeatureServer/0"
+TCEQ_GROUNDWATER_DISTRICTS_LAYER_URL = "https://services2.arcgis.com/LYMgRMwHfrWWEg3s/arcgis/rest/services/TCEQ_Groundwater_Conservation_Districts/FeatureServer/0"
+TEXAS_RMA_LAYER_URL = "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/Texas_Regional_Mobility_Authority_Boundaries/FeatureServer/0"
+TEXAS_JUNIOR_COLLEGE_LAYER_URL = "https://services1.arcgis.com/hVMNhMnY75fwfIFy/arcgis/rest/services/JuniorCollege_ServiceAreas/FeatureServer/0"
+TEXAS_NAVIGATION_DISTRICT_LAYER_URL = "https://services1.arcgis.com/YWG34dhJxrbxQWdF/arcgis/rest/services/Navigation_Districts2/FeatureServer/29"
+NCTCOG_TRANSIT_PROVIDERS_LAYER_URL = "https://geospatial.nctcog.org/map/rest/services/Transportation/DFWMaps_Transit/MapServer/10"
+TXDOT_SEAPORTS_LAYER_URL = "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/TxDOT_Seaports/FeatureServer/0"
+MAP_BASEMAP_OPTIONS = {
+    "Gray Canvas": "gray-vector",
+    "Street Detail": "streets-vector",
+    "Satellite": "hybrid",
+}
+SUBDIVISION_TYPE_COLORS = {
+    "School District": "#1769AA",
+    "County": "#7A3E00",
+    "City": "#9E2A2B",
+    "Junior College District": "#1E58A5",
+    "Groundwater Conservation District": "#0B8F6A",
+    "Municipal Utility District": "#5B3FB0",
+    "Drainage District": "#CC6B2C",
+    "Fresh Water Supply District": "#3382CC",
+    "Irrigation District": "#5A8B2D",
+    "Levee Improvement District": "#8A6A1F",
+    "Municipal Management District": "#7D3FA0",
+    "Regional District": "#8A7E24",
+    "River Authority": "#0E8791",
+    "Soil & Water Control District": "#2E8D73",
+    "Special Utility District": "#31688E",
+    "Water Improvement District": "#4D6FA9",
+    "Water Control & Improvement District": "#2F6DA4",
+    "Regional Mobility Authority": "#B08900",
+    "Navigation District": "#2C3E50",
+    "Transit Authority": "#5A657A",
+    "Port Authority": "#3B6F8C",
+    "Hospital District": "#9B3E56",
+    "Emergency Services District": "#B15C2E",
+    "Appraisal District": "#6D5A90",
+    "Local Government Corporation": "#4E7A52",
+}
+WATER_DISTRICT_TYPE_ROOT_PATTERNS = {
+    "Municipal Utility District": [r"\bMUNICIPAL\s+UTILITY\s+DISTRICT\b", r"\bDISTRICT\b"],
+    "Drainage District": [r"\bDRAINAGE\s+DISTRICT\b", r"\bDISTRICT\b"],
+    "Fresh Water Supply District": [r"\bFRESH\s+WATER\s+SUPPLY\s+DISTRICT\b", r"\bDISTRICT\b"],
+    "Irrigation District": [r"\bIRRIGATION\s+DISTRICT\b", r"\bDISTRICT\b"],
+    "Levee Improvement District": [r"\bLEVEE\s+IMPROVEMENT\s+DISTRICT\b", r"\bDISTRICT\b"],
+    "Municipal Management District": [r"\bMUNICIPAL\s+MANAGEMENT\s+DISTRICT\b", r"\bDISTRICT\b"],
+    "Regional District": [r"\bREGIONAL\s+DISTRICT\b", r"\bDISTRICT\b"],
+    "River Authority": [r"\bRIVER\s+AUTHORITY\b", r"\bAUTHORITY\b"],
+    "Soil & Water Control District": [r"\bSOIL\s+(AND\s+)?WATER\s+CONTROL\s+DISTRICT\b", r"\bDISTRICT\b"],
+    "Special Utility District": [r"\bSPECIAL\s+UTILITY\s+DISTRICT\b", r"\bDISTRICT\b"],
+    "Water Improvement District": [r"\bWATER\s+IMPROVEMENT\s+DISTRICT\b", r"\bDISTRICT\b"],
+    "Water Control & Improvement District": [r"\bWATER\s+CONTROL\s+(AND\s+)?IMPROVEMENT\s+DISTRICT\b", r"\bDISTRICT\b"],
+}
+TRANSIT_AUTHORITY_ROOT_PATTERNS = [
+    r"\bMETROPOLITAN\s+TRANSIT\s+AUTHORITY\b",
+    r"\bTRANSIT\s+AUTHORITY\b",
+    r"\bAREA\s+RAPID\s+TRANSIT\b",
+    r"\bREGIONAL\s+TRANSPORTATION\s+AUTHORITY\b",
+    r"\bTRANSPORTATION\s+AUTHORITY\b",
+]
+PORT_AUTHORITY_ROOT_PATTERNS = [
+    r"\bPORT\s+AUTHORITY\b",
+    r"\bPORT\s+OF\b",
+    r"\bNAVIGATION\s+DISTRICT\b",
+    r"\bPORT\b",
+    r"\bAUTHORITY\b",
+    r"\bDISTRICT\b",
+]
+SPECIAL_NAME_ANCHORED_ENTITY_TYPES = {
+    "Hospital District",
+    "Emergency Services District",
+    "Appraisal District",
+    "Local Government Corporation",
+    "Transit Authority",
+    "Port Authority",
+}
+COUNTY_BIASED_SPECIAL_ENTITY_TYPES = {
+    "Hospital District",
+    "Emergency Services District",
+    "Appraisal District",
+}
+CITY_BIASED_SPECIAL_ENTITY_TYPES = {
+    "Local Government Corporation",
+    "Transit Authority",
+    "Port Authority",
+}
+MAP_DATA_SOURCES = [
+    (
+        "TEA School District Locator (web app)",
+        TEA_ARCGIS_WEBAPP_URL,
+        "Reference viewer used for school district context.",
+    ),
+    (
+        "TEA School District boundaries (FeatureServer/0)",
+        TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL,
+        "School district polygons and centroids.",
+    ),
+    (
+        "TEA County boundaries (FeatureServer/0)",
+        TEA_ARCGIS_COUNTY_LAYER_URL,
+        "County polygons and centroids.",
+    ),
+    (
+        "U.S. Census TIGERweb Texas Places (MapServer/25)",
+        CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL,
+        "City/place polygons and centroids for Texas (STATE=48).",
+    ),
+    (
+        "TCEQ Water Districts (FeatureServer/0)",
+        TCEQ_WATER_DISTRICTS_LAYER_URL,
+        "Municipal utility, drainage, fresh water supply, irrigation, levee improvement, municipal management, regional, river authority, soil and water control, special utility, water improvement, and water control and improvement districts.",
+    ),
+    (
+        "TCEQ Groundwater Conservation Districts (FeatureServer/0)",
+        TCEQ_GROUNDWATER_DISTRICTS_LAYER_URL,
+        "Groundwater conservation district boundaries.",
+    ),
+    (
+        "Texas Regional Mobility Authorities (FeatureServer/0)",
+        TEXAS_RMA_LAYER_URL,
+        "Regional mobility authority boundaries.",
+    ),
+    (
+        "Texas Junior College Service Areas (FeatureServer/0)",
+        TEXAS_JUNIOR_COLLEGE_LAYER_URL,
+        "Junior/community college service-area boundaries.",
+    ),
+    (
+        "Texas Navigation Districts (FeatureServer/29)",
+        TEXAS_NAVIGATION_DISTRICT_LAYER_URL,
+        "Navigation district boundaries.",
+    ),
+    (
+        "NCTCOG Transit Providers (MapServer/10)",
+        NCTCOG_TRANSIT_PROVIDERS_LAYER_URL,
+        "Transit provider/service-area polygons for the North Central Texas region.",
+    ),
+    (
+        "TxDOT Seaports (FeatureServer/0)",
+        TXDOT_SEAPORTS_LAYER_URL,
+        "Texas seaport locations and attributes used for port-authority matching.",
+    ),
+    (
+        "ArcGIS World Geocoding Service",
+        ARCGIS_GEOCODER_URL,
+        "Address geocoding for overlap point lookup plus centroid fallback for special subdivision types without statewide boundary layers.",
+    ),
+]
 
 
 def _is_url(path: str) -> bool:
@@ -42,7 +199,7 @@ def _resolve_data_path() -> str:
 
 PATH = _resolve_data_path()
 
-st.set_page_config(page_title="TPPF Lobby Look-Up", layout="wide")
+st.set_page_config(page_title="Texas Taxpayer Lobbying Transparency Center", layout="wide")
 
 # =========================================================
 # STYLE (unchanged)
@@ -50,7 +207,7 @@ st.set_page_config(page_title="TPPF Lobby Look-Up", layout="wide")
 st.markdown(
     """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600;700&family=IBM+Plex+Serif:wght@400;600&family=Source+Sans+3:wght@400;600;700&display=swap');
 :root{
     --bg: #071627;
     --panel: rgba(255,255,255,0.06);
@@ -625,6 +782,44 @@ div[data-testid="stPlotlyChart"] > div{
     font-size: 0.96rem;
     line-height: 1.5;
 }
+.geo-hero{
+    margin-top: 0.4rem;
+    background: linear-gradient(145deg, rgba(30,144,255,0.16), rgba(0,224,184,0.10), rgba(7,22,39,0.9));
+    border: 1px solid rgba(255,255,255,0.14);
+    box-shadow: 0 18px 30px rgba(0,0,0,0.30);
+}
+.geo-kicker{
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-bottom: 0.35rem;
+}
+.geo-title{
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+}
+.geo-lead{
+    color: var(--muted);
+    line-height: 1.45;
+    margin-bottom: 0.6rem;
+}
+.geo-step{
+    padding: 8px 10px;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    background: rgba(7,22,39,0.42);
+    margin-top: 8px;
+    line-height: 1.4;
+}
+.geo-step strong{
+    color: var(--accent2);
+    font-weight: 700;
+}
+.geo-note{
+    margin-top: 0.4rem;
+}
 .filter-summary{
     display: flex;
     flex-wrap: wrap;
@@ -1072,6 +1267,9 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input::placeh
     .tap-hero{ padding: 16px 14px 14px 14px; }
     .tap-hero-title{ font-size: 1.5rem; }
     .tap-feature-head{ flex-direction: column; align-items: flex-start; }
+    .geo-hero{ padding: 14px 12px 12px 12px; }
+    .geo-title{ font-size: 1.05rem; }
+    .geo-step{ padding: 7px 9px; }
     div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]){
         top: calc(var(--nav-h) + 6px);
         left: calc(12px + env(safe-area-inset-left, 0px));
@@ -1090,154 +1288,801 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input::placeh
     unsafe_allow_html=True,
 )
 
+st.markdown(
+    """
+<style>
+:root{
+    --bg: #0d1724;
+    --bg-soft: #132133;
+    --surface: #172638;
+    --surface-2: #1c2d42;
+    --surface-3: #22364f;
+    --border: rgba(175, 194, 214, 0.30);
+    --border-strong: rgba(198, 214, 231, 0.46);
+    --text: #edf3fa;
+    --muted: #b6c5d8;
+    --accent: #86a7c6;
+    --accent-2: #6f92b4;
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 18px;
+    --shadow-1: 0 8px 18px rgba(2, 9, 16, 0.30);
+    --shadow-2: 0 16px 30px rgba(2, 9, 16, 0.36);
+}
+
+html, body, [data-testid="stAppViewContainer"]{
+    background:
+        radial-gradient(900px 360px at 12% -12%, rgba(121, 152, 183, 0.18), transparent 62%),
+        radial-gradient(820px 360px at 92% -10%, rgba(78, 108, 139, 0.16), transparent 62%),
+        linear-gradient(180deg, #0d1724 0%, #121f2e 50%, #0d1724 100%) !important;
+    color: var(--text) !important;
+    font-family: 'IBM Plex Sans', 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}
+[data-testid="stAppViewContainer"]::before{
+    display: none !important;
+}
+.block-container{
+    max-width: 1360px;
+    padding-left: clamp(0.9rem, 1.9vw, 1.6rem);
+    padding-right: clamp(0.9rem, 1.9vw, 1.6rem);
+}
+h1, h2, h3{
+    color: var(--text) !important;
+}
+
+.card{
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(26, 40, 57, 0.96), rgba(17, 29, 45, 0.94));
+    box-shadow: var(--shadow-1);
+}
+div[data-testid="stPlotlyChart"]{
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(175, 194, 214, 0.26);
+    background: linear-gradient(180deg, rgba(23, 38, 56, 0.95), rgba(15, 26, 40, 0.94));
+    box-shadow: var(--shadow-2);
+}
+[data-testid="stDataFrame"]{
+    border-color: rgba(177, 196, 216, 0.30);
+    background: rgba(12, 22, 35, 0.86);
+    border-radius: var(--radius-md);
+}
+
+.custom-nav{
+    background: rgba(11, 20, 31, 0.97);
+    border-bottom: 1px solid rgba(171, 191, 212, 0.30);
+    box-shadow: 0 10px 24px rgba(2, 9, 16, 0.42);
+}
+.custom-nav .brand{
+    border-left-color: var(--accent);
+    padding-left: 12px;
+}
+.custom-nav .brand-top{
+    color: var(--muted);
+    letter-spacing: 0.18em;
+    font-size: 0.64rem;
+    font-weight: 600;
+}
+.custom-nav .brand-bottom{
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+.custom-nav .nav-link{
+    color: rgba(226, 236, 248, 0.84);
+    font-size: 0.91rem;
+    font-weight: 600;
+}
+.custom-nav .nav-link:hover{
+    color: #f4f8fc;
+}
+.custom-nav .nav-link.active{
+    color: #f5f9fd;
+}
+.custom-nav .nav-link.active::after{
+    background: var(--accent);
+    height: 3px;
+}
+
+.policy-hero{
+    padding: 20px 22px 18px 22px;
+    margin: 0 0 12px 0;
+    border: 1px solid var(--border-strong);
+    background:
+        linear-gradient(128deg, rgba(94, 126, 157, 0.20), rgba(27, 42, 60, 0.92) 58%),
+        linear-gradient(180deg, rgba(24, 37, 54, 0.96), rgba(15, 27, 41, 0.94));
+}
+.policy-kicker{
+    text-transform: uppercase;
+    letter-spacing: 0.17em;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 7px;
+}
+.policy-title{
+    font-family: 'IBM Plex Serif', 'Merriweather', Georgia, serif;
+    font-size: clamp(1.76rem, 2.2vw, 2.25rem);
+    font-weight: 600;
+    line-height: 1.22;
+    margin: 0;
+}
+.policy-subtitle{
+    margin: 9px 0 0 0;
+    color: var(--muted);
+    line-height: 1.56;
+    max-width: 940px;
+    font-size: 0.99rem;
+}
+.policy-pill-list{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+.policy-pill{
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 11px 5px 11px;
+    border-radius: 999px;
+    border: 1px solid rgba(151, 180, 209, 0.46);
+    background: rgba(97, 128, 160, 0.22);
+    color: rgba(236, 243, 251, 0.98);
+    font-size: 0.77rem;
+    line-height: 1.2;
+}
+
+.journey-grid{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(182px, 1fr));
+    gap: 10px;
+    margin: 10px 0 15px 0;
+}
+.journey-step{
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    text-decoration: none;
+    border: 1px solid rgba(171, 191, 212, 0.26);
+    border-radius: 12px;
+    padding: 10px 11px;
+    background: linear-gradient(180deg, rgba(31, 48, 68, 0.62), rgba(15, 27, 41, 0.88));
+    transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+.journey-step:hover{
+    border-color: rgba(166, 192, 219, 0.58);
+    background: linear-gradient(180deg, rgba(44, 65, 89, 0.68), rgba(20, 33, 48, 0.90));
+    transform: translateY(-1px);
+}
+.journey-step.is-active{
+    border-color: rgba(173, 198, 223, 0.78);
+    background: linear-gradient(180deg, rgba(69, 97, 126, 0.64), rgba(23, 39, 57, 0.92));
+    box-shadow: inset 0 0 0 1px rgba(176, 200, 225, 0.24);
+}
+.journey-step-num{
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+}
+.journey-step-title{
+    font-size: 0.94rem;
+    font-weight: 600;
+    color: var(--text);
+}
+.journey-step-desc{
+    font-size: 0.79rem;
+    line-height: 1.42;
+    color: var(--muted);
+}
+
+.workspace-note{
+    border: 1px solid rgba(170, 190, 211, 0.32);
+    border-radius: 12px;
+    border-left: 3px solid var(--accent);
+    background: linear-gradient(180deg, rgba(32, 49, 70, 0.63), rgba(15, 27, 41, 0.88));
+    padding: 13px 14px 12px 14px;
+    margin: 9px 0 10px 0;
+}
+.workspace-note-head{
+    margin: 0 0 5px 0;
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 700;
+}
+.workspace-note p{
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.5;
+}
+.workspace-note strong{
+    color: var(--text);
+}
+.workspace-note ol{
+    margin: 0.4rem 0 0.2rem 1.05rem;
+    padding: 0;
+}
+.workspace-note li{
+    margin: 0.2rem 0;
+    color: var(--text);
+    line-height: 1.45;
+}
+
+.workspace-links-heading{
+    margin: 0.15rem 0 0.35rem 0;
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 700;
+}
+.workspace-link-help{
+    font-size: 0.82rem;
+    line-height: 1.38;
+    color: var(--muted);
+    margin-top: 0.35rem;
+    min-height: 2.45rem;
+}
+
+.policy-panel{
+    padding: 14px 15px 12px 15px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(30, 47, 67, 0.62), rgba(15, 27, 41, 0.88));
+    margin-bottom: 11px;
+}
+.policy-panel h3{
+    margin: 0 0 7px 0;
+    font-size: 1.02rem;
+    line-height: 1.32;
+}
+.policy-panel p{
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.section-title{
+    font-family: 'IBM Plex Serif', 'Merriweather', Georgia, serif;
+    letter-spacing: 0.01em;
+}
+.section-sub{
+    color: rgba(193, 210, 227, 0.87);
+}
+.section-caption{
+    color: rgba(185, 203, 222, 0.79);
+}
+
+.callout{
+    border-radius: 12px;
+    border-color: rgba(163, 183, 205, 0.30);
+    background: linear-gradient(180deg, rgba(28, 45, 65, 0.60), rgba(15, 27, 41, 0.86));
+}
+.callout-title{
+    letter-spacing: 0.15em;
+}
+
+.geo-hero{
+    margin-top: 0.45rem;
+    background:
+        linear-gradient(145deg, rgba(88, 120, 150, 0.22), rgba(23, 39, 58, 0.92) 60%),
+        linear-gradient(180deg, rgba(20, 34, 51, 0.96), rgba(14, 25, 39, 0.94));
+    border: 1px solid rgba(170, 190, 211, 0.31);
+    box-shadow: 0 17px 30px rgba(2, 9, 16, 0.42);
+}
+.geo-title{
+    font-family: 'IBM Plex Serif', 'Merriweather', Georgia, serif;
+    font-size: 1.2rem;
+}
+.geo-lead{
+    line-height: 1.5;
+}
+
+.filter-summary{
+    border: 1px solid rgba(166, 187, 208, 0.33);
+    border-radius: 12px;
+    background: rgba(13, 23, 35, 0.88);
+    box-shadow: inset 0 0 0 1px rgba(150, 176, 202, 0.10);
+}
+.filter-summary-label{
+    letter-spacing: 0.15em;
+    color: rgba(188, 206, 227, 0.86);
+}
+
+.chip{
+    border: 1px solid rgba(166, 187, 208, 0.32);
+    background: rgba(76, 108, 140, 0.22);
+}
+
+.kpi-title{
+    color: rgba(191, 208, 226, 0.86);
+    font-size: 0.8rem;
+    margin-bottom: 7px;
+    letter-spacing: 0.02em;
+}
+.kpi-value{
+    font-size: clamp(1.44rem, 2.1vw, 1.9rem);
+    font-weight: 700;
+    line-height: 1.16;
+    color: var(--text);
+}
+.kpi-sub{
+    color: rgba(186, 204, 224, 0.79);
+    font-size: 0.85rem;
+    margin-top: 5px;
+    line-height: 1.36;
+}
+
+.insight-panel{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 0.9rem;
+}
+.insight-card{
+    border: 1px solid rgba(168, 189, 211, 0.30);
+    border-radius: 13px;
+    padding: 12px 13px;
+    background: linear-gradient(180deg, rgba(31, 48, 68, 0.62), rgba(15, 27, 41, 0.88));
+}
+.insight-kicker{
+    font-size: 0.65rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 5px;
+}
+.insight-title{
+    font-family: 'IBM Plex Serif', 'Merriweather', Georgia, serif;
+    font-size: 1.05rem;
+    margin-bottom: 0.35rem;
+}
+.insight-list{
+    margin: 0.25rem 0 0 1rem;
+    padding: 0;
+}
+.insight-list li{
+    margin: 0.22rem 0;
+    line-height: 1.45;
+    color: var(--muted);
+}
+.mini-kpi-grid{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+.mini-kpi{
+    border: 1px solid rgba(165, 185, 206, 0.28);
+    border-radius: 11px;
+    padding: 8px 9px;
+    background: rgba(17, 29, 44, 0.72);
+}
+.mini-kpi .label{
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin-bottom: 3px;
+}
+.mini-kpi .value{
+    font-size: 1.18rem;
+    font-weight: 700;
+    line-height: 1.12;
+    margin-bottom: 2px;
+}
+.mini-kpi .sub{
+    font-size: 0.77rem;
+    color: rgba(187, 205, 224, 0.8);
+    line-height: 1.3;
+}
+
+.app-note{
+    border: 1px solid rgba(164, 185, 206, 0.34);
+    border-radius: 11px;
+    padding: 10px 12px;
+    margin: 8px 0 10px 0;
+    background: linear-gradient(180deg, rgba(29, 46, 66, 0.62), rgba(14, 24, 37, 0.88));
+    color: rgba(198, 214, 233, 0.90);
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+.app-note strong{
+    color: var(--text);
+}
+
+.quickstart-box{
+    border: 1px solid rgba(157, 179, 202, 0.36);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(26, 42, 60, 0.68), rgba(13, 24, 37, 0.90));
+    padding: 11px 12px;
+}
+.quickstart-box p{
+    margin: 0 0 0.45rem 0;
+    color: var(--muted);
+    line-height: 1.45;
+}
+.quickstart-box ol{
+    margin: 0.2rem 0 0.32rem 1.05rem;
+    padding: 0;
+}
+.quickstart-box li{
+    margin: 0.22rem 0;
+    line-height: 1.45;
+    color: var(--text);
+}
+
+.evidence-grid{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 10px;
+    margin: 0.25rem 0 0.95rem 0;
+}
+.evidence-card{
+    border: 1px solid rgba(167, 188, 210, 0.32);
+    border-radius: 12px;
+    padding: 11px 12px;
+    background: linear-gradient(180deg, rgba(30, 47, 66, 0.62), rgba(14, 26, 39, 0.88));
+}
+.evidence-card.is-limit{
+    border-color: rgba(203, 170, 150, 0.34);
+    background: linear-gradient(180deg, rgba(54, 42, 33, 0.58), rgba(22, 28, 36, 0.88));
+}
+.evidence-kicker{
+    font-size: 0.64rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 5px;
+    font-weight: 700;
+}
+.evidence-title{
+    font-size: 0.93rem;
+    font-weight: 700;
+    margin-bottom: 0.3rem;
+}
+.evidence-list{
+    margin: 0.2rem 0 0.05rem 1rem;
+    padding: 0;
+}
+.evidence-list li{
+    margin: 0.2rem 0;
+    line-height: 1.4;
+    color: var(--muted);
+}
+.evidence-list li strong{
+    color: var(--text);
+}
+
+.handoff-card{
+    border: 1px solid rgba(166, 187, 209, 0.34);
+    border-radius: 12px;
+    padding: 10px 12px 9px 12px;
+    margin: 0.55rem 0 0.75rem 0;
+    background: linear-gradient(180deg, rgba(32, 49, 69, 0.64), rgba(15, 27, 41, 0.89));
+}
+.handoff-kicker{
+    font-size: 0.64rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 4px;
+    font-weight: 700;
+}
+.handoff-title{
+    font-size: 0.94rem;
+    font-weight: 700;
+    margin-bottom: 0.18rem;
+}
+.handoff-sub{
+    color: var(--muted);
+    font-size: 0.84rem;
+    line-height: 1.4;
+    margin-bottom: 0.25rem;
+}
+
+.map-legend{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+    gap: 8px;
+    margin: 0.45rem 0 0.7rem 0;
+}
+.map-legend-item{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border: 1px solid rgba(158, 180, 203, 0.30);
+    border-radius: 10px;
+    padding: 6px 8px;
+    background: rgba(15, 27, 41, 0.82);
+    font-size: 0.84rem;
+}
+.map-legend-left{
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.map-legend-chip{
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.26);
+}
+.map-toolbar-note{
+    color: var(--muted);
+    font-size: 0.86rem;
+    margin: 0.2rem 0 0.42rem 0;
+}
+
+[data-testid="stTextInput"] input,
+[data-testid="stTextInput"] textarea,
+[data-testid="stSelectbox"] div[role="combobox"],
+[data-testid="stMultiSelect"] div[role="combobox"]{
+    border-radius: var(--radius-sm) !important;
+    border: 1px solid rgba(162, 185, 209, 0.34) !important;
+    background: rgba(15, 27, 41, 0.90) !important;
+    color: var(--text) !important;
+}
+[data-testid="stTextInput"] input::placeholder{
+    color: rgba(184, 201, 221, 0.74) !important;
+}
+
+button[kind="primary"],
+button[kind="secondary"]{
+    border-radius: 10px !important;
+    border: 1px solid rgba(164, 185, 207, 0.30) !important;
+}
+
+.stTabs [data-baseweb="tab"]{
+    border-radius: 10px;
+    border-color: rgba(160, 182, 205, 0.26);
+    background: linear-gradient(180deg, rgba(28, 44, 63, 0.72), rgba(14, 26, 40, 0.88));
+}
+.stTabs [aria-selected="true"]{
+    border-color: rgba(143, 174, 205, 0.75) !important;
+    background: linear-gradient(180deg, rgba(58, 86, 115, 0.62), rgba(19, 33, 49, 0.92)) !important;
+}
+
+div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]){
+    top: calc(var(--nav-h) + 14px);
+}
+div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input{
+    border: 1px solid rgba(173, 194, 216, 0.44) !important;
+    background: rgba(14, 24, 36, 0.97) !important;
+}
+
+@media (max-width: 950px){
+    .insight-panel{
+        grid-template-columns: 1fr;
+    }
+}
+@media (max-width: 768px){
+    .policy-title{
+        font-size: 1.5rem;
+    }
+    .journey-grid{
+        grid-template-columns: 1fr;
+    }
+    .policy-hero{
+        padding: 16px 14px 14px 14px;
+    }
+    .policy-subtitle{
+        font-size: 0.94rem;
+    }
+    .kpi-value{
+        font-size: 1.3rem;
+    }
+    .workspace-link-help{
+        min-height: 0;
+    }
+    .mini-kpi-grid{
+        grid-template-columns: 1fr;
+    }
+    .evidence-grid{
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
 def _page_about():
+    _render_page_intro(
+        kicker="Start Here",
+        title="Texas Taxpayer Lobbying Transparency Center",
+        subtitle=(
+            "Use official filings to trace who receives public money for lobbying, where that activity is concentrated, "
+            "and how it connects to legislation and local jurisdictions."
+        ),
+        pills=[
+            "Coverage: 85th-89th sessions",
+            "Primary records: TEC + TLO",
+            "Purpose: taxpayer protection and transparency",
+        ],
+    )
+    _render_journey("about")
+    _render_workspace_guide(
+        question=(
+            "Where is taxpayer-funded lobbying concentrated, and which entities, bills, and jurisdictions show the highest exposure?"
+        ),
+        steps=[
+            "Start in Lobbyists to establish statewide scale.",
+            "Move to Clients to verify entity-level filings and disclosures.",
+            "Use Map & Address to test local overlap by jurisdiction or street address.",
+            "Use Legislators to add bill, witness, and staff context.",
+        ],
+        method_note=(
+            "Compensation is filed as ranges, not exact invoices. Preserve low/high bounds in every interpretation."
+        ),
+    )
+    _render_quickstart(
+        "about",
+        [
+            "Choose session and scope first.",
+            "Validate any claim in at least two workspaces before publishing.",
+            "Export tables with active filters to preserve auditability.",
+        ],
+        note="Single charts are directional; defensible findings require cross-page corroboration.",
+    )
+    _render_evidence_guardrails(
+        can_answer=[
+            "Where reported taxpayer-funded lobbying appears most concentrated by session and entity type.",
+            "Which filings connect entities, lobbyists, bills, and jurisdictions in this dataset.",
+            "How large compensation ranges are relative to one another within the selected scope.",
+        ],
+        cannot_answer=[
+            "Exact invoice-level spend for any single contract.",
+            "Motivation, intent, or legal compliance beyond what filings explicitly report.",
+            "Causal claims without corroboration from additional sources.",
+        ],
+        next_checks=[
+            "Confirm identity resolution before citing profile-level totals.",
+            "Cross-check findings in at least one adjacent workspace.",
+            "Export table evidence with session and scope preserved.",
+        ],
+    )
+
+    st.markdown('<div class="section-title">Read This First</div>', unsafe_allow_html=True)
+    wf1, wf2 = st.columns([1.5, 1.1])
+    with wf1:
+        st.markdown(
+            """
+<div class="policy-panel">
+  <h3>How to interpret compensation totals</h3>
+  <p>Texas Ethics Commission compensation filings are reported as ranges. Treat every total as bounded evidence, not an exact payment ledger.</p>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            """
+<div class="policy-panel">
+  <h3>What “taxpayer-funded” means in this app</h3>
+  <p>Entities are classified from source records and shown alongside private relationships so users can compare public and private funding exposure in the same frame.</p>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+    with wf2:
+        st.markdown(
+            """
+<div class="policy-panel">
+  <h3>Name matching limitations</h3>
+  <p>Public records vary in initials, abbreviations, and spelling. Matching logic improves recall but ambiguity remains; confirm the selected entity before citing profile-level outputs.</p>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            """
+<div class="policy-panel">
+  <h3>Data-quality correction process</h3>
+  <p>Email <a class="about-link" href="mailto:communications@texaspolicy.com">communications@texaspolicy.com</a> with the session, entity/person name, and a concise issue description.</p>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('<div class="section-title">Recommended Workflow</div>', unsafe_allow_html=True)
     st.markdown(
         """
-<div class="about-wrap">
-  <div class="card about-hero">
-    <div class="about-kicker">Overview</div>
-    <div class="about-title">Texas Lobby Data Center</div>
-    <p class="about-lead">Texas Lobby Data Center makes Texas lobbying activity easier to understand -- who is
-    lobbying, for whom, on what issues, and how those efforts appear in the legislative process.</p>
-    <p class="about-body">The dashboard brings together lobbyists, clients, compensation ranges, bill activity,
-    witness-list positions, policy subjects, and outcomes in one place. The goal is simple:
-    give taxpayers, reporters, and lawmakers the ability to verify what they see and follow
-    the money using publicly available records.</p>
-    <div class="about-meta">
-      <span class="pill"><b>Sessions</b> 85th-89th</span>
-      <span class="pill"><b>Signals</b> Witness lists + filings</span>
-      <span class="pill"><b>Focus</b> Transparency</span>
-    </div>
-  </div>
-  <div class="about-shell">
-    <div class="about-sidebar">
-      <div class="card about-panel">
-        <div class="about-panel-head">
-          <h3>What You Can Do Here</h3>
-          <span class="about-panel-tag">Quick Guide</span>
-        </div>
-        <div class="about-actions">
-          <div class="about-action">Browse lobbyists immediately -- no search required.</div>
-          <div class="about-action">Filter results by legislative session (85th through 89th).</div>
-        </div>
-        <p class="about-note">For any individual lobbyist, you can review:</p>
-        <div class="about-list-grid">
-          <ul class="about-checklist">
-            <li>Taxpayer-funded versus privately funded clients</li>
-            <li>Compensation ranges (low and high bounds)</li>
-            <li>Bills with witness-list activity (for, against, or on)</li>
-          </ul>
-          <ul class="about-checklist">
-            <li>Policy areas and subject matter</li>
-            <li>Bill outcomes and fiscal-note context, where available</li>
-            <li>Reported lobbying activities and expenditures (including food, gifts, travel, events, and similar items when present in the source data)</li>
-          </ul>
-        </div>
-        <p class="about-note">Each profile moves from a high-level overview to bill-level detail, allowing users to confirm results directly against original filings.</p>
-      </div>
-      <div class="card about-panel">
-        <div class="about-panel-head">
-          <h3>Feedback or Corrections</h3>
-          <span class="about-panel-tag">Contact</span>
-        </div>
-        <p>If you spot an error, have a question, or would like to request a feature, please email
-        <a class="about-link" href="mailto:communications@texaspolicy.com">communications@texaspolicy.com</a></p>
-        <p class="about-note">To help us review efficiently, include:</p>
-        <ul class="about-checklist">
-          <li>The legislative session</li>
-          <li>The lobbyist name (or last name + first initial)</li>
-          <li>A brief description of the issue or requested change</li>
-        </ul>
-      </div>
-    </div>
-    <div class="about-main">
-      <div class="card about-section">
-        <div class="about-section-head">
-          <span class="about-section-num">01</span>
-          <h3>Where the Data Comes From</h3>
-        </div>
-        <p class="about-note">All information displayed in Texas Lobby Data Center is drawn from publicly available
-        government and nonprofit sources, including the following:</p>
-        <div class="source-grid">
-          <div class="source-item">
-            <div class="source-title">Texas Ethics Commission</div>
-            <div class="source-text">Lobby registration records, client relationships, compensation ranges, subject-matter disclosures, and lobbying activity reports.</div>
-            <div class="source-links">
-              <a class="about-link" href="https://www.ethics.state.tx.us/search/lobby/" target="_blank" rel="noopener">Lobbyist Search and Filings</a>
-            </div>
-            <div class="source-note">Source datasets include: Subject Matter List; Lobbyist by Client; Lobbyists Compensated by Political Funds; Lobby Activities List (Food, Awards, Events, Travel, Entertainment, Fundraisers, Media).</div>
-          </div>
-          <div class="source-item">
-            <div class="source-title">Texas Legislature Online (TLO)</div>
-            <div class="source-text">Official legislative records used to connect lobbying activity to specific bills and outcomes.</div>
-            <div class="source-links">
-              <a class="about-link" href="https://capitol.texas.gov/billlookup/filedownloads.aspx" target="_blank" rel="noopener">Bill Files and Downloads</a>
-              <a class="about-link" href="https://capitol.texas.gov/reports/BillsBy.aspx" target="_blank" rel="noopener">Bills-by Reports</a>
-            </div>
-            <div class="source-note">Specific datasets drawn from TLO include: Witness Lists, Bill Status, General Subject Bill Information, Fiscal Notes.</div>
-          </div>
-          <div class="source-item">
-            <div class="source-title">Transparency USA</div>
-            <div class="source-text">Supplemental lobbying records used for cross-checking and classification.</div>
-            <div class="source-links">
-              <a class="about-link" href="https://www.transparencyusa.org/tx/lobbying/clients?cycle=2015-to-now" target="_blank" rel="noopener">Texas Lobbying Clients (2015-present)</a>
-            </div>
-            <div class="source-note">Used to support: Taxpayer-funded versus privately funded client classification; cross-validation of client and lobbyist records.</div>
-          </div>
-          <div class="source-item">
-            <div class="source-title">House Research Organization (HRO)</div>
-            <div class="source-text">Legislative staff reference data.</div>
-            <div class="source-links">
-              <a class="about-link" href="https://hro.house.texas.gov/staff.aspx" target="_blank" rel="noopener">House and Senate Staff Lists</a>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="card about-section">
-        <div class="about-section-head">
-          <span class="about-section-num">02</span>
-          <h3>How We Handle the Data</h3>
-        </div>
-        <p>Source files are retrieved as published and preserved in a format that supports
-        auditability and replication.</p>
-        <p>When the Texas Ethics Commission reports compensation as ranges, we retain both
-        the low and high bounds and calculate rollups from those bounds rather than inventing
-        artificial precision.</p>
-        <p class="about-note">Because the dashboard reflects official reporting conventions, minor
-        differences can occur due to rounding, aggregation, or source-level updates.</p>
-      </div>
-      <div class="card about-section">
-        <div class="about-section-head">
-          <span class="about-section-num">03</span>
-          <h3>Coverage and Caveats</h3>
-        </div>
-        <p>This dashboard reflects what public agencies publish. If a source contains gaps,
-        inconsistent naming, or missing witness-list entries, those limitations may carry through
-        to the dashboard.</p>
-        <p class="about-note">Witness lists are the strongest publicly available bill-level signal of
-        lobbying activity, but a lobbyist's appearance or position on a bill does not always map
-        cleanly to a single client. This challenge is compounded by the use of nicknames,
-        abbreviations, and minor misspellings in source data. While every effort is made to
-        accurately classify clients as taxpayer-funded or privately funded, some misclassifications
-        may occur.</p>
-      </div>
-    </div>
-  </div>
+<div class="policy-panel">
+  <h3>Four-step investigation workflow</h3>
+  <p>1) Build the statewide baseline in <b>Lobbyists</b>.<br>
+  2) Validate entity-level evidence in <b>Clients</b>.<br>
+  3) Test local overlap in <b>Map &amp; Address</b>.<br>
+  4) Add legislative context in <b>Legislators</b> before final conclusions.</p>
 </div>
 """,
         unsafe_allow_html=True,
     )
 
+    st.markdown('<div class="section-title">Sources and Methods</div>', unsafe_allow_html=True)
+    with st.expander("Texas Ethics Commission (TEC)", expanded=True):
+        st.markdown(
+            "Lobby registrations, client relationships, compensation ranges, subject disclosures, and activity reporting."
+        )
+        st.markdown("[Lobbyist Search and Filings](https://www.ethics.state.tx.us/search/lobby/)")
+    with st.expander("Texas Legislature Online (TLO)", expanded=False):
+        st.markdown(
+            "Bill status, witness lists, fiscal notes, and bill-subject files used to connect lobbying activity to legislative outcomes."
+        )
+        st.markdown(
+            "[Bill Files and Downloads](https://capitol.texas.gov/billlookup/filedownloads.aspx) | "
+            "[Bills-by Reports](https://capitol.texas.gov/reports/BillsBy.aspx)"
+        )
+    with st.expander("Supplemental reference sources", expanded=False):
+        st.markdown(
+            "[Transparency USA](https://www.transparencyusa.org/tx/lobbying/clients?cycle=2015-to-now) "
+            "and [House Research Organization staff listings](https://hro.house.texas.gov/staff.aspx) are used for supplemental cross-checks."
+        )
+
+    st.markdown('<div class="section-title">Open A Workspace</div>', unsafe_allow_html=True)
+    _render_workspace_links(
+        "about_open",
+        [
+            ("Open Lobbyists", _lobby_page, "Step 1: build statewide totals and concentration."),
+            ("Open Clients", _client_page, "Step 2: verify entity-level contracts, bills, and disclosures."),
+            ("Open Map & Address", _map_page, "Step 3: test local overlap by subdivision and address."),
+            ("Open Legislators", _member_page, "Step 4: add authored-bill and witness context."),
+        ],
+    )
+
 def _page_turn_off_tap():
-    st.markdown(
-        """
-<div class="card tap-hero">
-  <div class="tap-hero-kicker">Video Series</div>
-  <p class="tap-hero-lead">Six short explainers on transparency, lobbying, and reform. Use the selector to play
-  in-page or open YouTube for sharing.</p>
-</div>
-""",
-        unsafe_allow_html=True,
+    _render_page_intro(
+        kicker="Media Briefings",
+        title="Public Statements And Media Clips",
+        subtitle=(
+            "External interviews and explainers related to taxpayer-funded lobbying. Use this page as claim context, "
+            "then verify every claim in filing-based workspaces."
+        ),
+        pills=[
+            "Context only, not evidence",
+            "Cross-check with filing data",
+        ],
+    )
+    _render_journey("multimedia")
+    _render_workspace_guide(
+        question="What public claims are being made, and are they supported by official records?",
+        steps=[
+            "Capture the exact claim, bill number, entity, and date reference.",
+            "Switch to Lobbyists, Clients, or Legislators to verify against filings.",
+            "Export the supporting table with active filters for reproducibility.",
+        ],
+        method_note="Media clips can guide inquiry but do not replace source filings.",
+    )
+    _render_workspace_links(
+        "media_open",
+        [
+            ("Open Lobbyists", _lobby_page, "Verify statewide and profile-level claims."),
+            ("Open Clients", _client_page, "Validate claims about specific entities."),
+            ("Open Legislators", _member_page, "Check claims tied to authored bills and witnesses."),
+        ],
+    )
+    _render_quickstart(
+        "media",
+        [
+            "Write down the exact claim in neutral language.",
+            "Confirm or reject it using at least one filing-based workspace.",
+            "Attach exported evidence when sharing findings.",
+        ],
+        note="Treat every clip as a hypothesis prompt, not a standalone conclusion.",
+    )
+    _render_evidence_guardrails(
+        can_answer=[
+            "What claims are being made in public-facing interviews and explainers.",
+            "Which claims should be tested in Lobbyists, Clients, or Legislators next.",
+        ],
+        cannot_answer=[
+            "Whether a claim is true without checking filing data.",
+            "Quantitative conclusions without exported supporting tables.",
+        ],
+        next_checks=[
+            "Capture claim language, bill numbers, and dates before verification.",
+            "Use filing-based workspaces to confirm or refute each claim.",
+        ],
     )
 
     videos = [
@@ -1245,37 +2090,37 @@ def _page_turn_off_tap():
             "id": "VfNk92xJImg",
             "embed": "https://www.youtube.com/embed/VfNk92xJImg?si=f5Yn716z6UcdLKWW",
             "title": "Taking on Taxpayer Funded Lobbying with Rep. Hillary Hickland | Parent Empowerment with Mandy Drogin",
-            "summary": "Rep. Hillary Hickland of Belton shares her experiences with the taxpayer-funded lobbyist complex that's leeching off our education system, pushing ideology on kids, and ensuring that property tax bills just go up and up.",
+            "summary": "Rep. Hillary Hickland discusses how taxpayer-funded lobbying affects education policy and local taxpayer interests.",
         },
         {
             "id": "5ozqYYpP1VI",
             "embed": "https://www.youtube.com/embed/5ozqYYpP1VI?si=Iy7APVxAq3cBgdUi",
             "title": "Taxpayer Empowerment | Episode 11: Property Taxes, Lobbyists & PFAs with Rep. Helen Kerwin",
-            "summary": "On this episode of Taxpayer Empowerment, TPPF's Jose Melendez sits down with Texas State Representative Helen Kerwin to discuss major property tax reform and the potential elimination of property taxes in Texas. Rep. Kerwin also shares details about her PFAS legislation designed to keep harmful chemicals out of fertilizer and protect Texas farmers and families. Plus, they expose how taxpayer-funded lobbyists were paid to fight against this important reform. Watch now to learn more about how Texas lawmakers are working to protect taxpayers, promote transparency, and ensure safer agricultural practices across the Lone Star State.",
+            "summary": "Rep. Helen Kerwin covers property tax reform, PFAS policy, and claims about taxpayer-funded lobbying around those issues.",
         },
         {
             "id": "p644amuejVE",
             "embed": "https://www.youtube.com/embed/p644amuejVE?si=U_DXk6ttlI_M4HhA",
             "title": "Taxpayer Empowerment | Episode 6: Property Taxes & Taxpayer-Funded Lobbying with Rep. Cody Vasut",
-            "summary": "On this episode of Taxpayer Empowerment, TPPF's Jose Melendez sits down with Representative Cody Vasut to break down the latest efforts at the Texas Legislature to deliver real property tax relief and stop government entities from using your tax dollars to lobby against you.",
+            "summary": "Rep. Cody Vasut discusses legislative approaches to property tax relief and limiting taxpayer-funded lobbying.",
         },
         {
             "id": "RWLD-zC9Slg",
             "embed": "https://www.youtube.com/embed/RWLD-zC9Slg?si=CCapZXXDO4xOaQFw",
             "title": "Fund Students Not Lobbyists | Fast Facts",
-            "summary": "Texas schools should focus on one thing: educating our kids. But too often districts are spending taxpayer money not on classrooms, but on lobbying the legislature.",
+            "summary": "A short explainer focused on school district spending priorities and lobbying expenditures.",
         },
         {
             "id": "RAClQAg_JpU",
             "embed": "https://www.youtube.com/embed/RAClQAg_JpU?si=D4RrYgtq4FIdUTrb",
             "title": "Lobbyists Paid By You | Fast Facts",
-            "summary": "Your tax dollars fund everything from police to potholes. But one thing your money shouldn't be doing is lining the pockets on lobbyists. Unfortunately, local governments in Texas spend millions of your tax dollars on lobbyists that advocate against your interests.",
+            "summary": "A short explainer about public funds used for lobbying and related taxpayer accountability questions.",
         },
         {
             "id": "LUxuCq0SeQA",
             "embed": "https://www.youtube.com/embed/LUxuCq0SeQA?si=dxLmQ4Vo621qmCBV",
             "title": "Parent Empowerment with Mandy Drogin | Local Government Reform with Senator Mayes Middleton",
-            "summary": "Senator Mayes Middleton of Galveston breaks down how local governments are running massive deficits, taking on huge amounts of debt, and not just wasting taxpayer money, but weaponizing it against their own citizens.",
+            "summary": "Senator Mayes Middleton discusses local government finance, debt, and reform arguments tied to taxpayer accountability.",
         },
     ]
 
@@ -1374,98 +2219,173 @@ def _page_turn_off_tap():
         st.markdown(f'<div class="video-grid">{"".join(all_cards)}</div>', unsafe_allow_html=True)
 
 def _page_solutions():
+    _render_page_intro(
+        kicker="Policy Context",
+        title="Policy Design Framework",
+        subtitle=(
+            "A structured drafting framework for ending taxpayer-funded lobbying through clear definitions, "
+            "enforceable standards, and auditable reporting."
+        ),
+        pills=[
+            "Framework only, not legal advice",
+            "Use with empirical evidence",
+            "Priority: enforceability and transparency",
+        ],
+    )
+    _render_journey("solutions")
+    _render_workspace_guide(
+        question="Which policy designs reduce taxpayer-funded lobbying while remaining enforceable and transparent?",
+        steps=[
+            "Define covered entities, funds, and lobbying-related activity.",
+            "Set prohibitions and exceptions in operational language.",
+            "Specify disclosure fields, audit authority, and enforcement triggers.",
+            "Test draft language against observed patterns in this dataset.",
+        ],
+        method_note="This page is a drafting framework, not legal advice.",
+    )
+    _render_quickstart(
+        "solutions",
+        [
+            "Write the objective and covered scope before drafting restrictions.",
+            "Test each requirement against available record types.",
+            "Document assumptions when filings do not provide direct evidence.",
+        ],
+        note="Strong policy design ties every requirement to a verifiable record type.",
+    )
+    _render_evidence_guardrails(
+        can_answer=[
+            "Which drafting choices are likely to be auditable with available filing fields.",
+            "How observed spending and disclosure patterns inform policy tradeoffs.",
+        ],
+        cannot_answer=[
+            "Final legal sufficiency or constitutional analysis.",
+            "Implementation outcomes without agency process and enforcement data.",
+        ],
+        next_checks=[
+            "Link each requirement to a verifiable record in this app.",
+            "Flag assumptions that require external legal or fiscal review.",
+        ],
+    )
+
     st.markdown(
-        """
-<div class="about-wrap">
-  <div class="card about-hero">
-    <div class="about-kicker">Policy Solution</div>
-    <div class="about-title">Ending Taxpayer-Funded Lobbying by Local Governments</div>
-    <p class="about-lead">Local governments across Texas spend tens of millions of taxpayer dollars each session to hire registered lobbyists -- either directly through contracts or indirectly through association dues. These lobbyists often work to oppose property tax relief, expand local taxing authority, and block reforms supported by taxpayers.</p>
-    <p class="about-body">This practice creates a clear conflict of interest: Texans are forced to fund political advocacy against their own interests. While state agencies are subject to lobbying restrictions, no comparable limits exist for cities, counties, or school districts.</p>
-    <div class="about-meta">
-      <span class="pill"><b>Principle</b> Public funds should not lobby</span>
-      <span class="pill"><b>Scope</b> All political subdivisions</span>
-      <span class="pill"><b>Fix</b> Close the loophole</span>
-    </div>
-  </div>
-  <div class="about-shell">
-    <div class="about-sidebar">
-      <div class="card about-panel">
-        <div class="about-panel-head">
-          <h3>The Problem</h3>
-          <span class="about-panel-tag">Conflict</span>
-        </div>
-        <div class="about-actions">
-          <div class="about-action">Oppose property tax relief and fiscal transparency.</div>
-          <div class="about-action">Expand local taxing and regulatory authority.</div>
-          <div class="about-action">Block reforms supported by taxpayers.</div>
-        </div>
-        <p class="about-note">Taxpayers should not be forced to finance lobbying that works against them.</p>
-      </div>
-      <div class="card about-panel">
-        <div class="about-panel-head">
-          <h3>Principle &amp; Policy Fix</h3>
-          <span class="about-panel-tag">Solution</span>
-        </div>
-        <ul class="about-checklist">
-          <li><b>Principle:</b> Public money should not be used to lobby the government -- at any level.</li>
-          <li><b>Policy Fix:</b> Extend existing lobbying restrictions on state agencies to all political subdivisions.</li>
-        </ul>
-      </div>
-    </div>
-    <div class="about-main">
-      <div class="card about-section">
-        <div class="about-section-head">
-          <span class="about-section-num">01</span>
-          <h3>The Problem</h3>
-        </div>
-        <p>Local governments across Texas spend tens of millions of taxpayer dollars each session to hire registered lobbyists -- either directly through contracts or indirectly through association dues.</p>
-        <p class="about-note">Those lobbyists often work to oppose property tax relief and fiscal transparency, expand local taxing authority, and block reforms supported by taxpayers.</p>
-      </div>
-      <div class="card about-section">
-        <div class="about-section-head">
-          <span class="about-section-num">02</span>
-          <h3>The Solution: Enact a Comprehensive Ban</h3>
-        </div>
-        <p>Public money should not be used to lobby the government -- at any level.</p>
-        <p class="about-note">Extend existing lobbying restrictions on state agencies to all political subdivisions.</p>
-      </div>
-      <div class="card about-section">
-        <div class="about-section-head">
-          <span class="about-section-num">03</span>
-          <h3>Legislative Proposal</h3>
-        </div>
-        <p>Amend Texas Government Code Section 556.005 to prohibit:</p>
-        <ul class="about-checklist">
-          <li>Hiring of registered lobbyists (as employees or contractors) by political subdivisions.</li>
-          <li>Payment of public funds for dues to organizations that lobby on behalf of local governments.</li>
-        </ul>
-        <p class="about-note">This closes the loophole and ensures taxpayer funds are used for public services -- not political influence.</p>
-      </div>
-      <div class="card about-section">
-        <div class="about-section-head">
-          <span class="about-section-num">04</span>
-          <h3>Why It Matters</h3>
-        </div>
-        <ul class="about-checklist">
-          <li>Restores democratic accountability -- local officials should advocate directly, not outsource with tax dollars.</li>
-          <li>Protects taxpayers -- redirects millions in lobbying expenses toward core services.</li>
-          <li>Ensures fairness -- levels the playing field for citizens and private stakeholders.</li>
-        </ul>
-        <p class="about-note">Texans deserve a government that listens -- not one that lobbies itself.</p>
-      </div>
-    </div>
-  </div>
-</div>
-""",
+        '<div class="app-note"><strong>Use with evidence:</strong> Policy drafting choices should be tested against observed spending ranges, entity concentration, bill activity, and witness records in this app.</div>',
         unsafe_allow_html=True,
     )
 
-def _page_client_lookup():
-    st.markdown('<div class="big-title">Client Look-Up</div>', unsafe_allow_html=True)
+    p1, p2, p3 = st.columns(3)
+    with p1:
+        st.markdown(
+            """
+<div class="policy-panel">
+  <h3>Observed policy tension</h3>
+  <p>Public entities can finance lobbying directly (contracts or staff) or indirectly (dues and associations), creating a persistent consent and accountability gap for taxpayers.</p>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+    with p2:
+        st.markdown(
+            """
+<div class="policy-panel">
+  <h3>Common legislative levers</h3>
+  <p>Drafts typically address paid lobbying contracts, association dues used for advocacy, standardized disclosure fields, and enforceable consequences for noncompliance.</p>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+    with p3:
+        st.markdown(
+            """
+<div class="policy-panel">
+  <h3>Implementation risks</h3>
+  <p>Ambiguous definitions, inconsistent reporting standards, and unclear enforcement authority can weaken outcomes even when statutory intent is clear.</p>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('<div class="section-title">Illustrative Drafting Framework</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="subtitle">Search any client and explore lobbyists, witness activity, policy areas, and filings.</div>',
-        unsafe_allow_html=True,
+        """
+1. **Scope**: Define covered political subdivisions, public funds, and activity definitions.
+2. **Restrictions**: Prohibit or limit use of public funds for registered lobbying and lobbying-related dues.
+3. **Disclosure**: Require standardized reporting fields that can be audited.
+4. **Enforcement**: Establish agency authority, complaint pathways, and penalty structure.
+5. **Transition**: Set timelines for existing contracts, memberships, and reporting updates.
+"""
+    )
+
+    st.markdown('<div class="section-title">Use Data To Evaluate Policy Tradeoffs</div>', unsafe_allow_html=True)
+    st.markdown(
+        "Use the workspaces below to quantify exposure, identify concentration by entity type, and connect spending patterns to legislative activity."
+    )
+    _render_workspace_links(
+        "solutions_open",
+        [
+            ("Open Lobbyists Data", _lobby_page, "Measure statewide totals, concentration, and trend lines."),
+            ("Open Clients Data", _client_page, "Inspect entity-level contracts, disclosures, and bill activity."),
+            ("Open Map & Address", _map_page, "Evaluate local overlap by jurisdiction."),
+            ("Open Legislators", _member_page, "Connect funding patterns to authored bills and witness activity."),
+        ],
+    )
+
+def _page_client_lookup():
+    _render_page_intro(
+        kicker="Client Workspace",
+        title="Client Evidence View",
+        subtitle=(
+            "Trace each entity across contracted lobbyists, compensation ranges, bill activity, subject filings, and disclosures."
+        ),
+        pills=[
+            "Search and confirm the exact entity",
+            "Compare session vs all-session scope",
+            "Export reproducible evidence tables",
+        ],
+    )
+    _render_journey("client")
+    _render_workspace_guide(
+        question=(
+            "For this entity, what lobbying footprint is reported and how does it connect to bills, policy subjects, and disclosures?"
+        ),
+        steps=[
+            "Search and confirm the resolved entity name.",
+            "Read Portfolio Snapshot before moving to detail tabs.",
+            "Use Bill Activity and Policy Subjects together for legislative context.",
+            "Export filtered tables when documenting findings.",
+        ],
+        method_note="Entity naming varies across filings. Confirm resolved matches before citing profile-level totals.",
+    )
+    _render_workspace_links(
+        "client_top",
+        [
+            ("Open Lobbyists", _lobby_page, "Return to statewide baseline before entity comparisons."),
+            ("Open Map & Address", _map_page, "Test local overlap for matched entities and jurisdictions."),
+            ("Open Legislators", _member_page, "Connect entity exposure to authored bills and witnesses."),
+        ],
+    )
+    _render_quickstart(
+        "clients",
+        [
+            "Confirm the resolved entity name before interpreting totals.",
+            "Check snapshot and detail tabs for consistency across metrics.",
+            "Export with active filters when sharing externally.",
+        ],
+        note="Similar entity names can map differently by session and source format.",
+    )
+    _render_evidence_guardrails(
+        can_answer=[
+            "Which lobbyists are reported under contract for the selected entity.",
+            "How reported compensation ranges, bill activity, and disclosures align by session.",
+            "Whether the selected entity appears as taxpayer-funded in source records.",
+        ],
+        cannot_answer=[
+            "Exact payment amounts beyond reported low/high ranges.",
+            "Policy intent or institutional motive from filing data alone.",
+        ],
+        next_checks=[
+            "Confirm entity resolution before citing totals.",
+            "Use Lobbyists or Map & Address to validate context outside this profile.",
+        ],
     )
 
     if not PATH:
@@ -1518,6 +2438,16 @@ def _page_client_lookup():
         st.session_state.client_filter = ""
     if "recent_client_searches" not in st.session_state:
         st.session_state.recent_client_searches = []
+    if "client_policy_focus" not in st.session_state:
+        st.session_state.client_policy_focus = {}
+    if "client_bill_search_seed" not in st.session_state:
+        st.session_state.client_bill_search_seed = ""
+
+    pending_client_bill_search = str(st.session_state.get("client_bill_search_seed", "")).strip()
+    if pending_client_bill_search:
+        st.session_state.client_bill_search = pending_client_bill_search
+        st.session_state.client_bill_search_input = pending_client_bill_search
+        st.session_state.client_bill_search_seed = ""
 
     st.sidebar.header("Filters")
     st.session_state.client_scope = st.sidebar.radio(
@@ -1632,6 +2562,7 @@ def _page_client_lookup():
                 st.session_state.client_bill_search = ""
                 st.session_state.client_activity_search = ""
                 st.session_state.client_disclosure_search = ""
+                st.session_state.client_policy_focus = {}
                 st.session_state.client_filter = ""
 
     tfl_session_val = _tfl_session_for_filter(st.session_state.client_session, tfl_sessions)
@@ -1658,6 +2589,10 @@ def _page_client_lookup():
             help="Reset client search and primary filters to defaults.",
         ):
             reset_client_filters(default_session)
+    st.markdown(
+        '<div class="app-note"><strong>Interpretation:</strong> Client totals reflect reported low-high compensation ranges, not audited exact spend. Keep session and scope aligned when comparing entities.</div>',
+        unsafe_allow_html=True,
+    )
 
     focus_label = "All Clients"
     if st.session_state.client_name:
@@ -1746,8 +2681,17 @@ def _page_client_lookup():
         st.session_state.client_scope,
     )
 
-    tab_all, tab_overview, tab_lobbyists, tab_bills, tab_policy, tab_staff, tab_activities, tab_disclosures = st.tabs(
-        ["All Clients", "Overview", "Lobbyists", "Bills", "Policy Areas", "Staff History", "Activities", "Disclosures"]
+    tab_all, tab_overview, tab_lobbyists, tab_bills, tab_policy, tab_activities, tab_disclosures, tab_staff = st.tabs(
+        [
+            "1. Portfolio Baseline (Read First)",
+            "2. Selected Client",
+            "3. Contracted Lobbyists",
+            "4. Bills & Outcomes",
+            "5. Policy Subjects",
+            "6. Spending Activity",
+            "7. Disclosures",
+            "8. Staff Links",
+        ]
     )
 
     def kpi_card(title: str, value: str, sub: str = "", help_text: str = ""):
@@ -1800,6 +2744,21 @@ def _page_client_lookup():
                     f"{all_stats.get('private_clients', 0):,}",
                     help_text="Count of clients marked as private in this scope.",
                 )
+
+            st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">Political Subdivision Matching</div>', unsafe_allow_html=True)
+            st.markdown(
+                """
+<div class="callout geo-note">
+  <div class="callout-title">Cross-Page Workflow</div>
+  <div class="callout-body">Use <b>Map &amp; Address</b> to test jurisdiction overlap, then return here to validate each matched entity's contracts, bills, and disclosures.</div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+            if st.button("Open Map & Address page", key="client_open_map_page_btn", width="content"):
+                st.switch_page(_map_page)
+            st.caption(f"Source web app: [TEA School District Locator]({TEA_ARCGIS_WEBAPP_URL}).")
 
             mix_left, mix_right = st.columns([1, 2])
             with mix_left:
@@ -2085,6 +3044,12 @@ def _page_client_lookup():
         lobbyist_totals["Lobbyist"] != "", lobbyist_totals["LobbyShort"]
     )
     lobbyist_totals = lobbyist_totals.sort_values(["High", "Low"], ascending=[False, False])
+    top_lobbyist_label = ""
+    top_lobbyist_short = ""
+    if not lobbyist_totals.empty:
+        top_lobby_row = lobbyist_totals.iloc[0]
+        top_lobbyist_label = str(top_lobby_row.get("Lobbyist", "")).strip()
+        top_lobbyist_short = str(top_lobby_row.get("LobbyShort", "")).strip()
 
     lobbyshorts = lobbyist_totals["LobbyShort"].dropna().astype(str).unique().tolist()
     lobbyshort_norms = {norm_name(s) for s in lobbyshorts if s}
@@ -2339,6 +3304,49 @@ def _page_client_lookup():
                 help_text="Number of sessions where this client appears in the data.",
             )
 
+        top_author = ""
+        if not bills.empty and "Author" in bills.columns:
+            author_series = bills["Author"].fillna("").astype(str).str.strip()
+            author_series = author_series[author_series != ""]
+            if not author_series.empty:
+                top_author = str(author_series.value_counts().index[0]).strip()
+
+        if top_lobbyist_label:
+            st.markdown(
+                f"""
+<div class="handoff-card">
+  <div class="handoff-kicker">Cross-Page Handoff</div>
+  <div class="handoff-title">Validate Contract And Bill Context</div>
+  <div class="handoff-sub">Top contracted lobbyist by midpoint: <strong>{html.escape(top_lobbyist_label, quote=True)}</strong>. Use linked pages to corroborate entity-level findings.</div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+            handoff_cols = st.columns(3 if top_author else 2)
+            with handoff_cols[0]:
+                if st.button("Open Top Lobbyist", key="client_handoff_lobby_btn", width="stretch"):
+                    search_value = top_lobbyist_label or top_lobbyist_short
+                    st.session_state.search_query = search_value
+                    st.session_state.session = st.session_state.client_session
+                    st.session_state.scope = st.session_state.client_scope
+                    st.session_state.lobbyshort = top_lobbyist_short or ""
+                    st.session_state.lobby_filerid = None
+                    st.switch_page(_lobby_page)
+            with handoff_cols[1]:
+                if st.button("Open In Map & Address", key="client_handoff_map_btn", width="stretch"):
+                    st.session_state.map_session = st.session_state.client_session
+                    st.session_state.map_scope = st.session_state.client_scope
+                    st.session_state.map_overlap_entity_filter = st.session_state.client_name
+                    st.switch_page(_map_page)
+            if top_author:
+                with handoff_cols[2]:
+                    if st.button("Open Top Author", key="client_handoff_member_btn", width="stretch"):
+                        st.session_state.member_query = top_author
+                        st.session_state.member_query_input = top_author
+                        st.session_state.member_name = ""
+                        st.session_state.member_session = st.session_state.client_session
+                        st.switch_page(_member_page)
+
         st.markdown('<div class="section-sub">Funding Mix (Midpoint)</div>', unsafe_allow_html=True)
         client_tfl_low = float(client_lt.loc[client_lt["IsTFL"] == 1, "Low_num"].sum()) if not client_lt.empty else 0.0
         client_tfl_high = float(client_lt.loc[client_lt["IsTFL"] == 1, "High_num"].sum()) if not client_lt.empty else 0.0
@@ -2392,6 +3400,32 @@ def _page_client_lookup():
             show_cols = [c for c in show_cols if c in view_disp.columns]
             st.dataframe(view_disp[show_cols], width="stretch", height=520, hide_index=True)
             _ = export_dataframe(view_disp[show_cols], "client_lobbyists.csv")
+            if top_lobbyist_label:
+                st.markdown(
+                    f"""
+<div class="handoff-card">
+  <div class="handoff-kicker">Intra-Page Bridge</div>
+  <div class="handoff-title">Use Contracted Lobbyist Detail In Bill Analysis</div>
+  <div class="handoff-sub">Largest contracted lobbyist in this profile: <strong>{html.escape(top_lobbyist_label, quote=True)}</strong>. Move directly to lobbyist profile or prefill Bills-tab filters.</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+                lnav1, lnav2 = st.columns(2)
+                with lnav1:
+                    if st.button("Open Top Lobbyist", key="client_lobby_tab_open_lobby_btn", width="stretch"):
+                        search_value = top_lobbyist_label or top_lobbyist_short
+                        st.session_state.search_query = search_value
+                        st.session_state.session = st.session_state.client_session
+                        st.session_state.scope = st.session_state.client_scope
+                        st.session_state.lobbyshort = top_lobbyist_short or ""
+                        st.session_state.lobby_filerid = None
+                        st.switch_page(_lobby_page)
+                with lnav2:
+                    if st.button("Use In Bills Tab Search", key="client_lobby_tab_seed_bills_btn", width="stretch"):
+                        st.session_state.client_bill_search = top_lobbyist_label
+                        st.session_state.client_bill_search_input = top_lobbyist_label
+                        st.success("Bills tab search is prefilled with the top contracted lobbyist.")
 
     with tab_bills:
         st.markdown('<div class="section-title">Bills with Witness-List Activity</div>', unsafe_allow_html=True)
@@ -2468,14 +3502,177 @@ def _page_client_lookup():
             show_cols = ["Bill", "Lobbyist", "Organization", "Position", "Author", "Caption", "Fiscal Impact H", "Fiscal Impact S", "Status"]
             show_cols = [c for c in show_cols if c in filtered.columns]
             st.dataframe(filtered[show_cols].sort_values(["Bill", "Lobbyist"]), width="stretch", height=520, hide_index=True)
+            top_filtered_author = ""
+            top_filtered_lobby_label = ""
+            top_filtered_lobby_short = ""
+            if not filtered.empty:
+                if "Author" in filtered.columns:
+                    author_counts = (
+                        filtered["Author"]
+                        .fillna("")
+                        .astype(str)
+                        .str.strip()
+                    )
+                    author_counts = author_counts[author_counts != ""]
+                    if not author_counts.empty:
+                        top_filtered_author = str(author_counts.value_counts().index[0]).strip()
+                if "Lobbyist" in filtered.columns:
+                    lobby_counts = (
+                        filtered["Lobbyist"]
+                        .fillna("")
+                        .astype(str)
+                        .str.strip()
+                    )
+                    lobby_counts = lobby_counts[lobby_counts != ""]
+                    if not lobby_counts.empty:
+                        top_filtered_lobby_label = str(lobby_counts.value_counts().index[0]).strip()
+                        if "LobbyShort" in filtered.columns:
+                            short_match = (
+                                filtered.loc[
+                                    filtered["Lobbyist"].fillna("").astype(str).str.strip() == top_filtered_lobby_label,
+                                    "LobbyShort",
+                                ]
+                                .dropna()
+                                .astype(str)
+                                .str.strip()
+                            )
+                            short_match = short_match[short_match != ""]
+                            if not short_match.empty:
+                                top_filtered_lobby_short = str(short_match.iloc[0]).strip()
+
+            if top_filtered_author or top_filtered_lobby_label:
+                handoff_bits = []
+                if top_filtered_author:
+                    handoff_bits.append(f"Frequent author: {top_filtered_author}.")
+                if top_filtered_lobby_label:
+                    handoff_bits.append(f"Most active lobbyist in current slice: {top_filtered_lobby_label}.")
+                st.markdown(
+                    f"""
+<div class="handoff-card">
+  <div class="handoff-kicker">Cross-Tab Continuity</div>
+  <div class="handoff-title">Carry This Bills Slice Across Workspaces</div>
+  <div class="handoff-sub">{html.escape(' '.join(handoff_bits), quote=True)}</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+                bnav1, bnav2, bnav3 = st.columns(3)
+                with bnav1:
+                    if st.button(
+                        "Open Frequent Author",
+                        key="client_bills_to_member_btn",
+                        width="stretch",
+                        disabled=not bool(top_filtered_author),
+                    ):
+                        st.session_state.member_query = top_filtered_author
+                        st.session_state.member_query_input = top_filtered_author
+                        st.session_state.member_name = ""
+                        st.session_state.member_session = st.session_state.client_session
+                        st.switch_page(_member_page)
+                with bnav2:
+                    if st.button(
+                        "Open Top Lobbyist",
+                        key="client_bills_to_lobby_btn",
+                        width="stretch",
+                        disabled=not bool(top_filtered_lobby_label),
+                    ):
+                        st.session_state.search_query = top_filtered_lobby_label or top_filtered_lobby_short
+                        st.session_state.session = st.session_state.client_session
+                        st.session_state.scope = st.session_state.client_scope
+                        st.session_state.lobbyshort = top_filtered_lobby_short or ""
+                        st.session_state.lobby_filerid = None
+                        st.switch_page(_lobby_page)
+                with bnav3:
+                    if st.button(
+                        "Carry Filtered Bills To Policy",
+                        key="client_bills_focus_policy_btn",
+                        width="stretch",
+                        disabled=filtered.empty,
+                    ):
+                        focus_bills = (
+                            filtered.get("Bill", pd.Series(dtype=object))
+                            .dropna()
+                            .astype(str)
+                            .str.strip()
+                        )
+                        focus_bills = focus_bills[focus_bills != ""].drop_duplicates().tolist()
+                        st.session_state.client_policy_focus = {
+                            "session": session,
+                            "client_norm": client_norm,
+                            "bill_ids": focus_bills[:500],
+                        }
+                        st.success(
+                            f"Policy tab is now focused to {len(focus_bills):,} bill(s) from this Bills view."
+                        )
             _ = export_dataframe(filtered[show_cols], "client_bills.csv")
 
     with tab_policy:
         st.markdown('<div class="section-title">Policy Areas</div>', unsafe_allow_html=True)
-        if mentions.empty:
-            st.info("No subjects found (Texas Legislature Online bill subject data returned 0 rows).")
+        policy_focus = st.session_state.get("client_policy_focus", {})
+        focus_bill_ids = []
+        focus_active = False
+        if isinstance(policy_focus, dict):
+            focus_session = str(policy_focus.get("session", "")).strip()
+            focus_client_norm = str(policy_focus.get("client_norm", "")).strip()
+            if focus_session == session and focus_client_norm == client_norm:
+                focus_bill_ids = [
+                    str(b).strip()
+                    for b in policy_focus.get("bill_ids", [])
+                    if str(b).strip()
+                ]
+                focus_active = bool(focus_bill_ids)
+        if focus_active:
+            p_focus_left, p_focus_right = st.columns([4, 1])
+            with p_focus_left:
+                st.caption(
+                    f"Focused to {len(focus_bill_ids):,} bill(s) carried from Bills tab filters."
+                )
+            with p_focus_right:
+                if st.button("Clear Bills Focus", key="client_policy_focus_clear_btn", width="stretch"):
+                    st.session_state.client_policy_focus = {}
+                    focus_active = False
+                    focus_bill_ids = []
+
+        policy_mentions = mentions.copy()
+        if focus_active:
+            focus_norm = {
+                re.sub(r"\s+", " ", bill.upper()).strip()
+                for bill in focus_bill_ids
+                if bill
+            }
+            focus_subjects = bill_subjects.copy()
+            if not focus_subjects.empty and focus_norm:
+                focus_subjects["BillNorm"] = (
+                    focus_subjects["Bill"]
+                    .fillna("")
+                    .astype(str)
+                    .str.upper()
+                    .str.replace(r"\s+", " ", regex=True)
+                    .str.strip()
+                )
+                focus_subjects = focus_subjects[focus_subjects["BillNorm"].isin(focus_norm)].copy()
+                focus_subjects = focus_subjects[focus_subjects["Subject"].fillna("").astype(str).str.strip() != ""].copy()
+                if not focus_subjects.empty:
+                    policy_mentions = (
+                        focus_subjects.groupby("Subject")["Bill"]
+                        .nunique()
+                        .reset_index(name="Mentions")
+                        .sort_values("Mentions", ascending=False)
+                    )
+                    total_mentions = int(policy_mentions["Mentions"].sum()) or 1
+                    policy_mentions["Share"] = (policy_mentions["Mentions"] / total_mentions).fillna(0)
+                else:
+                    policy_mentions = pd.DataFrame(columns=["Subject", "Mentions", "Share"])
+            else:
+                policy_mentions = pd.DataFrame(columns=["Subject", "Mentions", "Share"])
+
+        if policy_mentions.empty:
+            if focus_active:
+                st.info("No bill-subject rows matched the focused Bills-tab slice. Clear focus or broaden filters.")
+            else:
+                st.info("No subjects found (Texas Legislature Online bill subject data returned 0 rows).")
         else:
-            chart_mentions = mentions.copy()
+            chart_mentions = policy_mentions.copy()
             chart_mentions["SharePct"] = (chart_mentions["Share"] * 100).round(1)
             chart_mentions = chart_mentions.sort_values("Share", ascending=False)
             top_mentions = chart_mentions.head(20)
@@ -2520,11 +3717,33 @@ def _page_client_lookup():
                 fig_tree.update_layout(coloraxis_showscale=False)
                 st.plotly_chart(fig_tree, width="stretch", config=PLOTLY_CONFIG)
 
-            m2 = mentions.copy()
+            m2 = policy_mentions.copy()
             m2["Share"] = (m2["Share"] * 100).round(0).astype("Int64").astype(str) + "%"
             m2 = m2.rename(columns={"Subject": "Policy Area"})
             st.dataframe(m2[["Policy Area", "Mentions", "Share"]], width="stretch", height=520, hide_index=True)
-            _ = export_dataframe(m2, "client_policy_areas.csv")
+            export_ctx = [f"Bills-tab focus: {len(focus_bill_ids):,} bill(s)"] if focus_active else None
+            _ = export_dataframe(m2, "client_policy_areas.csv", context=export_ctx)
+
+            top_policy_subject = str(top_mentions.iloc[0].get("Subject", "")).strip()
+            if top_policy_subject:
+                st.markdown(
+                    f"""
+<div class="handoff-card">
+  <div class="handoff-kicker">Intra-Page Bridge</div>
+  <div class="handoff-title">Reconnect Policy Subjects To Bill Rows</div>
+  <div class="handoff-sub">Top policy subject in this view: <strong>{html.escape(top_policy_subject, quote=True)}</strong>. Prefill Bills-tab search or move to policy context.</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+                pnav1, pnav2 = st.columns(2)
+                with pnav1:
+                    if st.button("Use Top Subject In Bills Tab", key="client_policy_to_bills_btn", width="stretch"):
+                        st.session_state.client_bill_search_seed = top_policy_subject
+                        st.rerun()
+                with pnav2:
+                    if st.button("Open Policy Context Page", key="client_policy_open_context_btn", width="stretch"):
+                        st.switch_page(_solutions_page)
 
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
         st.subheader("Reported Subject Matters (Texas Ethics Commission filings)")
@@ -2739,11 +3958,820 @@ footer {visibility: hidden;}
         unsafe_allow_html=True,
     )
 
-def _page_member_lookup():
-    st.markdown('<div class="big-title">Legislators</div>', unsafe_allow_html=True)
+def _page_map_address():
+    _render_page_intro(
+        kicker="Geographic Analysis",
+        title="Map & Address",
+        subtitle=(
+            "Map taxpayer-funded entities across Texas political subdivisions, then test a Texas address to identify overlap and reported spending ranges."
+        ),
+        pills=[
+            "Subdivision match baseline",
+            "Address overlap analysis",
+            "Confidence-rated match methods",
+        ],
+    )
+    _render_journey("map")
+    _render_workspace_guide(
+        question=(
+            "At this location or jurisdiction, which taxpayer-funded entities overlap and what spending ranges are reported?"
+        ),
+        steps=[
+            "Set session and scope before running geographic analysis.",
+            "Filter subdivision types and minimum matched-client count.",
+            "Run address overlap and review match-confidence badges.",
+            "Open matched entities in Clients for filing-level validation.",
+        ],
+        method_note="Overlap combines boundary intersection and name-based fallback matching; confidence levels indicate match strength.",
+    )
+    _render_workspace_links(
+        "map_top",
+        [
+            ("Open Clients", _client_page, "Validate matched entities using filings and disclosures."),
+            ("Open Lobbyists", _lobby_page, "Return to statewide totals and concentration."),
+            ("Open Legislators", _member_page, "Add bill and witness context for implicated entities."),
+        ],
+    )
+    _render_quickstart(
+        "map",
+        [
+            "Set session and scope first so totals and overlap rows are aligned.",
+            "Use subdivision filters to establish a geographic baseline.",
+            "Review confidence levels before citing overlap rows as evidence.",
+        ],
+        note="Rows can include both spatial matches and name-anchored fallback matches.",
+    )
+    _render_evidence_guardrails(
+        can_answer=[
+            "Which taxpayer-funded entities overlap selected jurisdictions or an address in this scope.",
+            "How overlap totals compare using reported low/high compensation ranges.",
+            "Whether overlap rows are high, medium, or low confidence by match method.",
+        ],
+        cannot_answer=[
+            "Exact geospatial exposure outside available boundary layers.",
+            "Definitive overlap certainty when results rely on name-based fallback matching.",
+        ],
+        next_checks=[
+            "Open matched entities in Clients before citing profile-level conclusions.",
+            "Use confidence badges to separate strong vs tentative matches.",
+        ],
+    )
+
+    if not PATH:
+        st.error("Data path not configured. Set the DATA_PATH environment variable.")
+        st.stop()
+    if not _is_url(PATH) and not os.path.exists(PATH):
+        st.error("Data path not found. Set DATA_PATH or place the parquet file in ./data.")
+        st.stop()
+
+    with st.spinner("Loading workbook..."):
+        data = load_workbook(PATH)
+
+    Lobby_TFL_Client_All = data["Lobby_TFL_Client_All"]
+    tfl_sessions = set(
+        Lobby_TFL_Client_All.get("Session", pd.Series(dtype=object))
+        .dropna()
+        .astype(str)
+        .str.strip()
+        .unique()
+        .tolist()
+    )
+
+    if "map_scope" not in st.session_state:
+        st.session_state.map_scope = "This Session"
+    if "map_session" not in st.session_state:
+        st.session_state.map_session = None
+    if "map_overlap_address_input" not in st.session_state:
+        st.session_state.map_overlap_address_input = ""
+    if "map_overlap_address_query" not in st.session_state:
+        st.session_state.map_overlap_address_query = ""
+    if "map_basemap_label" not in st.session_state or st.session_state.map_basemap_label not in MAP_BASEMAP_OPTIONS:
+        st.session_state.map_basemap_label = next(iter(MAP_BASEMAP_OPTIONS.keys()))
+
+    sessions = (
+        Lobby_TFL_Client_All.get("Session", pd.Series(dtype=object))
+        .dropna()
+        .astype(str)
+        .str.strip()
+        .unique()
+        .tolist()
+    )
+    sessions = [s for s in sessions if s and s.lower() not in {"none", "nan", "null"}]
+    sessions = sorted(sessions, key=_session_sort_key)
+    if not sessions:
+        st.error("No sessions found in the workbook.")
+        st.stop()
+
+    default_session = _default_session_from_list(sessions)
+    if st.session_state.map_session is None or str(st.session_state.map_session).strip().lower() in {"none", "nan", "null", ""}:
+        st.session_state.map_session = default_session
+
+    st.markdown('<div id="filter-bar-marker"></div>', unsafe_allow_html=True)
+    fl1, fl2 = st.columns([2, 1.4])
+    with fl1:
+        label_to_session = {}
+        session_labels = []
+        for s in sessions:
+            label = _session_label(s)
+            session_labels.append(label)
+            label_to_session[label] = s
+        current_label = _session_label(st.session_state.map_session)
+        if current_label not in session_labels:
+            current_label = _session_label(default_session)
+        chosen_label = st.selectbox(
+            "Session",
+            session_labels,
+            index=session_labels.index(current_label),
+            key="map_session_select",
+            help="Choose the legislative session for map matching and overlap spending totals.",
+        )
+        st.session_state.map_session = label_to_session.get(chosen_label, default_session)
+    with fl2:
+        st.session_state.map_scope = st.radio(
+            "Scope",
+            ["This Session", "All Sessions"],
+            index=0 if st.session_state.map_scope == "This Session" else 1,
+            key="map_scope_radio",
+            horizontal=True,
+            help="Use selected session only or all sessions for compensation totals and matched entities.",
+        )
+
+    active_parts = [
+        f"Session: {_session_label(st.session_state.map_session)}",
+        f"Scope: {st.session_state.map_scope}",
+    ]
+    chips_html = "".join([f'<span class="chip">{html.escape(c)}</span>' for c in active_parts])
     st.markdown(
-        '<div class="subtitle">Explore legislators through bills, witness lists, lobbying activity, and staff history.</div>',
+        f'<div class="filter-summary"><span class="filter-summary-label">Active filters</span>{chips_html}</div>',
         unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="app-note"><strong>Interpretation:</strong> Overlap combines boundary intersection with name matching fallback. Use confidence levels and client drill-down before drawing conclusions.</div>',
+        unsafe_allow_html=True,
+    )
+    if st.button(
+        "Reset map filters",
+        key="map_reset_filters_btn",
+        help="Reset session, scope, subdivision filters, and address query.",
+        width="content",
+    ):
+        st.session_state.map_scope = "This Session"
+        st.session_state.map_session = default_session
+        st.session_state.map_overlap_address_input = ""
+        st.session_state.map_overlap_address_query = ""
+        st.session_state.map_subdivision_types_filter = []
+        st.session_state.map_min_match_count = 1
+        st.session_state.map_subdivision_name_filter = ""
+        st.session_state.map_overlap_confidence_filter = []
+        st.session_state.map_overlap_entity_filter = ""
+        st.session_state.map_overlap_sort = "Highest High"
+        st.session_state.map_basemap_label = next(iter(MAP_BASEMAP_OPTIONS.keys()))
+        st.rerun()
+
+    tfl_session_val = _tfl_session_for_filter(st.session_state.map_session, tfl_sessions)
+    active_map_basemap = MAP_BASEMAP_OPTIONS.get(
+        st.session_state.get("map_basemap_label", ""),
+        "gray-vector",
+    )
+
+    @st.cache_data(show_spinner=False, ttl=300, max_entries=4)
+    def build_map_clients_overview(df: pd.DataFrame, session_val: str | None, scope_val: str) -> tuple[pd.DataFrame, dict]:
+        if df.empty:
+            return pd.DataFrame(), {}
+        d = df.copy()
+        d["Session"] = d["Session"].astype(str).str.strip()
+        if scope_val == "This Session" and session_val is not None:
+            d = d[d["Session"] == str(session_val)].copy()
+        d = ensure_cols(d, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0, "LobbyShort": ""})
+        d = d[d["Client"].fillna("").astype(str).str.strip() != ""].copy()
+        if d.empty:
+            return pd.DataFrame(), {}
+
+        g = (
+            d.groupby("Client", as_index=False)
+            .agg(
+                Low=("Low_num", "sum"),
+                High=("High_num", "sum"),
+                Lobbyists=("LobbyShort", lambda s: s.dropna().astype(str).nunique()),
+                IsTFL=("IsTFL", "max"),
+            )
+        )
+        stats = {
+            "total_clients": int(g["Client"].nunique()),
+            "tfl_clients": int((g["IsTFL"] == 1).sum()),
+            "tfl_low_total": float(g.loc[g["IsTFL"] == 1, "Low"].sum()),
+            "tfl_high_total": float(g.loc[g["IsTFL"] == 1, "High"].sum()),
+        }
+        return g, stats
+
+    all_clients, all_stats = build_map_clients_overview(
+        Lobby_TFL_Client_All,
+        tfl_session_val,
+        st.session_state.map_scope,
+    )
+
+    subdivision_match_cols = [
+        "subdivision_type",
+        "subdivision_name",
+        "subdivision_code",
+        "lon",
+        "lat",
+        "match_count",
+        "match_clients",
+        "match_clients_preview",
+        "source_name",
+        "source_url",
+        "low_total",
+        "high_total",
+    ]
+    tfl_client_names = tuple(
+        sorted(
+            {
+                str(name).strip()
+                for name in all_clients.loc[all_clients["IsTFL"] == 1, "Client"].dropna().astype(str).tolist()
+                if str(name).strip()
+            }
+        )
+    ) if not all_clients.empty else tuple()
+    subdivision_matches = (
+        build_tfl_political_subdivision_matches(tfl_client_names)
+        if tfl_client_names
+        else pd.DataFrame(columns=subdivision_match_cols)
+    )
+    subdivision_matches = _attach_subdivision_spend_totals(subdivision_matches, all_clients)
+    matched_subdivision_clients = set()
+    if not subdivision_matches.empty:
+        for names in subdivision_matches.get("match_clients", pd.Series(dtype=object)).tolist():
+            if isinstance(names, list):
+                matched_subdivision_clients.update({str(x).strip() for x in names if str(x).strip()})
+    subdivision_type_counts = (
+        subdivision_matches["subdivision_type"].value_counts().to_dict()
+        if not subdivision_matches.empty
+        else {}
+    )
+    subdivision_core_types = {"School District", "County", "City"}
+    subdivision_other_count = int(
+        subdivision_matches[
+            ~subdivision_matches["subdivision_type"].astype(str).isin(subdivision_core_types)
+        ].shape[0]
+    ) if not subdivision_matches.empty else 0
+
+    def kpi_card(title: str, value: str, sub: str = "", help_text: str = ""):
+        tooltip_attr = f' title="{html.escape(help_text, quote=True)}"' if help_text else ""
+        st.markdown(
+            f"""
+<div class="card"{tooltip_attr}>
+  <div class="kpi-title">{title}</div>
+  <div class="kpi-value">{value}</div>
+  <div class="kpi-sub">{sub}</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        """
+<div class="card geo-hero">
+  <div class="geo-kicker">Workflow</div>
+  <div class="geo-title">Jurisdiction Overlap Workflow</div>
+  <div class="geo-lead">Use map filters to establish a jurisdiction baseline, then run address overlap to identify matched taxpayer-funded entities and reported spending ranges.</div>
+  <div class="geo-step"><strong>Step 1:</strong> Set session/scope and filter subdivision types.</div>
+  <div class="geo-step"><strong>Step 2:</strong> Review mapped matches and exported table rows.</div>
+  <div class="geo-step"><strong>Step 3:</strong> Run address overlap, then open specific entities in Client Look-Up.</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Boundary layers include school districts, counties, cities, junior college districts, groundwater conservation districts, municipal utility districts, "
+        "drainage districts, fresh water supply districts, irrigation districts, levee improvement districts, municipal management districts, regional districts, "
+        "river authorities, soil and water control districts, special utility districts, water improvement districts, water control and improvement districts, "
+        "regional mobility authorities, navigation districts, and transit-provider areas (NCTCOG regional coverage)."
+    )
+    st.caption(
+        "Port authorities are matched through navigation/seaport sources. Hospital districts, emergency services districts, appraisal districts, and local "
+        "government corporations use county/city name-anchored centroid proxies when anchor terms can be resolved from client names, with ArcGIS geocoded "
+        "centroid fallback when direct anchors are weak."
+    )
+    with st.expander("Map Sources", expanded=False):
+        source_lines = []
+        for label, url, detail in MAP_DATA_SOURCES:
+            safe_label = html.escape(str(label))
+            safe_detail = html.escape(str(detail))
+            source_lines.append(f"- [{safe_label}]({url})  \n  {safe_detail}")
+        st.markdown("\n".join(source_lines))
+
+    st.markdown('<div class="section-sub">Address Search</div>', unsafe_allow_html=True)
+    search_col, clear_col = st.columns([5, 1.2])
+    with search_col:
+        with st.form("map_overlap_lookup_form", clear_on_submit=False):
+            st.text_input(
+                "Texas address",
+                placeholder="e.g., 1100 Congress Ave, Austin, TX 78701",
+                key="map_overlap_address_input",
+                help="Use a complete Texas street address for best geocoder quality.",
+            )
+            find_overlap_clicked = st.form_submit_button("Find overlap", use_container_width=True)
+    with clear_col:
+        clear_overlap_clicked = st.button(
+            "Clear",
+            key="map_overlap_clear_btn",
+            width="stretch",
+            help="Clear address input and overlap results.",
+        )
+
+    if find_overlap_clicked:
+        st.session_state.map_overlap_address_query = st.session_state.map_overlap_address_input.strip()
+    if clear_overlap_clicked:
+        st.session_state.map_overlap_address_input = ""
+        st.session_state.map_overlap_address_query = ""
+
+    overlap_address = st.session_state.get("map_overlap_address_query", "").strip()
+
+    top1, top2, top3, top4 = st.columns(4)
+    with top1:
+        kpi_card(
+            "Taxpayer-Funded Total",
+            f"{fmt_usd(all_stats.get('tfl_low_total', 0.0))} - {fmt_usd(all_stats.get('tfl_high_total', 0.0))}",
+        )
+    with top2:
+        kpi_card("Matched TFL Clients", f"{len(matched_subdivision_clients):,}")
+    with top3:
+        kpi_card("Matched Core Subdivisions", f"{int(sum(subdivision_type_counts.get(t, 0) for t in subdivision_core_types)):,}")
+    with top4:
+        kpi_card("Matched Other Subdivisions", f"{subdivision_other_count:,}")
+
+    if subdivision_matches.empty:
+        st.info("No mapped political-subdivision matches were found for taxpayer-funded clients in this scope/session.")
+    else:
+        st.markdown('<div class="section-sub">Map Filters</div>', unsafe_allow_html=True)
+        filter_left, filter_mid, filter_right, filter_style = st.columns([2.2, 1.1, 1.1, 1.1])
+        all_geo_types = sorted(
+            {str(v).strip() for v in subdivision_matches.get("subdivision_type", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()}
+        )
+        with filter_left:
+            if "map_subdivision_types_filter" not in st.session_state:
+                st.session_state.map_subdivision_types_filter = list(all_geo_types)
+            else:
+                current_geo_type_filter = [
+                    str(v)
+                    for v in st.session_state.get("map_subdivision_types_filter", [])
+                    if str(v) in all_geo_types
+                ]
+                if not current_geo_type_filter and all_geo_types:
+                    current_geo_type_filter = list(all_geo_types)
+                st.session_state.map_subdivision_types_filter = current_geo_type_filter
+            selected_geo_types = st.multiselect(
+                "Subdivision types",
+                all_geo_types,
+                key="map_subdivision_types_filter",
+                help="Filter map and table to selected subdivision categories.",
+            )
+        with filter_mid:
+            max_match_count = max(
+                1,
+                int(pd.to_numeric(subdivision_matches.get("match_count", pd.Series([1])), errors="coerce").fillna(1).max()),
+            )
+            if st.session_state.get("map_min_match_count", 1) > max_match_count:
+                st.session_state.map_min_match_count = max_match_count
+            min_match_count = st.slider(
+                "Minimum matched clients",
+                min_value=1,
+                max_value=max_match_count,
+                key="map_min_match_count",
+                help="Show only subdivisions with at least this many matched taxpayer-funded clients.",
+            )
+        with filter_right:
+            map_subdivision_query = st.text_input(
+                "Subdivision search",
+                key="map_subdivision_name_filter",
+                placeholder="Name or code",
+                help="Filter map/table by subdivision name or code.",
+            ).strip()
+        with filter_style:
+            st.selectbox(
+                "Map style",
+                list(MAP_BASEMAP_OPTIONS.keys()),
+                key="map_basemap_label",
+                help="Choose the basemap style.",
+            )
+            active_map_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.map_basemap_label, "gray-vector")
+
+        filtered_subdivision_matches = subdivision_matches.copy()
+        if selected_geo_types:
+            filtered_subdivision_matches = filtered_subdivision_matches[
+                filtered_subdivision_matches["subdivision_type"].astype(str).isin(selected_geo_types)
+            ].copy()
+        else:
+            filtered_subdivision_matches = filtered_subdivision_matches.iloc[0:0].copy()
+        filtered_subdivision_matches["match_count"] = pd.to_numeric(
+            filtered_subdivision_matches.get("match_count", 0), errors="coerce"
+        ).fillna(0).astype(int)
+        filtered_subdivision_matches["high_total"] = pd.to_numeric(
+            filtered_subdivision_matches.get("high_total", 0.0), errors="coerce"
+        ).fillna(0.0)
+        filtered_subdivision_matches = filtered_subdivision_matches[
+            filtered_subdivision_matches["match_count"] >= int(min_match_count)
+        ].copy()
+        if map_subdivision_query:
+            q = map_subdivision_query.lower()
+            filtered_subdivision_matches = filtered_subdivision_matches[
+                filtered_subdivision_matches["subdivision_name"].astype(str).str.lower().str.contains(q, na=False)
+                | filtered_subdivision_matches["subdivision_code"].astype(str).str.lower().str.contains(q, na=False)
+            ].copy()
+
+        st.caption(
+            f"Showing {len(filtered_subdivision_matches):,} of {len(subdivision_matches):,} matched subdivisions."
+        )
+
+        if filtered_subdivision_matches.empty:
+            st.warning("No subdivisions match current filters. Adjust type, minimum matched clients, or search.")
+        else:
+            filtered_type_counts = (
+                filtered_subdivision_matches["subdivision_type"].value_counts().to_dict()
+            )
+            render_subdivision_map_legend(filtered_type_counts)
+            st.markdown(
+                '<div class="map-toolbar-note">Map controls: Home resets view, Basemap switches context, marker size scales with matched TFL high estimate, and popups show detail.</div>',
+                unsafe_allow_html=True,
+            )
+            render_tfl_subdivision_arcgis_map(
+                filtered_subdivision_matches,
+                height=680,
+                basemap=active_map_basemap,
+            )
+            subdivision_view = (
+                filtered_subdivision_matches[
+                    [
+                        "subdivision_type",
+                        "subdivision_name",
+                        "subdivision_code",
+                        "match_count",
+                        "high_total",
+                        "match_clients_preview",
+                        "source_name",
+                        "source_url",
+                    ]
+                ]
+                .rename(
+                    columns={
+                        "subdivision_type": "Subdivision Type",
+                        "subdivision_name": "Subdivision",
+                        "subdivision_code": "Code",
+                        "match_count": "Matched TFL Client Count",
+                        "high_total": "Matched TFL High Estimate",
+                        "match_clients_preview": "Matched TFL Clients",
+                        "source_name": "Map Source",
+                        "source_url": "Map Source URL",
+                    }
+                )
+                .sort_values(
+                    ["Matched TFL Client Count", "Matched TFL High Estimate", "Subdivision Type", "Subdivision"],
+                    ascending=[False, False, True, True],
+                )
+            )
+            subdivision_view["Matched TFL High Estimate"] = subdivision_view["Matched TFL High Estimate"].astype(float).apply(fmt_usd)
+            st.dataframe(subdivision_view, width="stretch", height=360, hide_index=True)
+            _ = export_dataframe(
+                subdivision_view,
+                "tfl_political_subdivision_matches.csv",
+                label="Download subdivision matches CSV",
+            )
+
+    st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Address Overlap Results</div>', unsafe_allow_html=True)
+    st.caption(
+        "Use address search to identify overlapping subdivisions, review address context, then inspect matched TFL entities."
+    )
+    if not overlap_address:
+        st.info("Enter a Texas address above and click Find overlap.")
+    if overlap_address:
+        geocoded = geocode_address_arcgis(overlap_address)
+        if not geocoded:
+            st.warning("Could not geocode that address. Try a more complete Texas street address.")
+        else:
+            matched_addr = geocoded.get("matched_address", overlap_address)
+            score = float(geocoded.get("score", 0.0))
+            lon = float(geocoded.get("lon", 0.0))
+            lat = float(geocoded.get("lat", 0.0))
+            region_abbr = str(geocoded.get("region_abbr", "")).strip().upper()
+            city_name = str(geocoded.get("city", "")).strip()
+            postal = str(geocoded.get("postal", "")).strip()
+            st.markdown(
+                f"""
+<div class="callout geo-note">
+  <div class="callout-title">Matched Address</div>
+  <div class="callout-body">{html.escape(matched_addr)} | Score: {score:.0f} | City: {html.escape(city_name or 'N/A')} | ZIP: {html.escape(postal or 'N/A')}</div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+            if score < 80:
+                st.warning("Address match confidence is low. Try a more complete address including street, city, and ZIP.")
+            elif score < 90:
+                st.info("Address match confidence is moderate. Results are still shown, but a fuller address may improve precision.")
+            if region_abbr and region_abbr != "TX":
+                st.warning("The matched address appears outside Texas. Results below are Texas subdivision overlaps only.")
+
+            overlap_subdivisions = query_texas_subdivisions_for_point(round(lon, 6), round(lat, 6))
+            st.markdown('<div class="section-sub">Address Context</div>', unsafe_allow_html=True)
+            if overlap_subdivisions.empty:
+                st.info("No overlapping Texas subdivision polygons were found for this address.")
+                render_address_overlap_arcgis_map(
+                    lon=lon,
+                    lat=lat,
+                    matched_address=matched_addr,
+                    overlap_points=pd.DataFrame(),
+                    height=380,
+                    basemap=active_map_basemap,
+                )
+            else:
+                overlap_display = (
+                    overlap_subdivisions.rename(
+                        columns={
+                            "subdivision_type": "Subdivision Type",
+                            "subdivision_name": "Subdivision",
+                            "subdivision_code": "Code",
+                            "source_name": "Map Source",
+                            "source_url": "Map Source URL",
+                        }
+                    )
+                    .sort_values(["Subdivision Type", "Subdivision"], ascending=[True, True])
+                )
+                overlap_map_points = build_overlap_map_points(
+                    overlap_subdivisions=overlap_subdivisions,
+                    subdivision_matches=subdivision_matches,
+                )
+                st.markdown(
+                    '<div class="map-toolbar-note">Diamond marker = queried address. Circle markers = overlapping subdivision centroids sized by matched TFL high estimate.</div>',
+                    unsafe_allow_html=True,
+                )
+                render_address_overlap_arcgis_map(
+                    lon=lon,
+                    lat=lat,
+                    matched_address=matched_addr,
+                    overlap_points=overlap_map_points,
+                    height=430,
+                    basemap=active_map_basemap,
+                )
+                st.dataframe(overlap_display, width="stretch", height=220, hide_index=True)
+
+                if {"IsTFL", "Client", "Low", "High", "Lobbyists"}.issubset(all_clients.columns):
+                    tfl_spending_source = all_clients[all_clients["IsTFL"] == 1][["Client", "Low", "High", "Lobbyists"]].copy()
+                else:
+                    tfl_spending_source = pd.DataFrame(columns=["Client", "Low", "High", "Lobbyists"])
+                overlap_spend = build_address_overlap_spending_rows(
+                    overlap_subdivisions=overlap_subdivisions,
+                    subdivision_matches=subdivision_matches,
+                    tfl_spending=tfl_spending_source,
+                )
+                if overlap_spend.empty:
+                    st.info("No taxpayer-funded client names in this scope/session matched the overlapping subdivisions.")
+                else:
+                    confidence_counts = overlap_spend["Match Confidence"].value_counts().to_dict()
+                    badge_order = ["High", "Medium", "Low", "Unknown"]
+                    badge_style = {
+                        "High": "background: rgba(0,224,184,0.16); border-color: rgba(0,224,184,0.45); color: rgba(220,255,248,0.96);",
+                        "Medium": "background: rgba(241,196,15,0.16); border-color: rgba(241,196,15,0.45); color: rgba(255,248,218,0.96);",
+                        "Low": "background: rgba(230,126,34,0.16); border-color: rgba(230,126,34,0.45); color: rgba(255,236,222,0.96);",
+                        "Unknown": "background: rgba(149,165,166,0.14); border-color: rgba(149,165,166,0.40); color: rgba(230,238,240,0.94);",
+                    }
+                    confidence_badges = []
+                    for level in badge_order:
+                        count = int(confidence_counts.get(level, 0))
+                        if count <= 0:
+                            continue
+                        style = badge_style.get(level, "")
+                        confidence_badges.append(
+                            f'<span class="pill" style="{style}"><b>{html.escape(level)}</b> {count}</span>'
+                        )
+                    if confidence_badges:
+                        st.markdown(
+                            f'<div class="pill-list">{"".join(confidence_badges)}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                    fc1, fc2, fc3 = st.columns([1.4, 1.8, 1.2])
+                    with fc1:
+                        if "map_overlap_confidence_filter" not in st.session_state:
+                            st.session_state.map_overlap_confidence_filter = [
+                                c for c in badge_order if c in confidence_counts
+                            ]
+                        else:
+                            valid_confidence = [c for c in badge_order if c in confidence_counts]
+                            selected_confidence = [
+                                str(c)
+                                for c in st.session_state.get("map_overlap_confidence_filter", [])
+                                if str(c) in valid_confidence
+                            ]
+                            if not selected_confidence and valid_confidence:
+                                selected_confidence = list(valid_confidence)
+                            st.session_state.map_overlap_confidence_filter = selected_confidence
+                        overlap_confidence = st.multiselect(
+                            "Confidence",
+                            badge_order,
+                            key="map_overlap_confidence_filter",
+                            help="Filter overlap rows by confidence level.",
+                        )
+                    with fc2:
+                        overlap_entity_filter = st.text_input(
+                            "Entity filter",
+                            key="map_overlap_entity_filter",
+                            placeholder="Filter TFL entity name",
+                            help="Filter overlap rows by entity name.",
+                        ).strip()
+                    with fc3:
+                        overlap_sort = st.selectbox(
+                            "Sort",
+                            ["Highest High", "Highest Mid", "Entity A-Z", "Subdivision A-Z"],
+                            key="map_overlap_sort",
+                        )
+
+                    filtered_overlap_spend = overlap_spend.copy()
+                    if overlap_confidence:
+                        filtered_overlap_spend = filtered_overlap_spend[
+                            filtered_overlap_spend["Match Confidence"].astype(str).isin(overlap_confidence)
+                        ].copy()
+                    if overlap_entity_filter:
+                        filtered_overlap_spend = filtered_overlap_spend[
+                            filtered_overlap_spend["TFL Entity"].astype(str).str.contains(overlap_entity_filter, case=False, na=False)
+                        ].copy()
+
+                    if overlap_sort == "Highest High":
+                        filtered_overlap_spend = filtered_overlap_spend.sort_values(
+                            ["High", "Mid", "Low", "TFL Entity"],
+                            ascending=[False, False, False, True],
+                        )
+                    elif overlap_sort == "Highest Mid":
+                        filtered_overlap_spend = filtered_overlap_spend.sort_values(
+                            ["Mid", "High", "Low", "TFL Entity"],
+                            ascending=[False, False, False, True],
+                        )
+                    elif overlap_sort == "Entity A-Z":
+                        filtered_overlap_spend = filtered_overlap_spend.sort_values(
+                            ["TFL Entity", "Subdivision Type", "Subdivision"],
+                            ascending=[True, True, True],
+                        )
+                    else:
+                        filtered_overlap_spend = filtered_overlap_spend.sort_values(
+                            ["Subdivision Type", "Subdivision", "TFL Entity"],
+                            ascending=[True, True, True],
+                        )
+
+                    st.caption(f"Showing {len(filtered_overlap_spend):,} of {len(overlap_spend):,} overlap rows.")
+                    if filtered_overlap_spend.empty:
+                        st.warning("No overlap rows match current filters.")
+                        filtered_overlap_spend = overlap_spend.iloc[0:0].copy()
+
+                    ol1, ol2, ol3, ol4 = st.columns(4)
+                    with ol1:
+                        kpi_card("Overlapping TFL Entities", f"{int(filtered_overlap_spend['TFL Entity'].nunique()):,}")
+                    with ol2:
+                        kpi_card("Combined Low Total", fmt_usd(float(filtered_overlap_spend["Low"].sum())))
+                    with ol3:
+                        kpi_card("Combined High Total", fmt_usd(float(filtered_overlap_spend["High"].sum())))
+                    with ol4:
+                        kpi_card("Matched Subdivisions", f"{int(filtered_overlap_spend['Subdivision'].nunique()):,}")
+
+                    jump_left, jump_right = st.columns([4, 1.2])
+                    with jump_left:
+                        overlap_entity_options = sorted(
+                            {
+                                str(v).strip()
+                                for v in filtered_overlap_spend["TFL Entity"].dropna().astype(str).tolist()
+                                if str(v).strip()
+                            }
+                        )
+                        open_entity = st.selectbox(
+                            "Open matched entity in Client Look-Up",
+                            overlap_entity_options,
+                            key="map_overlap_open_client_select",
+                            help="Jump to Client Look-Up with this entity prefilled.",
+                        ) if overlap_entity_options else ""
+                    with jump_right:
+                        open_client_clicked = st.button(
+                            "Open Client",
+                            key="map_overlap_open_client_btn",
+                            width="stretch",
+                        )
+                    if open_client_clicked and open_entity:
+                        st.session_state.client_query = open_entity
+                        st.session_state.client_query_input = open_entity
+                        st.session_state.client_name = ""
+                        st.switch_page(_client_page)
+
+                    overlap_spend_display = filtered_overlap_spend.copy()
+                    overlap_spend_display["Low"] = overlap_spend_display["Low"].astype(float).apply(fmt_usd)
+                    overlap_spend_display["High"] = overlap_spend_display["High"].astype(float).apply(fmt_usd)
+                    overlap_spend_display["Mid"] = overlap_spend_display["Mid"].astype(float).apply(fmt_usd)
+                    overlap_spend_display = overlap_spend_display.rename(
+                        columns={
+                            "Lobbyists": "Lobbyists Under Contract",
+                            "Mid": "Midpoint",
+                        }
+                    )
+                    st.dataframe(
+                        overlap_spend_display[
+                            [
+                                "Subdivision Type",
+                                "Subdivision",
+                                "Code",
+                                "Entity Type",
+                                "TFL Entity",
+                                "Match Method",
+                                "Match Confidence",
+                                "Map Source",
+                                "Low",
+                                "High",
+                                "Midpoint",
+                                "Lobbyists Under Contract",
+                            ]
+                        ],
+                        width="stretch",
+                        height=420,
+                        hide_index=True,
+                    )
+                    _ = export_dataframe(
+                        filtered_overlap_spend,
+                        "address_overlap_tfl_entity_spending.csv",
+                        label="Download filtered overlap entity spending CSV",
+                    )
+                    _render_workspace_links(
+                        "map_overlap_next",
+                        [
+                            ("Open Clients", _client_page, "Investigate a matched entity profile in detail."),
+                            ("Open Lobbyists", _lobby_page, "Return to statewide lobbyist-level context."),
+                            ("Open Legislators", _member_page, "Connect overlap entities to bill and witness activity."),
+                        ],
+                    )
+
+    st.markdown(
+        """
+<style>
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+[data-testid="stToolbar"] {visibility: hidden;}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+
+def _page_member_lookup():
+    _render_page_intro(
+        kicker="Legislator Workspace",
+        title="Legislator Evidence View",
+        subtitle=(
+            "Review authored bills, witness activity, lobbying links, and staff-to-lobbyist history for a selected session."
+        ),
+        pills=[
+            "Bill authorship",
+            "Witness activity",
+            "Staff transition context",
+        ],
+    )
+    _render_journey("member")
+    _render_workspace_guide(
+        question=(
+            "For this legislator, what bill activity drew lobbying attention and what staffing links appear in the records?"
+        ),
+        steps=[
+            "Search and confirm the resolved legislator name.",
+            "Read Session Snapshot before member-specific tabs.",
+            "Review Bills and Witness Activity together to avoid partial interpretation.",
+            "Treat Staff Connections as contextual linkage, not proof of intent.",
+        ],
+        method_note="Witness and staff records come from separate sources and should be interpreted as linkage context.",
+    )
+    _render_workspace_links(
+        "member_top",
+        [
+            ("Open Lobbyists", _lobby_page, "Return to statewide lobbyist context and totals."),
+            ("Open Clients", _client_page, "Inspect entity-side funding and disclosures."),
+            ("Open Policy Context", _solutions_page, "Review drafting framework tied to observed patterns."),
+        ],
+    )
+    _render_quickstart(
+        "members",
+        [
+            "Select legislator and confirm session before reading trends.",
+            "Review Bills and Witness Activity together to avoid one-sided interpretation.",
+            "Use Staff Connections as context and corroborate with additional records.",
+        ],
+        note="Witness and staff tables describe linkage, not intent.",
+    )
+    _render_evidence_guardrails(
+        can_answer=[
+            "How authored bills, witness activity, and activity filings align for the selected legislator.",
+            "Which lobbyists and staff-link records appear in the same session context.",
+        ],
+        cannot_answer=[
+            "Personal motive or direction from correlated filing activity.",
+            "Causality between witness activity and bill outcomes without external evidence.",
+        ],
+        next_checks=[
+            "Cross-check major findings in Lobbyists and Clients views.",
+            "Separate descriptive linkage from causal interpretation in published claims.",
+        ],
     )
 
     if not PATH:
@@ -2923,6 +4951,10 @@ def _page_member_lookup():
             help="Reset legislator search and primary filters to defaults.",
         ):
             reset_member_filters(default_session)
+    st.markdown(
+        '<div class="app-note"><strong>Interpretation:</strong> Bills, witness rows, and staff records are linked for context. Correlation in these records does not establish motive or direction.</div>',
+        unsafe_allow_html=True,
+    )
 
     focus_label = "All Legislators"
     if st.session_state.member_name:
@@ -3068,7 +5100,14 @@ def _page_member_lookup():
     )
 
     tab_all, tab_overview, tab_bills, tab_witness, tab_activities, tab_staff = st.tabs(
-        ["All Legislators", "Overview", "Bills", "Witness Lists", "Activities", "Staff to Lobbyist"]
+        [
+            "1. Session Baseline (Read First)",
+            "2. Selected Legislator",
+            "3. Bills & Outcomes",
+            "4. Witness Activity",
+            "5. Spending Activity",
+            "6. Staff Links",
+        ]
     )
 
     def kpi_card(title: str, value: str, sub: str = "", help_text: str = ""):
@@ -3441,9 +5480,68 @@ def _page_member_lookup():
                     help_text="Activity rows where this member is the recipient.",
                 )
 
+            top_witness_lobby_short = ""
+            top_witness_lobby_label = ""
+            top_related_client = ""
+            witness_df = witness if isinstance(witness, pd.DataFrame) else pd.DataFrame()
+            if not witness_df.empty and "LobbyShort" in witness_df.columns:
+                lobby_counts = (
+                    witness_df["LobbyShort"]
+                    .fillna("")
+                    .astype(str)
+                    .str.strip()
+                )
+                lobby_counts = lobby_counts[lobby_counts != ""]
+                if not lobby_counts.empty:
+                    top_witness_lobby_short = str(lobby_counts.value_counts().index[0]).strip()
+                    top_witness_lobby_label = str(
+                        lobbyshort_to_name.get(top_witness_lobby_short, top_witness_lobby_short)
+                    ).strip()
+            if top_witness_lobby_short and not lt.empty:
+                top_client_rows = lt[lt["LobbyShort"].astype(str).str.strip() == top_witness_lobby_short].copy()
+                if not top_client_rows.empty and "Client" in top_client_rows.columns:
+                    top_client_rows = ensure_cols(top_client_rows, {"Low_num": 0.0, "High_num": 0.0, "Client": ""})
+                    top_client_rows["Mid"] = (pd.to_numeric(top_client_rows["Low_num"], errors="coerce").fillna(0) + pd.to_numeric(top_client_rows["High_num"], errors="coerce").fillna(0)) / 2
+                    top_client_rows = (
+                        top_client_rows.groupby("Client", as_index=False)["Mid"]
+                        .sum()
+                        .sort_values("Mid", ascending=False)
+                    )
+                    if not top_client_rows.empty:
+                        top_related_client = str(top_client_rows.iloc[0].get("Client", "")).strip()
+
+            if top_witness_lobby_label:
+                st.markdown(
+                    f"""
+<div class="handoff-card">
+  <div class="handoff-kicker">Cross-Page Handoff</div>
+  <div class="handoff-title">Follow The Most Active Witness Lobbyist</div>
+  <div class="handoff-sub">Top witness lobbyist in this member profile: <strong>{html.escape(top_witness_lobby_label, quote=True)}</strong>.</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+                handoff_cols = st.columns(2 if top_related_client else 1)
+                with handoff_cols[0]:
+                    if st.button("Open Top Lobbyist", key="member_handoff_lobby_btn", width="stretch"):
+                        st.session_state.search_query = top_witness_lobby_label or top_witness_lobby_short
+                        st.session_state.session = st.session_state.member_session
+                        st.session_state.scope = "This Session"
+                        st.session_state.lobbyshort = top_witness_lobby_short
+                        st.session_state.lobby_filerid = None
+                        st.switch_page(_lobby_page)
+                if top_related_client:
+                    with handoff_cols[1]:
+                        if st.button("Open Related Client", key="member_handoff_client_btn", width="stretch"):
+                            st.session_state.client_query = top_related_client
+                            st.session_state.client_query_input = top_related_client
+                            st.session_state.client_name = ""
+                            st.session_state.client_session = st.session_state.member_session
+                            st.session_state.client_scope = "This Session"
+                            st.switch_page(_client_page)
+
             st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
             st.markdown('<div class="section-sub">TFL Opposition Snapshot</div>', unsafe_allow_html=True)
-            witness_df = witness if isinstance(witness, pd.DataFrame) else pd.DataFrame()
             total_bills = int(bill_count)
             tfl_opposed = 0
             tfl_any = 0
@@ -3526,6 +5624,54 @@ def _page_member_lookup():
                     hide_index=True,
                 )
                 _ = export_dataframe(bill_view[show_cols], "member_bills.csv")
+                top_bill = ""
+                if not bill_view.empty and "Bill" in bill_view.columns:
+                    bill_counts = (
+                        bill_view["Bill"]
+                        .fillna("")
+                        .astype(str)
+                        .str.strip()
+                    )
+                    bill_counts = bill_counts[bill_counts != ""]
+                    if not bill_counts.empty:
+                        top_bill = str(bill_counts.value_counts().index[0]).strip()
+                witness_seed = st.session_state.member_bill_search.strip() or top_bill
+                if top_bill:
+                    st.markdown(
+                        f"""
+<div class="handoff-card">
+  <div class="handoff-kicker">Cross-Tab Continuity</div>
+  <div class="handoff-title">Carry Bill Focus Into Witness And Lobbyist Views</div>
+  <div class="handoff-sub">Most frequent bill in this filtered authored view: <strong>{html.escape(top_bill, quote=True)}</strong>.</div>
+</div>
+""",
+                        unsafe_allow_html=True,
+                    )
+                    bnav1, bnav2 = st.columns(2)
+                    with bnav1:
+                        if st.button("Run In Lobbyists Bill Mode", key="member_bills_to_lobby_bill_btn", width="stretch"):
+                            st.session_state.search_query = top_bill
+                            st.session_state.session = st.session_state.member_session
+                            st.session_state.scope = "This Session"
+                            st.session_state.lobbyshort = ""
+                            st.session_state.lobby_filerid = None
+                            st.session_state.lobby_selected_key = ""
+                            st.session_state.lobby_all_matches = False
+                            st.session_state.lobby_merge_keys = []
+                            st.session_state.lobby_candidate_map = {}
+                            st.session_state.lobby_match_query = top_bill
+                            st.session_state.lobby_match_select = "No match"
+                            st.switch_page(_lobby_page)
+                    with bnav2:
+                        if st.button(
+                            "Use In Witness Tab Search",
+                            key="member_bills_to_witness_seed_btn",
+                            width="stretch",
+                            disabled=not bool(witness_seed),
+                        ):
+                            st.session_state.member_witness_search = witness_seed
+                            st.session_state.member_witness_search_input = witness_seed
+                            st.success("Witness tab search has been prefilled from the Bills view.")
 
     with tab_witness:
         st.markdown('<div class="section-title">Witness Lists: Lobbyists and Organizations</div>', unsafe_allow_html=True)
@@ -3611,6 +5757,108 @@ def _page_member_lookup():
                 hide_index=True,
             )
             _ = export_dataframe(witness_view[show_cols], "member_witness_lists.csv")
+            top_witness_lobby_short_tab = ""
+            top_witness_lobby_label_tab = ""
+            top_related_client_tab = ""
+            top_witness_bill_tab = ""
+            if not witness_view.empty:
+                if "LobbyShort" in witness_view.columns:
+                    short_counts = (
+                        witness_view["LobbyShort"]
+                        .fillna("")
+                        .astype(str)
+                        .str.strip()
+                    )
+                    short_counts = short_counts[short_counts != ""]
+                    if not short_counts.empty:
+                        top_witness_lobby_short_tab = str(short_counts.value_counts().index[0]).strip()
+                        top_witness_lobby_label_tab = str(
+                            lobbyshort_to_name.get(top_witness_lobby_short_tab, top_witness_lobby_short_tab)
+                        ).strip()
+                elif "Lobbyist" in witness_view.columns:
+                    lobby_counts = (
+                        witness_view["Lobbyist"]
+                        .fillna("")
+                        .astype(str)
+                        .str.strip()
+                    )
+                    lobby_counts = lobby_counts[lobby_counts != ""]
+                    if not lobby_counts.empty:
+                        top_witness_lobby_label_tab = str(lobby_counts.value_counts().index[0]).strip()
+
+                if "Bill" in witness_view.columns:
+                    bill_counts = (
+                        witness_view["Bill"]
+                        .fillna("")
+                        .astype(str)
+                        .str.strip()
+                    )
+                    bill_counts = bill_counts[bill_counts != ""]
+                    if not bill_counts.empty:
+                        top_witness_bill_tab = str(bill_counts.value_counts().index[0]).strip()
+
+            if top_witness_lobby_short_tab and not lt.empty:
+                top_client_rows = lt[lt["LobbyShort"].astype(str).str.strip() == top_witness_lobby_short_tab].copy()
+                if not top_client_rows.empty and "Client" in top_client_rows.columns:
+                    top_client_rows = ensure_cols(top_client_rows, {"Low_num": 0.0, "High_num": 0.0, "Client": ""})
+                    top_client_rows["Mid"] = (
+                        pd.to_numeric(top_client_rows["Low_num"], errors="coerce").fillna(0) +
+                        pd.to_numeric(top_client_rows["High_num"], errors="coerce").fillna(0)
+                    ) / 2
+                    top_client_rows = (
+                        top_client_rows.groupby("Client", as_index=False)["Mid"]
+                        .sum()
+                        .sort_values("Mid", ascending=False)
+                    )
+                    if not top_client_rows.empty:
+                        top_related_client_tab = str(top_client_rows.iloc[0].get("Client", "")).strip()
+
+            if top_witness_lobby_label_tab:
+                handoff_line = f"Most frequent lobbyist in this witness view: {top_witness_lobby_label_tab}."
+                if top_witness_bill_tab:
+                    handoff_line += f" Most frequent bill: {top_witness_bill_tab}."
+                st.markdown(
+                    f"""
+<div class="handoff-card">
+  <div class="handoff-kicker">Cross-Tab Continuity</div>
+  <div class="handoff-title">Follow Witness Activity Into Entity And Spending Views</div>
+  <div class="handoff-sub">{html.escape(handoff_line, quote=True)}</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+                wnav1, wnav2, wnav3 = st.columns(3)
+                with wnav1:
+                    if st.button("Open Top Lobbyist", key="member_witness_to_lobby_btn", width="stretch"):
+                        st.session_state.search_query = top_witness_lobby_label_tab or top_witness_lobby_short_tab
+                        st.session_state.session = st.session_state.member_session
+                        st.session_state.scope = "This Session"
+                        st.session_state.lobbyshort = top_witness_lobby_short_tab
+                        st.session_state.lobby_filerid = None
+                        st.switch_page(_lobby_page)
+                with wnav2:
+                    if st.button(
+                        "Open Related Client",
+                        key="member_witness_to_client_btn",
+                        width="stretch",
+                        disabled=not bool(top_related_client_tab),
+                    ):
+                        st.session_state.client_query = top_related_client_tab
+                        st.session_state.client_query_input = top_related_client_tab
+                        st.session_state.client_name = ""
+                        st.session_state.client_session = st.session_state.member_session
+                        st.session_state.client_scope = "This Session"
+                        st.switch_page(_client_page)
+                with wnav3:
+                    if st.button(
+                        "Use Top Lobbyist In Activities",
+                        key="member_witness_to_activity_seed_btn",
+                        width="stretch",
+                    ):
+                        seed = top_witness_lobby_label_tab or top_witness_lobby_short_tab
+                        st.session_state.member_activity_search = seed
+                        st.session_state.member_activity_search_input = seed
+                        st.success("Activities tab search has been prefilled with the top witness lobbyist.")
 
     with tab_activities:
         st.markdown('<div class="section-title">Lobbyist Activity Benefiting the Member</div>', unsafe_allow_html=True)
@@ -3703,19 +5951,21 @@ footer {visibility: hidden;}
     )
 
 # Lobby content renders in the main body below; this stub keeps navigation wiring intact.
-_lobby_page = st.Page(lambda: None, title="Lobby Look-Up", url_path="lobbyists", default=True)
-_client_page = st.Page(_page_client_lookup, title="Client Look-Up", url_path="clients")
+_about_page = st.Page(_page_about, title="Start Here", url_path="about", default=True)
+_lobby_page = st.Page(lambda: None, title="Lobbyists", url_path="lobbyists")
+_client_page = st.Page(_page_client_lookup, title="Clients", url_path="clients")
+_map_page = st.Page(_page_map_address, title="Map & Address", url_path="map-address")
 _member_page = st.Page(_page_member_lookup, title="Legislators", url_path="legislators")
-_about_page = st.Page(_page_about, title="About", url_path="about")
-_tap_page = st.Page(_page_turn_off_tap, title="Multimedia", url_path="multimedia")
-_solutions_page = st.Page(_page_solutions, title="Solutions", url_path="solutions")
+_solutions_page = st.Page(_page_solutions, title="Policy Context", url_path="solutions")
+_tap_page = st.Page(_page_turn_off_tap, title="Media Briefings", url_path="multimedia")
 _pages = [
+    _about_page,
     _lobby_page,
     _client_page,
+    _map_page,
     _member_page,
-    _about_page,
-    _tap_page,
     _solutions_page,
+    _tap_page,
 ]
 _active_page = st.navigation(_pages, position="hidden")
 
@@ -3723,13 +5973,214 @@ def _nav_href(page) -> str:
     url_path = page.url_path
     return "./" if url_path == "" else f"./{url_path}"
 
+def _journey_steps() -> list[tuple[str, str, str, object]]:
+    return [
+        ("about", "Start Here", "Purpose, data limits, and interpretation rules", _about_page),
+        ("lobby", "Lobbyists", "Statewide baseline and individual profiles", _lobby_page),
+        ("client", "Clients", "Entity-level contracts, filings, and bill activity", _client_page),
+        ("map", "Map & Address", "Jurisdiction overlap and local exposure", _map_page),
+        ("member", "Legislators", "Authorship, witnesses, and staff context", _member_page),
+        ("solutions", "Policy Context", "Policy design checklist anchored to records", _solutions_page),
+        ("multimedia", "Media Briefings", "External context to verify with data", _tap_page),
+    ]
+
+def _render_page_intro(kicker: str, title: str, subtitle: str, pills: list[str] | None = None) -> None:
+    kicker_safe = html.escape(kicker or "", quote=True)
+    title_safe = html.escape(title or "", quote=True)
+    subtitle_safe = html.escape(subtitle or "", quote=True)
+    pill_html = ""
+    if pills:
+        tokens = [f'<span class="policy-pill">{html.escape(str(p), quote=True)}</span>' for p in pills if str(p).strip()]
+        if tokens:
+            pill_html = f'<div class="policy-pill-list">{"".join(tokens)}</div>'
+    st.markdown(
+        f"""
+<div class="card policy-hero">
+  <div class="policy-kicker">{kicker_safe}</div>
+  <div class="policy-title">{title_safe}</div>
+  <p class="policy-subtitle">{subtitle_safe}</p>
+  {pill_html}
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+def _is_guided_mode() -> bool:
+    return str(st.session_state.get("experience_mode", "Guided")).strip().lower() != "expert"
+
+def _render_journey(current_key: str) -> None:
+    cards = []
+    for idx, (key, label, desc, page) in enumerate(_journey_steps(), start=1):
+        active = " is-active" if key == current_key else ""
+        cards.append(
+            f"""
+<a class="journey-step{active}" href="{_nav_href(page)}" target="_self">
+  <span class="journey-step-num">Step {idx}</span>
+  <span class="journey-step-title">{html.escape(label, quote=True)}</span>
+  <span class="journey-step-desc">{html.escape(desc, quote=True)}</span>
+</a>
+"""
+        )
+    st.markdown(f'<div class="journey-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
+
+def _render_workspace_guide(
+    question: str,
+    steps: list[str] | None = None,
+    method_note: str | None = None,
+) -> None:
+    if not _is_guided_mode():
+        quick_note = html.escape(question.strip(), quote=True)
+        method_html = ""
+        if method_note and str(method_note).strip():
+            method_html = f" | {html.escape(str(method_note).strip(), quote=True)}"
+        st.caption(f"Investigation question: {quick_note}{method_html}")
+        return
+
+    q_safe = html.escape(question.strip(), quote=True)
+    step_html = ""
+    if steps:
+        items = [
+            f"<li>{html.escape(str(step).strip(), quote=True)}</li>"
+            for step in steps
+            if str(step).strip()
+        ]
+        if items:
+            step_html = (
+                "<p style='margin-top:0.55rem; margin-bottom:0.2rem;'><strong>Recommended sequence:</strong></p>"
+                f"<ol>{''.join(items)}</ol>"
+            )
+    note_html = ""
+    if method_note and str(method_note).strip():
+        note_html = (
+            f"<p style='margin-top:0.45rem;'><strong>Evidence standard:</strong> {html.escape(str(method_note).strip(), quote=True)}</p>"
+        )
+    st.markdown(
+        f"""
+<div class="workspace-note">
+  <div class="workspace-note-head">Investigation Question</div>
+  <p><strong>{q_safe}</strong></p>
+  {step_html}
+  {note_html}
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+def _render_quickstart(
+    page_key: str,
+    steps: list[str],
+    note: str | None = None,
+) -> None:
+    if not _is_guided_mode():
+        return
+
+    seen_key = f"quickstart_seen_{page_key}"
+    expanded = not bool(st.session_state.get(seen_key, False))
+    with st.expander("First time on this page? 60-second setup", expanded=expanded):
+        items = [
+            f"<li>{html.escape(str(step).strip(), quote=True)}</li>"
+            for step in steps
+            if str(step).strip()
+        ]
+        note_html = (
+            f"<p><strong>Guardrail:</strong> {html.escape(str(note).strip(), quote=True)}</p>"
+            if note and str(note).strip()
+            else ""
+        )
+        st.markdown(
+            f"""
+<div class="quickstart-box">
+  <p>Use this checklist before sharing conclusions from this page.</p>
+  <ol>{''.join(items)}</ol>
+  {note_html}
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+    st.session_state[seen_key] = True
+
+def _render_evidence_guardrails(
+    can_answer: list[str] | None = None,
+    cannot_answer: list[str] | None = None,
+    next_checks: list[str] | None = None,
+) -> None:
+    if not _is_guided_mode():
+        return
+
+    def _list_html(items: list[str] | None) -> str:
+        entries = [str(x).strip() for x in (items or []) if str(x).strip()]
+        if not entries:
+            return "<li>Not specified.</li>"
+        return "".join([f"<li>{html.escape(x, quote=True)}</li>" for x in entries])
+
+    can_html = _list_html(can_answer)
+    limit_html = _list_html(cannot_answer)
+    next_html = _list_html(next_checks) if next_checks else ""
+    next_card = ""
+    if next_checks:
+        next_card = (
+            '<div class="evidence-card">'
+            '<div class="evidence-kicker">Publication Check</div>'
+            '<div class="evidence-title">Before Sharing Findings</div>'
+            f'<ul class="evidence-list">{next_html}</ul>'
+            "</div>"
+        )
+
+    st.markdown(
+        f"""
+<div class="evidence-grid">
+  <div class="evidence-card">
+    <div class="evidence-kicker">Can Answer</div>
+    <div class="evidence-title">Supported By This Page</div>
+    <ul class="evidence-list">{can_html}</ul>
+  </div>
+  <div class="evidence-card is-limit">
+    <div class="evidence-kicker">Cannot Answer Alone</div>
+    <div class="evidence-title">Requires Additional Validation</div>
+    <ul class="evidence-list">{limit_html}</ul>
+  </div>
+  {next_card}
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+def _render_workspace_links(
+    key_prefix: str,
+    actions: list[tuple[str, object, str]],
+) -> None:
+    valid_actions = [
+        (label, page, help_text)
+        for label, page, help_text in actions
+        if str(label).strip()
+    ]
+    if not valid_actions:
+        return
+    st.markdown('<div class="workspace-links-heading">Continue The Investigation</div>', unsafe_allow_html=True)
+    cols = st.columns(len(valid_actions))
+    for idx, (label, page, help_text) in enumerate(valid_actions):
+        with cols[idx]:
+            if st.button(
+                label,
+                key=f"{key_prefix}_nav_{idx}",
+                width="stretch",
+                help=help_text,
+            ):
+                st.switch_page(page)
+            if help_text:
+                st.markdown(
+                    f'<div class="workspace-link-help">{html.escape(help_text, quote=True)}</div>',
+                    unsafe_allow_html=True,
+                )
+
 _nav_items = [
-    (_about_page, "About"),
+    (_about_page, "Start Here"),
     (_lobby_page, "Lobbyists"),
     (_client_page, "Clients"),
+    (_map_page, "Map & Address"),
     (_member_page, "Legislators"),
-    (_tap_page, "Multimedia"),
-    (_solutions_page, "Solutions"),
+    (_solutions_page, "Policy"),
+    (_tap_page, "Media"),
 ]
 _nav_links = []
 for page, label in _nav_items:
@@ -3743,8 +6194,8 @@ st.markdown(
 <div class="custom-nav">
   <div class="nav-inner">
     <div class="brand">
-      <div class="brand-top">Texas</div>
-      <div class="brand-bottom">Lobby Data Center</div>
+      <div class="brand-top">Texas Taxpayer Protection</div>
+      <div class="brand-bottom">Lobbying Transparency Center</div>
     </div>
     <div class="nav-links">
       {''.join(_nav_links)}
@@ -3761,6 +6212,8 @@ if "nav_search_last" not in st.session_state:
     st.session_state.nav_search_last = ""
 if "nav_search_trigger" not in st.session_state:
     st.session_state.nav_search_trigger = False
+if "experience_mode" not in st.session_state:
+    st.session_state.experience_mode = "Guided"
 
 def _nav_submit() -> None:
     st.session_state.nav_search_trigger = True
@@ -3768,11 +6221,24 @@ def _nav_submit() -> None:
 nav_query_raw = st.text_input(
     "Nav search",
     key="nav_search_query",
-    placeholder="Search bills, clients, members, lobbyists",
+    placeholder="Global search: lobbyist, client, legislator, or bill (example: HB 4)",
     label_visibility="collapsed",
     on_change=_nav_submit,
-    help="Global search across bills, clients, members, and lobbyists.",
+    help="Routes to the best workspace and carries your query forward.",
 )
+mode_cols = st.columns([4.8, 1.2])
+with mode_cols[0]:
+    st.caption("Mode: Guided includes onboarding guardrails; Expert reduces instructional density.")
+with mode_cols[1]:
+    st.session_state.experience_mode = st.radio(
+        "Workspace mode",
+        ["Guided", "Expert"],
+        index=0 if st.session_state.experience_mode == "Guided" else 1,
+        horizontal=True,
+        key="workspace_mode_radio",
+        label_visibility="collapsed",
+        help="Guided shows onboarding aids; Expert reduces instructional density.",
+    )
 nav_query = nav_query_raw.strip()
 nav_search_submitted = False
 if nav_query and st.session_state.nav_search_trigger:
@@ -3828,6 +6294,3306 @@ def clean_person_name(name: str) -> str:
     s = re.sub(r"\b(" + "|".join(_TITLE_WORDS) + r")\b\.?", "", s, flags=re.IGNORECASE)
     s = re.sub(r"\s+", " ", s).strip()
     return s
+
+def _arcgis_get_json(url: str, params: dict | None = None, timeout: int = 30) -> dict:
+    target = url
+    if params:
+        target = f"{url}?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(target, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+def _canonical_school_district_name(value: str) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    s = str(value).upper().replace("&", " AND ").replace("/", " ")
+    s = re.sub(r"\bC\.?I\.?S\.?D\.?\b", " CONSOLIDATED INDEPENDENT SCHOOL DISTRICT ", s)
+    s = re.sub(r"\bI\.?S\.?D\.?\b", " INDEPENDENT SCHOOL DISTRICT ", s)
+    s = re.sub(r"[^A-Z0-9 ]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+def _looks_like_school_district_name(value: str) -> bool:
+    s = _canonical_school_district_name(value)
+    return bool(s) and ("SCHOOL DISTRICT" in s)
+
+def _school_district_root_key(value: str) -> str:
+    s = _canonical_school_district_name(value)
+    if not s:
+        return ""
+    s = re.sub(r"\bTHE\b", " ", s)
+    s = re.sub(r"\b(CONSOLIDATED\s+)?INDEPENDENT\s+SCHOOL\s+DISTRICT\b", " ", s)
+    s = re.sub(r"\bSCHOOL\s+DISTRICT\b", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return norm_name(s)
+
+def _canonical_county_name(value: str) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    s = str(value).upper().replace("&", " AND ").replace("/", " ")
+    s = re.sub(r"\bCTY\.?\b", " COUNTY ", s)
+    s = re.sub(r"[^A-Z0-9 ]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+def _looks_like_county_name(value: str) -> bool:
+    s = _canonical_county_name(value)
+    return bool(s) and ("COUNTY" in s)
+
+def _county_root_key(value: str) -> str:
+    s = _canonical_county_name(value)
+    if not s:
+        return ""
+    s = re.sub(r"\bTHE\b", " ", s)
+    s = re.sub(r"\bCOUNTY OF\b", " ", s)
+    s = re.sub(r"\bCOMMISSIONERS? COURT\b", " ", s)
+    s = re.sub(r"\bCOUNTY\b", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return norm_name(s)
+
+def _canonical_city_name(value: str) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    s = str(value).upper().replace("&", " AND ").replace("/", " ")
+    s = re.sub(r"[^A-Z0-9 ]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+def _canonical_subdivision_text(value: str) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    s = str(value).upper().replace("&", " AND ").replace("/", " ")
+    replacements = [
+        (r"\bM\.?U\.?D\.?\b", " MUNICIPAL UTILITY DISTRICT "),
+        (r"\bW\.?C\.?I\.?D\.?\b", " WATER CONTROL AND IMPROVEMENT DISTRICT "),
+        (r"\bW\.?I\.?D\.?\b", " WATER IMPROVEMENT DISTRICT "),
+        (r"\bF\.?W\.?S\.?D\.?\b", " FRESH WATER SUPPLY DISTRICT "),
+        (r"\bL\.?I\.?D\.?\b", " LEVEE IMPROVEMENT DISTRICT "),
+        (r"\bM\.?M\.?D\.?\b", " MUNICIPAL MANAGEMENT DISTRICT "),
+        (r"\bS\.?U\.?D\.?\b", " SPECIAL UTILITY DISTRICT "),
+        (r"\bS\.?W\.?C\.?D\.?\b", " SOIL AND WATER CONTROL DISTRICT "),
+        (r"\bG\.?C\.?D\.?\b", " GROUNDWATER CONSERVATION DISTRICT "),
+        (r"\bE\.?S\.?D\.?\b", " EMERGENCY SERVICES DISTRICT "),
+        (r"\bR\.?M\.?A\.?\b", " REGIONAL MOBILITY AUTHORITY "),
+        (r"\bM\.?T\.?A\.?\b", " METROPOLITAN TRANSIT AUTHORITY "),
+        (r"\bD\.?A\.?R\.?T\.?\b", " DALLAS AREA RAPID TRANSIT "),
+        (r"\bC\.?A\.?D\.?\b", " APPRAISAL DISTRICT "),
+        (r"\bL\.?G\.?C\.?\b", " LOCAL GOVERNMENT CORPORATION "),
+        (r"\bCORPERATION\b", " CORPORATION "),
+        (r"\bHOSP\.?\s+DIST\.?\b", " HOSPITAL DISTRICT "),
+        (r"\bNAV\.?\s+DIST\.?\b", " NAVIGATION DISTRICT "),
+        (r"\bDIST\.?\b", " DISTRICT "),
+        (r"\bNO\.?\b", " "),
+        (r"\bNUMBER\b", " "),
+    ]
+    for pattern, replacement in replacements:
+        s = re.sub(pattern, replacement, s)
+    s = re.sub(r"[^A-Z0-9 ]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+def _subdivision_root_from_patterns(value: str, remove_patterns: list[str]) -> str:
+    s = _canonical_subdivision_text(value)
+    if not s:
+        return ""
+    s = re.sub(r"\bTHE\b", " ", s)
+    for pattern in remove_patterns:
+        s = re.sub(pattern, " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return norm_name(s)
+
+def classify_requested_entity_type(value: str) -> str:
+    s = _canonical_subdivision_text(value)
+    if not s:
+        return ""
+    if re.search(r"\b(JUNIOR|COMMUNITY)\s+COLLEGE\b|\bCOLLEGE\s+DISTRICT\b", s):
+        return "Junior College District"
+    if "HOSPITAL DISTRICT" in s:
+        return "Hospital District"
+    if "MUNICIPAL UTILITY DISTRICT" in s:
+        return "Municipal Utility District"
+    if "EMERGENCY SERVICES DISTRICT" in s:
+        return "Emergency Services District"
+    if "GROUNDWATER CONSERVATION DISTRICT" in s:
+        return "Groundwater Conservation District"
+    if re.search(r"\bLOCAL\s+GOVERNMENT\s+CORPORATION\b|\bDEVELOPMENT\s+CORPORATION\b", s):
+        return "Local Government Corporation"
+    if "DRAINAGE DISTRICT" in s:
+        return "Drainage District"
+    if "FRESH WATER SUPPLY DISTRICT" in s:
+        return "Fresh Water Supply District"
+    if "IRRIGATION DISTRICT" in s:
+        return "Irrigation District"
+    if "LEVEE IMPROVEMENT DISTRICT" in s:
+        return "Levee Improvement District"
+    if "MUNICIPAL MANAGEMENT DISTRICT" in s:
+        return "Municipal Management District"
+    if "REGIONAL DISTRICT" in s:
+        return "Regional District"
+    if "RIVER AUTHORITY" in s:
+        return "River Authority"
+    if re.search(r"\bSOIL\s+(AND\s+)?WATER\s+CONTROL\s+DISTRICT\b", s):
+        return "Soil & Water Control District"
+    if "SPECIAL UTILITY DISTRICT" in s:
+        return "Special Utility District"
+    if "WATER IMPROVEMENT DISTRICT" in s:
+        return "Water Improvement District"
+    if "REGIONAL MOBILITY AUTHORITY" in s:
+        return "Regional Mobility Authority"
+    if re.search(r"\bWATER\s+CONTROL\s+(AND\s+)?IMPROVEMENT\s+DISTRICT\b", s):
+        return "Water Control & Improvement District"
+    if "NAVIGATION DISTRICT" in s:
+        return "Navigation District"
+    if (
+        "TRANSIT AUTHORITY" in s
+        or "METROPOLITAN TRANSIT AUTHORITY" in s
+        or "TRANSPORTATION AUTHORITY" in s
+        or re.search(r"\bAREA\s+RAPID\s+TRANSIT\b|\bRAPID\s+TRANSIT\b|\bMASS\s+TRANSIT\b|\bDART\b", s)
+        or re.search(r"\bTRANSIT\b", s)
+    ):
+        return "Transit Authority"
+    if "PORT AUTHORITY" in s:
+        return "Port Authority"
+    if "HOUSING AUTHORITY" in s:
+        return "Housing Authority"
+    if "APPRAISAL DISTRICT" in s:
+        return "Appraisal District"
+    return ""
+
+def _canonical_water_district_type(value: str) -> str:
+    s = _canonical_subdivision_text(value)
+    if not s:
+        return ""
+    if "MUNICIPAL UTILITY DISTRICT" in s:
+        return "Municipal Utility District"
+    if "DRAINAGE DISTRICT" in s:
+        return "Drainage District"
+    if "FRESH WATER SUPPLY DISTRICT" in s:
+        return "Fresh Water Supply District"
+    if "IRRIGATION DISTRICT" in s:
+        return "Irrigation District"
+    if "LEVEE IMPROVEMENT DISTRICT" in s:
+        return "Levee Improvement District"
+    if "MUNICIPAL MANAGEMENT DISTRICT" in s:
+        return "Municipal Management District"
+    if "REGIONAL DISTRICT" in s:
+        return "Regional District"
+    if "RIVER AUTHORITY" in s:
+        return "River Authority"
+    if re.search(r"\bSOIL\s+(AND\s+)?WATER\s+CONTROL\s+DISTRICT\b", s):
+        return "Soil & Water Control District"
+    if "SPECIAL UTILITY DISTRICT" in s:
+        return "Special Utility District"
+    if "WATER IMPROVEMENT DISTRICT" in s:
+        return "Water Improvement District"
+    if re.search(r"\bWATER\s+CONTROL\s+(AND\s+)?IMPROVEMENT\s+DISTRICT\b", s):
+        return "Water Control & Improvement District"
+    if "NAVIGATION DISTRICT" in s:
+        return "Navigation District"
+    return ""
+
+def _looks_like_city_name(value: str) -> bool:
+    s = _canonical_city_name(value)
+    return bool(s) and bool(re.search(r"\b(CITY|TOWN|VILLAGE)\b", s))
+
+def _looks_like_entity_type(value: str, entity_type: str) -> bool:
+    return classify_requested_entity_type(value) == str(entity_type).strip()
+
+def _city_root_key(value: str) -> str:
+    s = _canonical_city_name(value)
+    if not s:
+        return ""
+    s = re.sub(r"\bTHE\b", " ", s)
+    s = re.sub(r"\b(CITY|TOWN|VILLAGE)\s+OF\b", " ", s)
+    s = re.sub(r"\b(CITY|TOWN|VILLAGE)\b", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return norm_name(s)
+
+def _special_entity_root_patterns(entity_type: str) -> list[str]:
+    et = str(entity_type).strip()
+    if et == "Hospital District":
+        return [r"\bHOSPITAL\s+DISTRICT\b", r"\bDISTRICT\b"]
+    if et == "Emergency Services District":
+        return [r"\bEMERGENCY\s+SERVICES\s+DISTRICT\b", r"\bDISTRICT\b", r"\bE\.?S\.?D\.?\b"]
+    if et == "Appraisal District":
+        return [r"\bAPPRAISAL\s+DISTRICT\b", r"\bDISTRICT\b", r"\bC\.?A\.?D\.?\b"]
+    if et == "Local Government Corporation":
+        return [r"\bLOCAL\s+GOVERNMENT\s+CORPORATION\b", r"\bDEVELOPMENT\s+CORPORATION\b", r"\bCORPORATION\b"]
+    if et == "Transit Authority":
+        return TRANSIT_AUTHORITY_ROOT_PATTERNS
+    if et == "Port Authority":
+        return PORT_AUTHORITY_ROOT_PATTERNS
+    return []
+
+def _anchor_key_variants(value: str) -> set[str]:
+    root = norm_name(value)
+    if not root:
+        return set()
+
+    variants: set[str] = {root}
+    no_digits = re.sub(r"\d+", "", root)
+    if no_digits:
+        variants.add(no_digits)
+
+    no_geo_terms = re.sub(r"(COUNTY|CITY|TOWN|VILLAGE|OF)", "", no_digits)
+    no_geo_terms = no_geo_terms.strip()
+    if no_geo_terms:
+        variants.add(no_geo_terms)
+    return {v for v in variants if v}
+
+def _best_lookup_key_for_candidates(
+    lookup_keys: tuple[str, ...],
+    candidates: set[str],
+) -> tuple[str, float]:
+    if not lookup_keys or not candidates:
+        return "", -1.0
+
+    best_key = ""
+    best_score = -1.0
+    for candidate in candidates:
+        c = str(candidate).strip()
+        if not c:
+            continue
+        for key in lookup_keys:
+            k = str(key).strip()
+            if not k:
+                continue
+            score = -1.0
+            if c == k:
+                score = 1000.0 + float(len(k))
+            elif len(c) >= 4 and len(k) >= 4 and (c in k or k in c):
+                score = float(min(len(c), len(k)))
+            if score > best_score:
+                best_score = score
+                best_key = k
+    return best_key, best_score
+
+def _resolve_special_anchor_keys(
+    client_name: str,
+    entity_type: str,
+    county_lookup_keys: tuple[str, ...],
+    city_lookup_keys: tuple[str, ...],
+) -> dict:
+    candidates: set[str] = set()
+    candidates |= _anchor_key_variants(_county_root_key(client_name))
+    candidates |= _anchor_key_variants(_city_root_key(client_name))
+
+    root_patterns = _special_entity_root_patterns(entity_type)
+    if root_patterns:
+        candidates |= _anchor_key_variants(_subdivision_root_from_patterns(client_name, root_patterns))
+
+    county_key, county_score = _best_lookup_key_for_candidates(county_lookup_keys, candidates)
+    city_key, city_score = _best_lookup_key_for_candidates(city_lookup_keys, candidates)
+
+    canonical = _canonical_subdivision_text(client_name)
+    weighted_county = county_score
+    weighted_city = city_score
+    if "COUNTY" in canonical:
+        weighted_county += 6.0
+    if re.search(r"\b(CITY|TOWN|VILLAGE)\b", canonical):
+        weighted_city += 6.0
+    if entity_type in COUNTY_BIASED_SPECIAL_ENTITY_TYPES:
+        weighted_county += 4.0
+    if entity_type in CITY_BIASED_SPECIAL_ENTITY_TYPES:
+        weighted_city += 3.0
+
+    preferred_scope = ""
+    if county_key and (not city_key or weighted_county >= weighted_city):
+        preferred_scope = "county"
+    elif city_key:
+        preferred_scope = "city"
+
+    return {
+        "county_key": county_key,
+        "city_key": city_key,
+        "county_score": county_score,
+        "city_score": city_score,
+        "preferred_scope": preferred_scope,
+    }
+
+def _match_preview(values: list[str], limit: int = 6) -> str:
+    if not values:
+        return ""
+    preview = ", ".join(values[:limit])
+    if len(values) > limit:
+        return f"{preview}, +{len(values) - limit} more"
+    return preview
+
+def _attach_subdivision_spend_totals(matches: pd.DataFrame, client_totals: pd.DataFrame) -> pd.DataFrame:
+    out = matches.copy() if isinstance(matches, pd.DataFrame) else pd.DataFrame()
+    if out.empty:
+        out["low_total"] = pd.Series(dtype=float)
+        out["high_total"] = pd.Series(dtype=float)
+        return out
+
+    out["low_total"] = 0.0
+    out["high_total"] = 0.0
+    if not isinstance(client_totals, pd.DataFrame) or client_totals.empty:
+        return out
+
+    totals = ensure_cols(client_totals.copy(), {"Client": "", "Low": 0.0, "High": 0.0, "IsTFL": 0})
+    totals = totals[totals["IsTFL"] == 1].copy()
+    if totals.empty:
+        return out
+
+    totals["Client"] = totals["Client"].fillna("").astype(str).str.strip()
+    totals = totals[totals["Client"] != ""].copy()
+    if totals.empty:
+        return out
+    totals["Low"] = pd.to_numeric(totals["Low"], errors="coerce").fillna(0.0)
+    totals["High"] = pd.to_numeric(totals["High"], errors="coerce").fillna(0.0)
+    totals = (
+        totals.groupby("Client", as_index=False)
+        .agg(Low=("Low", "sum"), High=("High", "sum"))
+    )
+    spend_lookup = {
+        str(r.Client): (float(r.Low), float(r.High))
+        for r in totals.itertuples(index=False)
+    }
+
+    fallback_clients = pd.Series([[]] * len(out), index=out.index, dtype=object)
+    client_series = out.get("match_clients", fallback_clients)
+    low_vals: list[float] = []
+    high_vals: list[float] = []
+    for client_values in client_series.tolist():
+        low_total = 0.0
+        high_total = 0.0
+        if isinstance(client_values, list):
+            for raw_client in client_values:
+                key = str(raw_client).strip()
+                if not key:
+                    continue
+                low_v, high_v = spend_lookup.get(key, (0.0, 0.0))
+                low_total += float(low_v)
+                high_total += float(high_v)
+        low_vals.append(low_total)
+        high_vals.append(high_total)
+    out["low_total"] = low_vals
+    out["high_total"] = high_vals
+    return out
+
+@st.cache_data(show_spinner=False, ttl=43200, max_entries=2)
+def fetch_tea_school_district_centroids() -> pd.DataFrame:
+    cols = ["fid", "name", "name2", "name20", "district_code", "district_code_compact", "lon", "lat"]
+    rows: list[dict] = []
+    page_size = 1000
+    offset = 0
+    try:
+        while True:
+            payload = _arcgis_get_json(
+                f"{TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL}/query",
+                params={
+                    "where": "1=1",
+                    "outFields": "FID,NAME,NAME2,NAME20,DISTRICT,DISTRICT_C",
+                    "returnGeometry": "false",
+                    "returnCentroid": "true",
+                    "outSR": "4326",
+                    "orderByFields": "FID ASC",
+                    "resultRecordCount": page_size,
+                    "resultOffset": offset,
+                    "f": "json",
+                },
+            )
+            features = payload.get("features", [])
+            if not features:
+                break
+            for feat in features:
+                attrs = feat.get("attributes", {}) or {}
+                centroid = feat.get("centroid", {}) or {}
+                fid = attrs.get("FID")
+                if fid is None:
+                    continue
+                try:
+                    lon = float(centroid.get("x"))
+                    lat = float(centroid.get("y"))
+                except (TypeError, ValueError):
+                    continue
+                rows.append(
+                    {
+                        "fid": int(fid),
+                        "name": str(attrs.get("NAME", "")).strip(),
+                        "name2": str(attrs.get("NAME2", "")).strip(),
+                        "name20": str(attrs.get("NAME20", "")).strip(),
+                        "district_code": str(attrs.get("DISTRICT", "")).strip(),
+                        "district_code_compact": str(attrs.get("DISTRICT_C", "")).strip(),
+                        "lon": lon,
+                        "lat": lat,
+                    }
+                )
+            if len(features) < page_size:
+                break
+            offset += len(features)
+    except Exception:
+        return pd.DataFrame(columns=cols)
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(rows, columns=cols)
+
+@st.cache_data(show_spinner=False, ttl=43200, max_entries=2)
+def fetch_tea_county_centroids() -> pd.DataFrame:
+    cols = ["objectid", "name", "fips", "cntykey", "lon", "lat"]
+    rows: list[dict] = []
+    try:
+        payload = _arcgis_get_json(
+            f"{TEA_ARCGIS_COUNTY_LAYER_URL}/query",
+            params={
+                "where": "1=1",
+                "outFields": "OBJECTID,FIPS,CNTYKEY,FENAME",
+                "returnGeometry": "false",
+                "returnCentroid": "true",
+                "outSR": "4326",
+                "orderByFields": "OBJECTID ASC",
+                "resultRecordCount": 1000,
+                "f": "json",
+            },
+        )
+        for feat in payload.get("features", []):
+            attrs = feat.get("attributes", {}) or {}
+            centroid = feat.get("centroid", {}) or {}
+            src_id = attrs.get("OBJECTID")
+            if src_id is None:
+                continue
+            try:
+                lon = float(centroid.get("x"))
+                lat = float(centroid.get("y"))
+            except (TypeError, ValueError):
+                continue
+            rows.append(
+                {
+                    "objectid": int(src_id),
+                    "name": str(attrs.get("FENAME", "")).strip(),
+                    "fips": str(attrs.get("FIPS", "")).strip(),
+                    "cntykey": str(attrs.get("CNTYKEY", "")).strip(),
+                    "lon": lon,
+                    "lat": lat,
+                }
+            )
+    except Exception:
+        return pd.DataFrame(columns=cols)
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(rows, columns=cols)
+
+@st.cache_data(show_spinner=False, ttl=43200, max_entries=2)
+def fetch_texas_city_centroids() -> pd.DataFrame:
+    cols = ["objectid", "name", "basename", "geoid", "lon", "lat"]
+    rows: list[dict] = []
+    page_size = 2000
+    offset = 0
+    try:
+        while True:
+            payload = _arcgis_get_json(
+                f"{CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL}/query",
+                params={
+                    "where": "STATE='48'",
+                    "outFields": "OBJECTID,NAME,BASENAME,GEOID,CENTLON,CENTLAT",
+                    "returnGeometry": "false",
+                    "orderByFields": "OBJECTID ASC",
+                    "resultRecordCount": page_size,
+                    "resultOffset": offset,
+                    "f": "json",
+                },
+            )
+            features = payload.get("features", [])
+            if not features:
+                break
+            for feat in features:
+                attrs = feat.get("attributes", {}) or {}
+                src_id = attrs.get("OBJECTID")
+                if src_id is None:
+                    continue
+                try:
+                    lon = float(str(attrs.get("CENTLON", "")).strip())
+                    lat = float(str(attrs.get("CENTLAT", "")).strip())
+                except (TypeError, ValueError):
+                    continue
+                rows.append(
+                    {
+                        "objectid": int(src_id),
+                        "name": str(attrs.get("NAME", "")).strip(),
+                        "basename": str(attrs.get("BASENAME", "")).strip(),
+                        "geoid": str(attrs.get("GEOID", "")).strip(),
+                        "lon": lon,
+                        "lat": lat,
+                    }
+                )
+            if len(features) < page_size:
+                break
+            offset += len(features)
+    except Exception:
+        return pd.DataFrame(columns=cols)
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(rows, columns=cols)
+
+def _build_layer_subdivision_matches(
+    tfl_client_names: tuple[str, ...],
+    layer_df: pd.DataFrame,
+    subdivision_type: str,
+    layer_name_cols: list[str],
+    layer_code_cols: list[str],
+    root_patterns: list[str],
+    include_client_fn,
+    extra_candidate_builder=None,
+    source_name: str = "",
+    source_url: str = "",
+) -> pd.DataFrame:
+    cols = [
+        "subdivision_type",
+        "subdivision_name",
+        "subdivision_code",
+        "lon",
+        "lat",
+        "match_count",
+        "match_clients",
+        "match_clients_preview",
+        "source_name",
+        "source_url",
+    ]
+    if not tfl_client_names or layer_df.empty:
+        return pd.DataFrame(columns=cols)
+
+    exact_index: dict[str, set[str]] = {}
+    root_index: dict[str, set[str]] = {}
+    unique_clients = sorted({str(name).strip() for name in tfl_client_names if str(name).strip()})
+    for client in unique_clients:
+        canon_key = norm_name(_canonical_subdivision_text(client))
+        if canon_key:
+            exact_index.setdefault(canon_key, set()).add(client)
+        try:
+            include_client = bool(include_client_fn(client))
+        except Exception:
+            include_client = False
+        if include_client:
+            root_key = _subdivision_root_from_patterns(client, root_patterns)
+            if root_key:
+                root_index.setdefault(root_key, set()).add(client)
+    if not exact_index and not root_index:
+        return pd.DataFrame(columns=cols)
+    known_root_keys = tuple(root_index.keys())
+
+    out_rows: list[dict] = []
+    for row in layer_df.itertuples(index=False):
+        names = []
+        for col in layer_name_cols:
+            v = getattr(row, col, "")
+            if v is not None and str(v).strip():
+                names.append(str(v).strip())
+        if extra_candidate_builder is not None:
+            try:
+                names.extend(extra_candidate_builder(row) or [])
+            except Exception:
+                pass
+        names = [n for n in names if n]
+        if not names:
+            continue
+
+        variant_keys = {norm_name(_canonical_subdivision_text(n)) for n in names}
+        variant_keys = {k for k in variant_keys if k}
+        candidate_root_keys = {_subdivision_root_from_patterns(n, root_patterns) for n in names}
+        candidate_root_keys = {k for k in candidate_root_keys if k}
+        matched_clients: set[str] = set()
+        for key in variant_keys:
+            matched_clients |= exact_index.get(key, set())
+
+        for root_key in candidate_root_keys:
+            matched_clients |= root_index.get(root_key, set())
+
+        # Conservative fuzzy fallback for near-identical subdivision naming variants.
+        if not matched_clients and candidate_root_keys and known_root_keys:
+            for candidate_root in candidate_root_keys:
+                if len(candidate_root) < 6:
+                    continue
+                close_roots = difflib.get_close_matches(candidate_root, known_root_keys, n=3, cutoff=0.93)
+                for close_root in close_roots:
+                    ratio = difflib.SequenceMatcher(None, candidate_root, close_root).ratio()
+                    if ratio >= 0.95 or candidate_root in close_root or close_root in candidate_root:
+                        matched_clients |= root_index.get(close_root, set())
+
+        if not matched_clients:
+            continue
+
+        primary_name = names[0]
+        code = ""
+        for ccol in layer_code_cols:
+            cv = getattr(row, ccol, "")
+            if cv is not None and str(cv).strip():
+                code = str(cv).strip()
+                break
+
+        matched_sorted = sorted(matched_clients)
+        out_rows.append(
+            {
+                "subdivision_type": subdivision_type,
+                "subdivision_name": primary_name,
+                "subdivision_code": code,
+                "lon": float(getattr(row, "lon", 0.0)),
+                "lat": float(getattr(row, "lat", 0.0)),
+                "match_count": int(len(matched_sorted)),
+                "match_clients": matched_sorted,
+                "match_clients_preview": _match_preview(matched_sorted),
+                "source_name": str(source_name).strip(),
+                "source_url": str(source_url).strip(),
+            }
+        )
+
+    if not out_rows:
+        return pd.DataFrame(columns=cols)
+    out = pd.DataFrame(out_rows, columns=cols)
+    out = out.sort_values(["match_count", "subdivision_name"], ascending=[False, True])
+    return out
+
+@st.cache_data(show_spinner=False, ttl=43200, max_entries=2)
+def fetch_tceq_water_district_centroids() -> pd.DataFrame:
+    cols = ["district_name", "district_code", "type_code", "type_desc", "lon", "lat"]
+    rows: list[dict] = []
+    page_size = 2000
+    offset = 0
+    try:
+        while True:
+            payload = _arcgis_get_json(
+                f"{TCEQ_WATER_DISTRICTS_LAYER_URL}/query",
+                params={
+                    "where": "1=1",
+                    "outFields": "NAME,DISTRICT_ID,TYPE,TYPE_DESCRIPTION",
+                    "returnGeometry": "false",
+                    "returnCentroid": "true",
+                    "outSR": "4326",
+                    "orderByFields": "OBJECTID ASC",
+                    "resultRecordCount": page_size,
+                    "resultOffset": offset,
+                    "f": "json",
+                },
+            )
+            features = payload.get("features", [])
+            if not features:
+                break
+            for feat in features:
+                attrs = feat.get("attributes", {}) or {}
+                centroid = feat.get("centroid", {}) or {}
+                name = str(attrs.get("NAME", "")).strip()
+                if not name:
+                    continue
+                try:
+                    lon = float(centroid.get("x"))
+                    lat = float(centroid.get("y"))
+                except (TypeError, ValueError):
+                    continue
+                rows.append(
+                    {
+                        "district_name": name,
+                        "district_code": str(attrs.get("DISTRICT_ID", "")).strip(),
+                        "type_code": str(attrs.get("TYPE", "")).strip(),
+                        "type_desc": str(attrs.get("TYPE_DESCRIPTION", "")).strip(),
+                        "lon": lon,
+                        "lat": lat,
+                    }
+                )
+            if len(features) < page_size:
+                break
+            offset += len(features)
+    except Exception:
+        return pd.DataFrame(columns=cols)
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    out = pd.DataFrame(rows, columns=cols)
+    out = (
+        out.groupby(["district_name", "district_code", "type_code", "type_desc"], as_index=False)
+        .agg(lon=("lon", "mean"), lat=("lat", "mean"))
+    )
+    return out
+
+@st.cache_data(show_spinner=False, ttl=43200, max_entries=2)
+def fetch_tceq_groundwater_district_centroids() -> pd.DataFrame:
+    cols = ["district_name", "district_code", "lon", "lat"]
+    rows: list[dict] = []
+    page_size = 500
+    offset = 0
+    try:
+        while True:
+            payload = _arcgis_get_json(
+                f"{TCEQ_GROUNDWATER_DISTRICTS_LAYER_URL}/query",
+                params={
+                    "where": "1=1",
+                    "outFields": "DISTNAME,DIST_NUM,SHORTNAM",
+                    "returnGeometry": "false",
+                    "returnCentroid": "true",
+                    "outSR": "4326",
+                    "orderByFields": "OBJECTID ASC",
+                    "resultRecordCount": page_size,
+                    "resultOffset": offset,
+                    "f": "json",
+                },
+            )
+            features = payload.get("features", [])
+            if not features:
+                break
+            for feat in features:
+                attrs = feat.get("attributes", {}) or {}
+                centroid = feat.get("centroid", {}) or {}
+                name = str(attrs.get("DISTNAME", "")).strip() or str(attrs.get("SHORTNAM", "")).strip()
+                if not name:
+                    continue
+                try:
+                    lon = float(centroid.get("x"))
+                    lat = float(centroid.get("y"))
+                except (TypeError, ValueError):
+                    continue
+                rows.append(
+                    {
+                        "district_name": name,
+                        "district_code": str(attrs.get("DIST_NUM", "")).strip(),
+                        "lon": lon,
+                        "lat": lat,
+                    }
+                )
+            if len(features) < page_size:
+                break
+            offset += len(features)
+    except Exception:
+        return pd.DataFrame(columns=cols)
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    out = pd.DataFrame(rows, columns=cols)
+    out = (
+        out.groupby(["district_name", "district_code"], as_index=False)
+        .agg(lon=("lon", "mean"), lat=("lat", "mean"))
+    )
+    return out
+
+@st.cache_data(show_spinner=False, ttl=43200, max_entries=2)
+def fetch_texas_rma_centroids() -> pd.DataFrame:
+    cols = ["district_name", "district_code", "lon", "lat"]
+    rows: list[dict] = []
+    try:
+        payload = _arcgis_get_json(
+            f"{TEXAS_RMA_LAYER_URL}/query",
+            params={
+                "where": "1=1",
+                "outFields": "OBJECTID,RMA,Label",
+                "returnGeometry": "false",
+                "returnCentroid": "true",
+                "outSR": "4326",
+                "orderByFields": "OBJECTID ASC",
+                "resultRecordCount": 1000,
+                "f": "json",
+            },
+        )
+        for feat in payload.get("features", []):
+            attrs = feat.get("attributes", {}) or {}
+            centroid = feat.get("centroid", {}) or {}
+            name = str(attrs.get("Label", "")).strip() or str(attrs.get("RMA", "")).strip()
+            if not name:
+                continue
+            try:
+                lon = float(centroid.get("x"))
+                lat = float(centroid.get("y"))
+            except (TypeError, ValueError):
+                continue
+            rows.append(
+                {
+                    "district_name": name,
+                    "district_code": str(attrs.get("OBJECTID", "")).strip(),
+                    "lon": lon,
+                    "lat": lat,
+                }
+            )
+    except Exception:
+        return pd.DataFrame(columns=cols)
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(rows, columns=cols)
+
+@st.cache_data(show_spinner=False, ttl=43200, max_entries=2)
+def fetch_texas_junior_college_centroids() -> pd.DataFrame:
+    cols = ["district_name", "district_code", "name2", "lon", "lat"]
+    rows: list[dict] = []
+    page_size = 500
+    offset = 0
+    try:
+        while True:
+            payload = _arcgis_get_json(
+                f"{TEXAS_JUNIOR_COLLEGE_LAYER_URL}/query",
+                params={
+                    "where": "1=1",
+                    "outFields": "OBJECTID,DISTRICT,NAME1,NAME2,NAME3",
+                    "returnGeometry": "false",
+                    "returnCentroid": "true",
+                    "outSR": "4326",
+                    "orderByFields": "OBJECTID ASC",
+                    "resultRecordCount": page_size,
+                    "resultOffset": offset,
+                    "f": "json",
+                },
+            )
+            features = payload.get("features", [])
+            if not features:
+                break
+            for feat in features:
+                attrs = feat.get("attributes", {}) or {}
+                centroid = feat.get("centroid", {}) or {}
+                name1 = str(attrs.get("NAME1", "")).strip()
+                name2 = str(attrs.get("NAME2", "")).strip()
+                name = name1 or name2
+                if not name:
+                    continue
+                try:
+                    lon = float(centroid.get("x"))
+                    lat = float(centroid.get("y"))
+                except (TypeError, ValueError):
+                    continue
+                rows.append(
+                    {
+                        "district_name": name,
+                        "district_code": str(attrs.get("DISTRICT", "")).strip(),
+                        "name2": name2,
+                        "lon": lon,
+                        "lat": lat,
+                    }
+                )
+            if len(features) < page_size:
+                break
+            offset += len(features)
+    except Exception:
+        return pd.DataFrame(columns=cols)
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    out = pd.DataFrame(rows, columns=cols)
+    out = (
+        out.groupby(["district_name", "district_code", "name2"], as_index=False)
+        .agg(lon=("lon", "mean"), lat=("lat", "mean"))
+    )
+    return out
+
+@st.cache_data(show_spinner=False, ttl=43200, max_entries=2)
+def fetch_texas_navigation_district_centroids() -> pd.DataFrame:
+    cols = ["district_name", "district_code", "lon", "lat"]
+    rows: list[dict] = []
+    page_size = 1000
+    offset = 0
+    try:
+        while True:
+            payload = _arcgis_get_json(
+                f"{TEXAS_NAVIGATION_DISTRICT_LAYER_URL}/query",
+                params={
+                    "where": "1=1",
+                    "outFields": "OBJECTID,DISTRICT_N",
+                    "returnGeometry": "false",
+                    "returnCentroid": "true",
+                    "outSR": "4326",
+                    "orderByFields": "OBJECTID ASC",
+                    "resultRecordCount": page_size,
+                    "resultOffset": offset,
+                    "f": "json",
+                },
+            )
+            features = payload.get("features", [])
+            if not features:
+                break
+            for feat in features:
+                attrs = feat.get("attributes", {}) or {}
+                centroid = feat.get("centroid", {}) or {}
+                name = str(attrs.get("DISTRICT_N", "")).strip()
+                if not name:
+                    continue
+                try:
+                    lon = float(centroid.get("x"))
+                    lat = float(centroid.get("y"))
+                except (TypeError, ValueError):
+                    continue
+                rows.append(
+                    {
+                        "district_name": name,
+                        "district_code": str(attrs.get("OBJECTID", "")).strip(),
+                        "lon": lon,
+                        "lat": lat,
+                    }
+                )
+            if len(features) < page_size:
+                break
+            offset += len(features)
+    except Exception:
+        return pd.DataFrame(columns=cols)
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    out = pd.DataFrame(rows, columns=cols)
+    out = (
+        out.groupby(["district_name"], as_index=False)
+        .agg(district_code=("district_code", "min"), lon=("lon", "mean"), lat=("lat", "mean"))
+    )
+    return out
+
+@st.cache_data(show_spinner=False, ttl=43200, max_entries=2)
+def fetch_nctcog_transit_provider_centroids() -> pd.DataFrame:
+    cols = ["provider_name", "classification", "district_code", "lon", "lat"]
+    rows: list[dict] = []
+    page_size = 1000
+    offset = 0
+    try:
+        while True:
+            payload = _arcgis_get_json(
+                f"{NCTCOG_TRANSIT_PROVIDERS_LAYER_URL}/query",
+                params={
+                    "where": "1=1",
+                    "outFields": "OBJECTID,Name,Classification",
+                    "returnGeometry": "true",
+                    "outSR": "4326",
+                    "orderByFields": "OBJECTID ASC",
+                    "resultRecordCount": page_size,
+                    "resultOffset": offset,
+                    "f": "json",
+                },
+            )
+            features = payload.get("features", [])
+            if not features:
+                break
+            for feat in features:
+                attrs = feat.get("attributes", {}) or {}
+                geometry = feat.get("geometry", {}) or {}
+                name = str(attrs.get("Name", "")).strip()
+                if not name:
+                    continue
+                try:
+                    rings = geometry.get("rings", []) or []
+                    x_vals = [float(pt[0]) for ring in rings for pt in ring if isinstance(pt, list) and len(pt) >= 2]
+                    y_vals = [float(pt[1]) for ring in rings for pt in ring if isinstance(pt, list) and len(pt) >= 2]
+                    if not x_vals or not y_vals:
+                        continue
+                    lon = (min(x_vals) + max(x_vals)) / 2.0
+                    lat = (min(y_vals) + max(y_vals)) / 2.0
+                except (TypeError, ValueError, IndexError):
+                    continue
+                rows.append(
+                    {
+                        "provider_name": name,
+                        "classification": str(attrs.get("Classification", "")).strip(),
+                        "district_code": str(attrs.get("OBJECTID", "")).strip(),
+                        "lon": lon,
+                        "lat": lat,
+                    }
+                )
+            if len(features) < page_size:
+                break
+            offset += len(features)
+    except Exception:
+        return pd.DataFrame(columns=cols)
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    out = pd.DataFrame(rows, columns=cols)
+    out = (
+        out.groupby(["provider_name", "classification", "district_code"], as_index=False)
+        .agg(lon=("lon", "mean"), lat=("lat", "mean"))
+    )
+    return out
+
+@st.cache_data(show_spinner=False, ttl=43200, max_entries=2)
+def fetch_txdot_seaport_centroids() -> pd.DataFrame:
+    cols = ["port_name", "port_type", "port_code", "lon", "lat"]
+    rows: list[dict] = []
+    page_size = 1000
+    offset = 0
+    try:
+        while True:
+            payload = _arcgis_get_json(
+                f"{TXDOT_SEAPORTS_LAYER_URL}/query",
+                params={
+                    "where": "1=1",
+                    "outFields": "OBJECTID,PORT_NM,PORT_TYPE",
+                    "returnGeometry": "true",
+                    "outSR": "4326",
+                    "orderByFields": "OBJECTID ASC",
+                    "resultRecordCount": page_size,
+                    "resultOffset": offset,
+                    "f": "json",
+                },
+            )
+            features = payload.get("features", [])
+            if not features:
+                break
+            for feat in features:
+                attrs = feat.get("attributes", {}) or {}
+                geometry = feat.get("geometry", {}) or {}
+                name = str(attrs.get("PORT_NM", "")).strip()
+                if not name:
+                    continue
+                try:
+                    lon = float(geometry.get("x"))
+                    lat = float(geometry.get("y"))
+                except (TypeError, ValueError):
+                    continue
+                rows.append(
+                    {
+                        "port_name": name,
+                        "port_type": str(attrs.get("PORT_TYPE", "")).strip(),
+                        "port_code": str(attrs.get("OBJECTID", "")).strip(),
+                        "lon": lon,
+                        "lat": lat,
+                    }
+                )
+            if len(features) < page_size:
+                break
+            offset += len(features)
+    except Exception:
+        return pd.DataFrame(columns=cols)
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    out = pd.DataFrame(rows, columns=cols)
+    out = (
+        out.groupby(["port_name", "port_type", "port_code"], as_index=False)
+        .agg(lon=("lon", "mean"), lat=("lat", "mean"))
+    )
+    return out
+
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=8)
+def build_tfl_school_district_matches(tfl_client_names: tuple[str, ...]) -> pd.DataFrame:
+    cols = [
+        "fid",
+        "district_name",
+        "district_code",
+        "lon",
+        "lat",
+        "match_count",
+        "match_clients",
+        "match_clients_preview",
+        "source_name",
+        "source_url",
+    ]
+    if not tfl_client_names:
+        return pd.DataFrame(columns=cols)
+    districts = fetch_tea_school_district_centroids()
+    if districts.empty:
+        return pd.DataFrame(columns=cols)
+
+    exact_index: dict[str, set[str]] = {}
+    root_index: dict[str, set[str]] = {}
+    unique_clients = sorted({str(name).strip() for name in tfl_client_names if str(name).strip()})
+    for client in unique_clients:
+        canon = _canonical_school_district_name(client)
+        canon_key = norm_name(canon)
+        if canon_key:
+            exact_index.setdefault(canon_key, set()).add(client)
+        if _looks_like_school_district_name(client):
+            root_key = _school_district_root_key(client)
+            if root_key:
+                root_index.setdefault(root_key, set()).add(client)
+
+    if not exact_index and not root_index:
+        return pd.DataFrame(columns=cols)
+
+    out_rows: list[dict] = []
+    for row in districts.itertuples(index=False):
+        candidates = [row.name20, row.name, row.name2]
+        if row.name2:
+            candidates.append(f"{row.name2} ISD")
+            candidates.append(f"{row.name2} Independent School District")
+        variant_keys = set()
+        for candidate in candidates:
+            canon = _canonical_school_district_name(candidate)
+            key = norm_name(canon)
+            if key:
+                variant_keys.add(key)
+
+        matched_clients: set[str] = set()
+        for key in variant_keys:
+            matched_clients |= exact_index.get(key, set())
+        root_key = _school_district_root_key(row.name20 or row.name or row.name2)
+        if root_key:
+            matched_clients |= root_index.get(root_key, set())
+
+        if not matched_clients:
+            continue
+        matched_sorted = sorted(matched_clients)
+        preview = ", ".join(matched_sorted[:6])
+        if len(matched_sorted) > 6:
+            preview = f"{preview}, +{len(matched_sorted) - 6} more"
+        out_rows.append(
+            {
+                "fid": int(row.fid),
+                "district_name": row.name20 or row.name or row.name2 or "",
+                "district_code": row.district_code or row.district_code_compact or "",
+                "lon": float(row.lon),
+                "lat": float(row.lat),
+                "match_count": int(len(matched_sorted)),
+                "match_clients": matched_sorted,
+                "match_clients_preview": preview,
+                "source_name": "TEA School District boundaries (FeatureServer/0)",
+                "source_url": TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL,
+            }
+        )
+
+    if not out_rows:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(out_rows, columns=cols).sort_values(["match_count", "district_name"], ascending=[False, True])
+
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=8)
+def build_tfl_county_matches(tfl_client_names: tuple[str, ...]) -> pd.DataFrame:
+    cols = [
+        "subdivision_type",
+        "subdivision_name",
+        "subdivision_code",
+        "lon",
+        "lat",
+        "match_count",
+        "match_clients",
+        "match_clients_preview",
+        "source_name",
+        "source_url",
+    ]
+    if not tfl_client_names:
+        return pd.DataFrame(columns=cols)
+    counties = fetch_tea_county_centroids()
+    if counties.empty:
+        return pd.DataFrame(columns=cols)
+
+    exact_index: dict[str, set[str]] = {}
+    root_index: dict[str, set[str]] = {}
+    unique_clients = sorted({str(name).strip() for name in tfl_client_names if str(name).strip()})
+    for client in unique_clients:
+        canon_key = norm_name(_canonical_county_name(client))
+        if canon_key:
+            exact_index.setdefault(canon_key, set()).add(client)
+        if _looks_like_county_name(client):
+            root_key = _county_root_key(client)
+            if root_key:
+                root_index.setdefault(root_key, set()).add(client)
+    if not exact_index and not root_index:
+        return pd.DataFrame(columns=cols)
+
+    out_rows: list[dict] = []
+    for row in counties.itertuples(index=False):
+        candidates = [row.name, f"{row.name} County", f"County of {row.name}"]
+        variant_keys = {norm_name(_canonical_county_name(c)) for c in candidates if c}
+        variant_keys = {k for k in variant_keys if k}
+
+        matched_clients: set[str] = set()
+        for key in variant_keys:
+            matched_clients |= exact_index.get(key, set())
+        root_key = _county_root_key(f"{row.name} County")
+        if root_key:
+            matched_clients |= root_index.get(root_key, set())
+        if not matched_clients:
+            continue
+
+        matched_sorted = sorted(matched_clients)
+        out_rows.append(
+            {
+                "subdivision_type": "County",
+                "subdivision_name": f"{row.name} County",
+                "subdivision_code": row.fips,
+                "lon": float(row.lon),
+                "lat": float(row.lat),
+                "match_count": int(len(matched_sorted)),
+                "match_clients": matched_sorted,
+                "match_clients_preview": _match_preview(matched_sorted),
+                "source_name": "TEA County boundaries (FeatureServer/0)",
+                "source_url": TEA_ARCGIS_COUNTY_LAYER_URL,
+            }
+        )
+    if not out_rows:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(out_rows, columns=cols).sort_values(["match_count", "subdivision_name"], ascending=[False, True])
+
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=8)
+def build_tfl_city_matches(tfl_client_names: tuple[str, ...]) -> pd.DataFrame:
+    cols = [
+        "subdivision_type",
+        "subdivision_name",
+        "subdivision_code",
+        "lon",
+        "lat",
+        "match_count",
+        "match_clients",
+        "match_clients_preview",
+        "source_name",
+        "source_url",
+    ]
+    if not tfl_client_names:
+        return pd.DataFrame(columns=cols)
+    cities = fetch_texas_city_centroids()
+    if cities.empty:
+        return pd.DataFrame(columns=cols)
+
+    exact_index: dict[str, set[str]] = {}
+    root_index: dict[str, set[str]] = {}
+    unique_clients = sorted({str(name).strip() for name in tfl_client_names if str(name).strip()})
+    for client in unique_clients:
+        canon_key = norm_name(_canonical_city_name(client))
+        if canon_key:
+            exact_index.setdefault(canon_key, set()).add(client)
+        if _looks_like_city_name(client):
+            root_key = _city_root_key(client)
+            if root_key:
+                root_index.setdefault(root_key, set()).add(client)
+    if not exact_index and not root_index:
+        return pd.DataFrame(columns=cols)
+
+    out_rows: list[dict] = []
+    for row in cities.itertuples(index=False):
+        base = row.basename or re.sub(r"\s+(city|town|village)\s*$", "", row.name, flags=re.IGNORECASE).strip()
+        if not base:
+            continue
+        display_name = base
+        if not re.search(r"\b(CITY|TOWN|VILLAGE)\b$", display_name, flags=re.IGNORECASE):
+            display_name = f"{display_name} City"
+        candidates = [base, row.name, f"City of {base}", f"{base} City", f"Town of {base}", f"{base} Town"]
+        variant_keys = {norm_name(_canonical_city_name(c)) for c in candidates if c}
+        variant_keys = {k for k in variant_keys if k}
+
+        matched_clients: set[str] = set()
+        for key in variant_keys:
+            matched_clients |= exact_index.get(key, set())
+        root_key = _city_root_key(f"City of {base}")
+        if root_key:
+            matched_clients |= root_index.get(root_key, set())
+        if not matched_clients:
+            continue
+
+        matched_sorted = sorted(matched_clients)
+        out_rows.append(
+            {
+                "subdivision_type": "City",
+                "subdivision_name": display_name,
+                "subdivision_code": row.geoid,
+                "lon": float(row.lon),
+                "lat": float(row.lat),
+                "match_count": int(len(matched_sorted)),
+                "match_clients": matched_sorted,
+                "match_clients_preview": _match_preview(matched_sorted),
+                "source_name": "U.S. Census TIGERweb Texas Places (MapServer/25)",
+                "source_url": CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL,
+            }
+        )
+    if not out_rows:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(out_rows, columns=cols).sort_values(["match_count", "subdivision_name"], ascending=[False, True])
+
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=8)
+def build_tfl_transit_authority_matches(tfl_client_names: tuple[str, ...]) -> pd.DataFrame:
+    cols = [
+        "subdivision_type",
+        "subdivision_name",
+        "subdivision_code",
+        "lon",
+        "lat",
+        "match_count",
+        "match_clients",
+        "match_clients_preview",
+        "source_name",
+        "source_url",
+    ]
+    if not tfl_client_names:
+        return pd.DataFrame(columns=cols)
+    providers = fetch_nctcog_transit_provider_centroids()
+    if providers.empty:
+        return pd.DataFrame(columns=cols)
+    return _build_layer_subdivision_matches(
+        tfl_client_names=tfl_client_names,
+        layer_df=providers,
+        subdivision_type="Transit Authority",
+        layer_name_cols=["provider_name", "classification"],
+        layer_code_cols=["district_code"],
+        root_patterns=TRANSIT_AUTHORITY_ROOT_PATTERNS + [r"\bTRANSIT\b"],
+        include_client_fn=lambda client: _looks_like_entity_type(client, "Transit Authority"),
+        extra_candidate_builder=lambda row: [
+            f"{str(getattr(row, 'provider_name', '')).strip()} Transit Authority",
+            f"{str(getattr(row, 'provider_name', '')).strip()} Transportation Authority",
+            f"{str(getattr(row, 'provider_name', '')).strip()} Transit",
+            "Dallas Area Rapid Transit" if re.search(r"\bDART\b", str(getattr(row, "provider_name", "")), flags=re.IGNORECASE) else "",
+        ],
+        source_name="NCTCOG Transit Providers (MapServer/10)",
+        source_url=NCTCOG_TRANSIT_PROVIDERS_LAYER_URL,
+    )
+
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=8)
+def build_tfl_port_authority_matches(tfl_client_names: tuple[str, ...]) -> pd.DataFrame:
+    cols = [
+        "subdivision_type",
+        "subdivision_name",
+        "subdivision_code",
+        "lon",
+        "lat",
+        "match_count",
+        "match_clients",
+        "match_clients_preview",
+        "source_name",
+        "source_url",
+    ]
+    if not tfl_client_names:
+        return pd.DataFrame(columns=cols)
+    ports = fetch_txdot_seaport_centroids()
+    if ports.empty:
+        return pd.DataFrame(columns=cols)
+
+    def _port_aliases(row) -> list[str]:
+        raw = str(getattr(row, "port_name", "")).strip()
+        base = re.sub(r"^\s*PORT\s+OF\s+", "", raw, flags=re.IGNORECASE).strip()
+        aliases: list[str] = []
+        if raw:
+            aliases.extend(
+                [
+                    raw,
+                    f"{raw} Port Authority",
+                    f"{raw} Navigation District",
+                ]
+            )
+        if base and base.lower() != raw.lower():
+            aliases.extend(
+                [
+                    f"Port of {base}",
+                    f"{base} Port Authority",
+                    f"{base} Navigation District",
+                    f"{base} Port",
+                ]
+            )
+        if re.search(r"\bNAVIGATION\s+DISTRICT\b", raw, flags=re.IGNORECASE):
+            nav_base = re.sub(r"\bNAVIGATION\s+DISTRICT\b", "", raw, flags=re.IGNORECASE).strip(" -")
+            if nav_base:
+                aliases.extend([f"Port of {nav_base}", f"{nav_base} Port Authority"])
+        return [a for a in aliases if str(a).strip()]
+
+    return _build_layer_subdivision_matches(
+        tfl_client_names=tfl_client_names,
+        layer_df=ports,
+        subdivision_type="Port Authority",
+        layer_name_cols=["port_name"],
+        layer_code_cols=["port_code"],
+        root_patterns=PORT_AUTHORITY_ROOT_PATTERNS,
+        include_client_fn=lambda client: _looks_like_entity_type(client, "Port Authority"),
+        extra_candidate_builder=_port_aliases,
+        source_name="TxDOT Seaports (FeatureServer/0)",
+        source_url=TXDOT_SEAPORTS_LAYER_URL,
+    )
+
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=8)
+def build_tfl_name_anchored_special_matches(tfl_client_names: tuple[str, ...]) -> pd.DataFrame:
+    cols = [
+        "subdivision_type",
+        "subdivision_name",
+        "subdivision_code",
+        "lon",
+        "lat",
+        "match_count",
+        "match_clients",
+        "match_clients_preview",
+        "source_name",
+        "source_url",
+    ]
+    if not tfl_client_names:
+        return pd.DataFrame(columns=cols)
+
+    counties = fetch_tea_county_centroids()
+    cities = fetch_texas_city_centroids()
+    if counties.empty and cities.empty:
+        return pd.DataFrame(columns=cols)
+
+    county_lookup: dict[str, dict] = {}
+    if not counties.empty:
+        for row in counties.itertuples(index=False):
+            county_name = str(getattr(row, "name", "")).strip()
+            if not county_name:
+                continue
+            key = _county_root_key(f"{county_name} County")
+            if not key or key in county_lookup:
+                continue
+            county_lookup[key] = {
+                "code": str(getattr(row, "fips", "")).strip(),
+                "lon": float(getattr(row, "lon", 0.0)),
+                "lat": float(getattr(row, "lat", 0.0)),
+                "source_name": "Name-anchored county centroid proxy",
+                "source_url": TEA_ARCGIS_COUNTY_LAYER_URL,
+            }
+
+    city_lookup: dict[str, dict] = {}
+    if not cities.empty:
+        for row in cities.itertuples(index=False):
+            raw_name = str(getattr(row, "name", "")).strip()
+            base = str(getattr(row, "basename", "")).strip() or re.sub(
+                r"\s+(city|town|village)\s*$", "", raw_name, flags=re.IGNORECASE
+            ).strip()
+            if not base:
+                continue
+            display_name = base
+            if not re.search(r"\b(CITY|TOWN|VILLAGE)\b$", display_name, flags=re.IGNORECASE):
+                display_name = f"{display_name} City"
+            key = _city_root_key(display_name)
+            if not key or key in city_lookup:
+                continue
+            city_lookup[key] = {
+                "code": str(getattr(row, "geoid", "")).strip(),
+                "lon": float(getattr(row, "lon", 0.0)),
+                "lat": float(getattr(row, "lat", 0.0)),
+                "source_name": "Name-anchored city centroid proxy",
+                "source_url": CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL,
+            }
+
+    rows: list[dict] = []
+    county_lookup_keys = tuple(county_lookup.keys())
+    city_lookup_keys = tuple(city_lookup.keys())
+    for client in sorted({str(name).strip() for name in tfl_client_names if str(name).strip()}):
+        entity_type = classify_requested_entity_type(client)
+        if entity_type not in SPECIAL_NAME_ANCHORED_ENTITY_TYPES:
+            continue
+
+        anchor = None
+        anchor_keys = _resolve_special_anchor_keys(
+            client_name=client,
+            entity_type=entity_type,
+            county_lookup_keys=county_lookup_keys,
+            city_lookup_keys=city_lookup_keys,
+        )
+        county_key = str(anchor_keys.get("county_key", "")).strip()
+        city_key = str(anchor_keys.get("city_key", "")).strip()
+        preferred_scope = str(anchor_keys.get("preferred_scope", "")).strip()
+
+        if preferred_scope == "county" and county_key in county_lookup:
+            anchor = county_lookup[county_key]
+        elif preferred_scope == "city" and city_key in city_lookup:
+            anchor = city_lookup[city_key]
+        elif county_key in county_lookup:
+            anchor = county_lookup[county_key]
+        elif city_key in city_lookup:
+            anchor = city_lookup[city_key]
+
+        if not anchor:
+            geocoded = geocode_texas_entity_arcgis(client)
+            score = float(geocoded.get("score", 0.0)) if geocoded else 0.0
+            if geocoded and score >= 70:
+                anchor = {
+                    "code": str(geocoded.get("postal", "")).strip(),
+                    "lon": float(geocoded.get("lon", 0.0)),
+                    "lat": float(geocoded.get("lat", 0.0)),
+                    "source_name": "ArcGIS geocoded entity centroid (Texas)",
+                    "source_url": ARCGIS_GEOCODER_URL,
+                }
+
+        if not anchor:
+            continue
+
+        rows.append(
+            {
+                "subdivision_type": entity_type,
+                "subdivision_name": client,
+                "subdivision_code": str(anchor.get("code", "")).strip(),
+                "lon": float(anchor.get("lon", 0.0)),
+                "lat": float(anchor.get("lat", 0.0)),
+                "match_count": 1,
+                "match_clients": [client],
+                "match_clients_preview": client,
+                "source_name": str(anchor.get("source_name", "")).strip(),
+                "source_url": str(anchor.get("source_url", "")).strip(),
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    out = pd.DataFrame(rows, columns=cols).drop_duplicates(
+        ["subdivision_type", "subdivision_name", "subdivision_code"]
+    )
+    return out.sort_values(["subdivision_type", "subdivision_name"], ascending=[True, True])
+
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=8)
+def build_tfl_water_district_type_matches(tfl_client_names: tuple[str, ...]) -> pd.DataFrame:
+    cols = [
+        "subdivision_type",
+        "subdivision_name",
+        "subdivision_code",
+        "lon",
+        "lat",
+        "match_count",
+        "match_clients",
+        "match_clients_preview",
+        "source_name",
+        "source_url",
+    ]
+    if not tfl_client_names:
+        return pd.DataFrame(columns=cols)
+    water = fetch_tceq_water_district_centroids()
+    if water.empty:
+        return pd.DataFrame(columns=cols)
+
+    water = water.copy()
+    water["type_label"] = water["type_desc"].astype(str).map(_canonical_water_district_type)
+
+    parts = []
+    for subtype, root_patterns in WATER_DISTRICT_TYPE_ROOT_PATTERNS.items():
+        if subtype == "Navigation District":
+            # Use the dedicated statewide navigation-district layer for this type.
+            continue
+        subset = water[water["type_label"].astype(str) == subtype].copy()
+        if subset.empty:
+            continue
+        piece = _build_layer_subdivision_matches(
+            tfl_client_names=tfl_client_names,
+            layer_df=subset,
+            subdivision_type=subtype,
+            layer_name_cols=["district_name"],
+            layer_code_cols=["district_code"],
+            root_patterns=root_patterns,
+            include_client_fn=lambda client, target=subtype: _looks_like_entity_type(client, target),
+            extra_candidate_builder=None,
+            source_name="TCEQ Water Districts (FeatureServer/0)",
+            source_url=TCEQ_WATER_DISTRICTS_LAYER_URL,
+        )
+        if not piece.empty:
+            parts.append(piece)
+    if not parts:
+        return pd.DataFrame(columns=cols)
+    return pd.concat(parts, ignore_index=True).sort_values(["subdivision_type", "match_count", "subdivision_name"], ascending=[True, False, True])
+
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=8)
+def build_tfl_groundwater_district_matches(tfl_client_names: tuple[str, ...]) -> pd.DataFrame:
+    districts = fetch_tceq_groundwater_district_centroids()
+    if districts.empty:
+        return pd.DataFrame(
+            columns=[
+                "subdivision_type",
+                "subdivision_name",
+                "subdivision_code",
+                "lon",
+                "lat",
+                "match_count",
+                "match_clients",
+                "match_clients_preview",
+                "source_name",
+                "source_url",
+            ]
+        )
+    return _build_layer_subdivision_matches(
+        tfl_client_names=tfl_client_names,
+        layer_df=districts,
+        subdivision_type="Groundwater Conservation District",
+        layer_name_cols=["district_name"],
+        layer_code_cols=["district_code"],
+        root_patterns=[r"\bGROUNDWATER\s+CONSERVATION\s+DISTRICT\b", r"\bDISTRICT\b"],
+        include_client_fn=lambda client: _looks_like_entity_type(client, "Groundwater Conservation District"),
+        extra_candidate_builder=None,
+        source_name="TCEQ Groundwater Conservation Districts (FeatureServer/0)",
+        source_url=TCEQ_GROUNDWATER_DISTRICTS_LAYER_URL,
+    )
+
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=8)
+def build_tfl_regional_mobility_authority_matches(tfl_client_names: tuple[str, ...]) -> pd.DataFrame:
+    districts = fetch_texas_rma_centroids()
+    if districts.empty:
+        return pd.DataFrame(
+            columns=[
+                "subdivision_type",
+                "subdivision_name",
+                "subdivision_code",
+                "lon",
+                "lat",
+                "match_count",
+                "match_clients",
+                "match_clients_preview",
+                "source_name",
+                "source_url",
+            ]
+        )
+    return _build_layer_subdivision_matches(
+        tfl_client_names=tfl_client_names,
+        layer_df=districts,
+        subdivision_type="Regional Mobility Authority",
+        layer_name_cols=["district_name"],
+        layer_code_cols=["district_code"],
+        root_patterns=[r"\bREGIONAL\s+MOBILITY\s+AUTHORITY\b", r"\bAUTHORITY\b", r"\bRMA\b"],
+        include_client_fn=lambda client: _looks_like_entity_type(client, "Regional Mobility Authority"),
+        extra_candidate_builder=lambda row: [
+            str(getattr(row, "district_name", "")).replace("RMA", "Regional Mobility Authority").strip()
+        ],
+        source_name="Texas Regional Mobility Authorities (FeatureServer/0)",
+        source_url=TEXAS_RMA_LAYER_URL,
+    )
+
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=8)
+def build_tfl_junior_college_matches(tfl_client_names: tuple[str, ...]) -> pd.DataFrame:
+    districts = fetch_texas_junior_college_centroids()
+    if districts.empty:
+        return pd.DataFrame(
+            columns=[
+                "subdivision_type",
+                "subdivision_name",
+                "subdivision_code",
+                "lon",
+                "lat",
+                "match_count",
+                "match_clients",
+                "match_clients_preview",
+                "source_name",
+                "source_url",
+            ]
+        )
+    return _build_layer_subdivision_matches(
+        tfl_client_names=tfl_client_names,
+        layer_df=districts,
+        subdivision_type="Junior College District",
+        layer_name_cols=["district_name", "name2"],
+        layer_code_cols=["district_code"],
+        root_patterns=[r"\bCOMMUNITY\s+COLLEGE\b", r"\bJUNIOR\s+COLLEGE\b", r"\bCOLLEGE\s+DISTRICT\b", r"\bSERVICE\s+AREA\b", r"\bCOLLEGE\b", r"\bDISTRICT\b"],
+        include_client_fn=lambda client: _looks_like_entity_type(client, "Junior College District"),
+        extra_candidate_builder=lambda row: [
+            f"{str(getattr(row, 'district_name', '')).strip()} District",
+            f"{str(getattr(row, 'district_name', '')).strip()} Community College District",
+        ],
+        source_name="Texas Junior College Service Areas (FeatureServer/0)",
+        source_url=TEXAS_JUNIOR_COLLEGE_LAYER_URL,
+    )
+
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=8)
+def build_tfl_navigation_district_matches(tfl_client_names: tuple[str, ...]) -> pd.DataFrame:
+    districts = fetch_texas_navigation_district_centroids()
+    if districts.empty:
+        return pd.DataFrame(
+            columns=[
+                "subdivision_type",
+                "subdivision_name",
+                "subdivision_code",
+                "lon",
+                "lat",
+                "match_count",
+                "match_clients",
+                "match_clients_preview",
+                "source_name",
+                "source_url",
+            ]
+        )
+
+    def _nav_aliases(row) -> list[str]:
+        raw = str(getattr(row, "district_name", "")).strip()
+        if not raw:
+            return []
+        base = re.sub(r"\bNAVIGATION\s+DISTRICT\b", "", raw, flags=re.IGNORECASE).strip(" -")
+        aliases = [
+            raw,
+            f"{raw} Port Authority",
+            f"{base} Port Authority" if base else "",
+            f"Port of {base}" if base else "",
+        ]
+        return [a for a in aliases if str(a).strip()]
+
+    return _build_layer_subdivision_matches(
+        tfl_client_names=tfl_client_names,
+        layer_df=districts,
+        subdivision_type="Navigation District",
+        layer_name_cols=["district_name"],
+        layer_code_cols=["district_code"],
+        root_patterns=[r"\bNAVIGATION\s+DISTRICT\b", r"\bPORT\s+AUTHORITY\b", r"\bPORT\s+OF\b", r"\bAUTHORITY\b", r"\bDISTRICT\b"],
+        include_client_fn=lambda client: _looks_like_entity_type(client, "Navigation District") or _looks_like_entity_type(client, "Port Authority"),
+        extra_candidate_builder=_nav_aliases,
+        source_name="Texas Navigation Districts (FeatureServer/29)",
+        source_url=TEXAS_NAVIGATION_DISTRICT_LAYER_URL,
+    )
+
+def _merge_subdivision_match_rows(df: pd.DataFrame) -> pd.DataFrame:
+    cols = [
+        "subdivision_type",
+        "subdivision_name",
+        "subdivision_code",
+        "lon",
+        "lat",
+        "match_count",
+        "match_clients",
+        "match_clients_preview",
+        "source_name",
+        "source_url",
+    ]
+    if df.empty:
+        return pd.DataFrame(columns=cols)
+    merged: dict[tuple[str, str, str], dict] = {}
+    for row in df.itertuples(index=False):
+        t = str(getattr(row, "subdivision_type", "")).strip()
+        n = str(getattr(row, "subdivision_name", "")).strip()
+        c = str(getattr(row, "subdivision_code", "")).strip()
+        if not t or not n:
+            continue
+        key = (t, n, c)
+        clients = getattr(row, "match_clients", [])
+        client_set = {str(x).strip() for x in clients if str(x).strip()} if isinstance(clients, list) else set()
+        source_name = str(getattr(row, "source_name", "")).strip()
+        source_url = str(getattr(row, "source_url", "")).strip()
+        if key not in merged:
+            merged[key] = {
+                "subdivision_type": t,
+                "subdivision_name": n,
+                "subdivision_code": c,
+                "lon": float(getattr(row, "lon", 0.0)),
+                "lat": float(getattr(row, "lat", 0.0)),
+                "match_clients": set(client_set),
+                "source_names": {source_name} if source_name else set(),
+                "source_urls": {source_url} if source_url else set(),
+            }
+        else:
+            merged[key]["match_clients"].update(client_set)
+            if source_name:
+                merged[key]["source_names"].add(source_name)
+            if source_url:
+                merged[key]["source_urls"].add(source_url)
+
+    out_rows = []
+    for _, rec in merged.items():
+        matched_sorted = sorted(rec["match_clients"])
+        out_rows.append(
+            {
+                "subdivision_type": rec["subdivision_type"],
+                "subdivision_name": rec["subdivision_name"],
+                "subdivision_code": rec["subdivision_code"],
+                "lon": rec["lon"],
+                "lat": rec["lat"],
+                "match_count": int(len(matched_sorted)),
+                "match_clients": matched_sorted,
+                "match_clients_preview": _match_preview(matched_sorted),
+                "source_name": "; ".join(sorted(rec.get("source_names", set()))),
+                "source_url": "; ".join(sorted(rec.get("source_urls", set()))),
+            }
+        )
+    if not out_rows:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(out_rows, columns=cols).sort_values(["subdivision_type", "match_count", "subdivision_name"], ascending=[True, False, True])
+
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=8)
+def build_tfl_political_subdivision_matches(tfl_client_names: tuple[str, ...]) -> pd.DataFrame:
+    cols = [
+        "subdivision_type",
+        "subdivision_name",
+        "subdivision_code",
+        "lon",
+        "lat",
+        "match_count",
+        "match_clients",
+        "match_clients_preview",
+        "source_name",
+        "source_url",
+    ]
+    if not tfl_client_names:
+        return pd.DataFrame(columns=cols)
+    parts = [
+        build_tfl_school_district_matches(tfl_client_names).rename(
+            columns={"district_name": "subdivision_name", "district_code": "subdivision_code"}
+        ).assign(subdivision_type="School District"),
+        build_tfl_county_matches(tfl_client_names),
+        build_tfl_city_matches(tfl_client_names),
+        build_tfl_junior_college_matches(tfl_client_names),
+        build_tfl_groundwater_district_matches(tfl_client_names),
+        build_tfl_water_district_type_matches(tfl_client_names),
+        build_tfl_transit_authority_matches(tfl_client_names),
+        build_tfl_port_authority_matches(tfl_client_names),
+        build_tfl_regional_mobility_authority_matches(tfl_client_names),
+        build_tfl_navigation_district_matches(tfl_client_names),
+        build_tfl_name_anchored_special_matches(tfl_client_names),
+    ]
+    parts = [p for p in parts if isinstance(p, pd.DataFrame) and not p.empty]
+    if not parts:
+        return pd.DataFrame(columns=cols)
+    out = pd.concat(parts, ignore_index=True)
+    keep = [c for c in cols if c in out.columns]
+    out = out[keep].copy()
+    return _merge_subdivision_match_rows(out)
+
+@st.cache_data(show_spinner=False, ttl=86400, max_entries=256)
+def geocode_address_arcgis(address: str) -> dict:
+    q = str(address).strip()
+    if not q:
+        return {}
+    try:
+        payload = _arcgis_get_json(
+            ARCGIS_GEOCODER_URL,
+            params={
+                "SingleLine": q,
+                "outFields": "Match_addr,Addr_type,City,Region,RegionAbbr,Postal",
+                "maxLocations": 1,
+                "f": "json",
+            },
+            timeout=40,
+        )
+        candidates = payload.get("candidates", [])
+        if not candidates:
+            return {}
+        best = candidates[0]
+        location = best.get("location", {}) or {}
+        lon = float(location.get("x"))
+        lat = float(location.get("y"))
+        attrs = best.get("attributes", {}) or {}
+        return {
+            "input": q,
+            "matched_address": str(best.get("address", "")).strip(),
+            "score": float(best.get("score", 0.0)),
+            "lon": lon,
+            "lat": lat,
+            "region": str(attrs.get("Region", "")).strip(),
+            "region_abbr": str(attrs.get("RegionAbbr", "")).strip(),
+            "city": str(attrs.get("City", "")).strip(),
+            "postal": str(attrs.get("Postal", "")).strip(),
+        }
+    except Exception:
+        return {}
+
+@st.cache_data(show_spinner=False, ttl=604800, max_entries=4096)
+def geocode_texas_entity_arcgis(entity_name: str) -> dict:
+    q = str(entity_name).strip()
+    if not q:
+        return {}
+    candidates_to_try = [f"{q}, Texas", q]
+    for candidate_query in candidates_to_try:
+        try:
+            payload = _arcgis_get_json(
+                ARCGIS_GEOCODER_URL,
+                params={
+                    "SingleLine": candidate_query,
+                    "outFields": "Match_addr,Addr_type,City,Region,RegionAbbr,Postal",
+                    "maxLocations": 1,
+                    "searchExtent": "-106.65,25.84,-93.51,36.50",
+                    "f": "json",
+                },
+                timeout=35,
+            )
+            candidates = payload.get("candidates", [])
+            if not candidates:
+                continue
+            best = candidates[0]
+            location = best.get("location", {}) or {}
+            lon = float(location.get("x"))
+            lat = float(location.get("y"))
+            attrs = best.get("attributes", {}) or {}
+            region_abbr = str(attrs.get("RegionAbbr", "")).strip().upper()
+            if region_abbr and region_abbr != "TX":
+                continue
+            return {
+                "input": q,
+                "matched_address": str(best.get("address", "")).strip(),
+                "score": float(best.get("score", 0.0)),
+                "lon": lon,
+                "lat": lat,
+                "city": str(attrs.get("City", "")).strip(),
+                "region_abbr": region_abbr,
+                "postal": str(attrs.get("Postal", "")).strip(),
+            }
+        except Exception:
+            continue
+    return {}
+
+@st.cache_data(show_spinner=False, ttl=604800, max_entries=8192)
+def query_texas_county_for_point(lon: float, lat: float) -> dict:
+    try:
+        payload = _arcgis_get_json(
+            f"{TEA_ARCGIS_COUNTY_LAYER_URL}/query",
+            params={
+                "geometry": f"{lon},{lat}",
+                "geometryType": "esriGeometryPoint",
+                "inSR": "4326",
+                "spatialRel": "esriSpatialRelIntersects",
+                "outFields": "FENAME,FIPS",
+                "returnGeometry": "false",
+                "f": "json",
+            },
+        )
+        features = payload.get("features", [])
+        if not features:
+            return {}
+        attrs = features[0].get("attributes", {}) or {}
+        county_name = str(attrs.get("FENAME", "")).strip()
+        fips = str(attrs.get("FIPS", "")).strip()
+        return {"county_name": county_name, "county_fips": fips}
+    except Exception:
+        return {}
+
+@st.cache_data(show_spinner=False, ttl=86400, max_entries=512)
+def query_texas_subdivisions_for_point(lon: float, lat: float) -> pd.DataFrame:
+    cols = ["subdivision_type", "subdivision_name", "subdivision_code", "source_name", "source_url"]
+    rows: list[dict] = []
+    try:
+        district_payload = _arcgis_get_json(
+            f"{TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL}/query",
+            params={
+                "geometry": f"{lon},{lat}",
+                "geometryType": "esriGeometryPoint",
+                "inSR": "4326",
+                "spatialRel": "esriSpatialRelIntersects",
+                "outFields": "NAME,NAME20,DISTRICT,DISTRICT_C",
+                "returnGeometry": "false",
+                "f": "json",
+            },
+        )
+        for feat in district_payload.get("features", []):
+            attrs = feat.get("attributes", {}) or {}
+            name = str(attrs.get("NAME20", "")).strip() or str(attrs.get("NAME", "")).strip()
+            code = str(attrs.get("DISTRICT", "")).strip() or str(attrs.get("DISTRICT_C", "")).strip()
+            if name:
+                rows.append(
+                    {
+                        "subdivision_type": "School District",
+                        "subdivision_name": name,
+                        "subdivision_code": code,
+                        "source_name": "TEA School District boundaries (FeatureServer/0)",
+                        "source_url": TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL,
+                    }
+                )
+    except Exception:
+        pass
+
+    try:
+        county_payload = _arcgis_get_json(
+            f"{TEA_ARCGIS_COUNTY_LAYER_URL}/query",
+            params={
+                "geometry": f"{lon},{lat}",
+                "geometryType": "esriGeometryPoint",
+                "inSR": "4326",
+                "spatialRel": "esriSpatialRelIntersects",
+                "outFields": "FENAME,FIPS",
+                "returnGeometry": "false",
+                "f": "json",
+            },
+        )
+        for feat in county_payload.get("features", []):
+            attrs = feat.get("attributes", {}) or {}
+            county_name = str(attrs.get("FENAME", "")).strip()
+            if county_name:
+                rows.append(
+                    {
+                        "subdivision_type": "County",
+                        "subdivision_name": f"{county_name} County",
+                        "subdivision_code": str(attrs.get("FIPS", "")).strip(),
+                        "source_name": "TEA County boundaries (FeatureServer/0)",
+                        "source_url": TEA_ARCGIS_COUNTY_LAYER_URL,
+                    }
+                )
+    except Exception:
+        pass
+
+    try:
+        city_payload = _arcgis_get_json(
+            f"{CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL}/query",
+            params={
+                "where": "STATE='48'",
+                "geometry": f"{lon},{lat}",
+                "geometryType": "esriGeometryPoint",
+                "inSR": "4326",
+                "spatialRel": "esriSpatialRelIntersects",
+                "outFields": "NAME,BASENAME,GEOID",
+                "returnGeometry": "false",
+                "f": "json",
+            },
+        )
+        for feat in city_payload.get("features", []):
+            attrs = feat.get("attributes", {}) or {}
+            name = str(attrs.get("NAME", "")).strip()
+            base = str(attrs.get("BASENAME", "")).strip() or re.sub(
+                r"\s+(city|town|village)\s*$", "", name, flags=re.IGNORECASE
+            ).strip()
+            if base:
+                display = base
+                if not re.search(r"\b(CITY|TOWN|VILLAGE)\b$", display, flags=re.IGNORECASE):
+                    display = f"{display} City"
+                rows.append(
+                    {
+                        "subdivision_type": "City",
+                        "subdivision_name": display,
+                        "subdivision_code": str(attrs.get("GEOID", "")).strip(),
+                        "source_name": "U.S. Census TIGERweb Texas Places (MapServer/25)",
+                        "source_url": CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL,
+                    }
+                )
+    except Exception:
+        pass
+
+    try:
+        water_payload = _arcgis_get_json(
+            f"{TCEQ_WATER_DISTRICTS_LAYER_URL}/query",
+            params={
+                "geometry": f"{lon},{lat}",
+                "geometryType": "esriGeometryPoint",
+                "inSR": "4326",
+                "spatialRel": "esriSpatialRelIntersects",
+                "outFields": "NAME,DISTRICT_ID,TYPE,TYPE_DESCRIPTION",
+                "returnGeometry": "false",
+                "f": "json",
+            },
+        )
+        for feat in water_payload.get("features", []):
+            attrs = feat.get("attributes", {}) or {}
+            mapped_type = _canonical_water_district_type(str(attrs.get("TYPE_DESCRIPTION", "")).strip())
+            if mapped_type == "Navigation District":
+                # Use the dedicated statewide navigation-district layer for this type.
+                mapped_type = ""
+            if not mapped_type:
+                continue
+            name = str(attrs.get("NAME", "")).strip()
+            if name:
+                rows.append(
+                    {
+                        "subdivision_type": mapped_type,
+                        "subdivision_name": name,
+                        "subdivision_code": str(attrs.get("DISTRICT_ID", "")).strip(),
+                        "source_name": "TCEQ Water Districts (FeatureServer/0)",
+                        "source_url": TCEQ_WATER_DISTRICTS_LAYER_URL,
+                    }
+                )
+    except Exception:
+        pass
+
+    try:
+        groundwater_payload = _arcgis_get_json(
+            f"{TCEQ_GROUNDWATER_DISTRICTS_LAYER_URL}/query",
+            params={
+                "geometry": f"{lon},{lat}",
+                "geometryType": "esriGeometryPoint",
+                "inSR": "4326",
+                "spatialRel": "esriSpatialRelIntersects",
+                "outFields": "DISTNAME,DIST_NUM,SHORTNAM",
+                "returnGeometry": "false",
+                "f": "json",
+            },
+        )
+        for feat in groundwater_payload.get("features", []):
+            attrs = feat.get("attributes", {}) or {}
+            name = str(attrs.get("DISTNAME", "")).strip() or str(attrs.get("SHORTNAM", "")).strip()
+            if name:
+                rows.append(
+                    {
+                        "subdivision_type": "Groundwater Conservation District",
+                        "subdivision_name": name,
+                        "subdivision_code": str(attrs.get("DIST_NUM", "")).strip(),
+                        "source_name": "TCEQ Groundwater Conservation Districts (FeatureServer/0)",
+                        "source_url": TCEQ_GROUNDWATER_DISTRICTS_LAYER_URL,
+                    }
+                )
+    except Exception:
+        pass
+
+    try:
+        rma_payload = _arcgis_get_json(
+            f"{TEXAS_RMA_LAYER_URL}/query",
+            params={
+                "geometry": f"{lon},{lat}",
+                "geometryType": "esriGeometryPoint",
+                "inSR": "4326",
+                "spatialRel": "esriSpatialRelIntersects",
+                "outFields": "OBJECTID,RMA,Label",
+                "returnGeometry": "false",
+                "f": "json",
+            },
+        )
+        for feat in rma_payload.get("features", []):
+            attrs = feat.get("attributes", {}) or {}
+            name = str(attrs.get("Label", "")).strip() or str(attrs.get("RMA", "")).strip()
+            if name:
+                rows.append(
+                    {
+                        "subdivision_type": "Regional Mobility Authority",
+                        "subdivision_name": name,
+                        "subdivision_code": str(attrs.get("OBJECTID", "")).strip(),
+                        "source_name": "Texas Regional Mobility Authorities (FeatureServer/0)",
+                        "source_url": TEXAS_RMA_LAYER_URL,
+                    }
+                )
+    except Exception:
+        pass
+
+    try:
+        jc_payload = _arcgis_get_json(
+            f"{TEXAS_JUNIOR_COLLEGE_LAYER_URL}/query",
+            params={
+                "geometry": f"{lon},{lat}",
+                "geometryType": "esriGeometryPoint",
+                "inSR": "4326",
+                "spatialRel": "esriSpatialRelIntersects",
+                "outFields": "DISTRICT,NAME1,NAME2",
+                "returnGeometry": "false",
+                "f": "json",
+            },
+        )
+        for feat in jc_payload.get("features", []):
+            attrs = feat.get("attributes", {}) or {}
+            name = str(attrs.get("NAME1", "")).strip() or str(attrs.get("NAME2", "")).strip()
+            if name:
+                rows.append(
+                    {
+                        "subdivision_type": "Junior College District",
+                        "subdivision_name": name,
+                        "subdivision_code": str(attrs.get("DISTRICT", "")).strip(),
+                        "source_name": "Texas Junior College Service Areas (FeatureServer/0)",
+                        "source_url": TEXAS_JUNIOR_COLLEGE_LAYER_URL,
+                    }
+                )
+    except Exception:
+        pass
+
+    try:
+        nav_payload = _arcgis_get_json(
+            f"{TEXAS_NAVIGATION_DISTRICT_LAYER_URL}/query",
+            params={
+                "geometry": f"{lon},{lat}",
+                "geometryType": "esriGeometryPoint",
+                "inSR": "4326",
+                "spatialRel": "esriSpatialRelIntersects",
+                "outFields": "OBJECTID,DISTRICT_N",
+                "returnGeometry": "false",
+                "f": "json",
+            },
+        )
+        for feat in nav_payload.get("features", []):
+            attrs = feat.get("attributes", {}) or {}
+            name = str(attrs.get("DISTRICT_N", "")).strip()
+            if name:
+                rows.append(
+                    {
+                        "subdivision_type": "Navigation District",
+                        "subdivision_name": name,
+                        "subdivision_code": str(attrs.get("OBJECTID", "")).strip(),
+                        "source_name": "Texas Navigation Districts (FeatureServer/29)",
+                        "source_url": TEXAS_NAVIGATION_DISTRICT_LAYER_URL,
+                    }
+                )
+    except Exception:
+        pass
+
+    try:
+        transit_payload = _arcgis_get_json(
+            f"{NCTCOG_TRANSIT_PROVIDERS_LAYER_URL}/query",
+            params={
+                "geometry": f"{lon},{lat}",
+                "geometryType": "esriGeometryPoint",
+                "inSR": "4326",
+                "spatialRel": "esriSpatialRelIntersects",
+                "outFields": "OBJECTID,Name,Classification",
+                "returnGeometry": "false",
+                "f": "json",
+            },
+        )
+        for feat in transit_payload.get("features", []):
+            attrs = feat.get("attributes", {}) or {}
+            name = str(attrs.get("Name", "")).strip()
+            if name:
+                rows.append(
+                    {
+                        "subdivision_type": "Transit Authority",
+                        "subdivision_name": name,
+                        "subdivision_code": str(attrs.get("OBJECTID", "")).strip(),
+                        "source_name": "NCTCOG Transit Providers (MapServer/10)",
+                        "source_url": NCTCOG_TRANSIT_PROVIDERS_LAYER_URL,
+                    }
+                )
+    except Exception:
+        pass
+
+    try:
+        seaport_payload = _arcgis_get_json(
+            f"{TXDOT_SEAPORTS_LAYER_URL}/query",
+            params={
+                "geometry": f"{lon},{lat}",
+                "geometryType": "esriGeometryPoint",
+                "inSR": "4326",
+                "spatialRel": "esriSpatialRelIntersects",
+                "distance": 25,
+                "units": "esriSRUnit_StatuteMile",
+                "outFields": "OBJECTID,PORT_NM",
+                "returnGeometry": "false",
+                "f": "json",
+            },
+        )
+        for feat in seaport_payload.get("features", []):
+            attrs = feat.get("attributes", {}) or {}
+            name = str(attrs.get("PORT_NM", "")).strip()
+            if name:
+                rows.append(
+                    {
+                        "subdivision_type": "Port Authority",
+                        "subdivision_name": name,
+                        "subdivision_code": str(attrs.get("OBJECTID", "")).strip(),
+                        "source_name": "TxDOT Seaports (FeatureServer/0)",
+                        "source_url": TXDOT_SEAPORTS_LAYER_URL,
+                    }
+                )
+    except Exception:
+        pass
+
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    out = pd.DataFrame(rows, columns=cols).drop_duplicates()
+    return out.sort_values(["subdivision_type", "subdivision_name"], ascending=[True, True])
+
+def _subdivision_name_key(subdivision_type: str, subdivision_name: str) -> str:
+    t = str(subdivision_type).strip().lower()
+    if t == "school district":
+        return _school_district_root_key(subdivision_name)
+    if t == "county":
+        return _county_root_key(subdivision_name)
+    if t == "city":
+        return _city_root_key(subdivision_name)
+    for water_type, root_patterns in WATER_DISTRICT_TYPE_ROOT_PATTERNS.items():
+        if t == water_type.lower():
+            return _subdivision_root_from_patterns(subdivision_name, root_patterns)
+    if t == "transit authority":
+        return _subdivision_root_from_patterns(subdivision_name, TRANSIT_AUTHORITY_ROOT_PATTERNS)
+    if t == "port authority":
+        return _subdivision_root_from_patterns(subdivision_name, PORT_AUTHORITY_ROOT_PATTERNS)
+    if t == "hospital district":
+        return _subdivision_root_from_patterns(subdivision_name, [r"\bHOSPITAL\s+DISTRICT\b", r"\bDISTRICT\b"])
+    if t == "emergency services district":
+        return _subdivision_root_from_patterns(subdivision_name, [r"\bEMERGENCY\s+SERVICES\s+DISTRICT\b", r"\bDISTRICT\b", r"\bE\.?S\.?D\.?\b"])
+    if t == "appraisal district":
+        return _subdivision_root_from_patterns(subdivision_name, [r"\bAPPRAISAL\s+DISTRICT\b", r"\bDISTRICT\b", r"\bC\.?A\.?D\.?\b"])
+    if t == "local government corporation":
+        return _subdivision_root_from_patterns(
+            subdivision_name,
+            [r"\bLOCAL\s+GOVERNMENT\s+CORPORATION\b", r"\bDEVELOPMENT\s+CORPORATION\b", r"\bCORPORATION\b"],
+        )
+    if t == "groundwater conservation district":
+        return _subdivision_root_from_patterns(subdivision_name, [r"\bGROUNDWATER\s+CONSERVATION\s+DISTRICT\b", r"\bDISTRICT\b"])
+    if t == "regional mobility authority":
+        return _subdivision_root_from_patterns(subdivision_name, [r"\bREGIONAL\s+MOBILITY\s+AUTHORITY\b", r"\bAUTHORITY\b", r"\bRMA\b"])
+    if t == "junior college district":
+        return _subdivision_root_from_patterns(
+            subdivision_name,
+            [r"\bCOMMUNITY\s+COLLEGE\b", r"\bJUNIOR\s+COLLEGE\b", r"\bCOLLEGE\s+DISTRICT\b", r"\bSERVICE\s+AREA\b", r"\bCOLLEGE\b", r"\bDISTRICT\b"],
+        )
+    return norm_name(subdivision_name)
+
+def _subdivision_code_key(subdivision_code: str) -> str:
+    return norm_name(str(subdivision_code).strip())
+
+def _subdivision_numeric_code_key(subdivision_code: str) -> str:
+    digits = re.sub(r"\D+", "", str(subdivision_code).strip())
+    if not digits:
+        return ""
+    stripped = digits.lstrip("0")
+    return stripped if stripped else digits
+
+def _prepare_subdivision_match_pool(pool: pd.DataFrame, subdivision_type: str) -> pd.DataFrame:
+    if pool.empty:
+        return pool.copy()
+    out = pool.copy()
+    code_series = (
+        out["subdivision_code"].astype(str)
+        if "subdivision_code" in out.columns
+        else pd.Series([""] * len(out), index=out.index, dtype=object).astype(str)
+    )
+    name_series = (
+        out["subdivision_name"].astype(str)
+        if "subdivision_name" in out.columns
+        else pd.Series([""] * len(out), index=out.index, dtype=object).astype(str)
+    )
+    out["_code_key"] = code_series.map(_subdivision_code_key)
+    out["_code_numeric_key"] = code_series.map(_subdivision_numeric_code_key)
+    out["_name_key"] = name_series.map(
+        lambda x: _subdivision_name_key(subdivision_type, x)
+    )
+    return out
+
+def _pick_overlap_subdivision_matches(
+    pool: pd.DataFrame,
+    subdivision_type: str,
+    subdivision_name: str,
+    subdivision_code: str,
+) -> tuple[pd.DataFrame, str]:
+    if pool.empty:
+        return pd.DataFrame(), ""
+
+    code_key = _subdivision_code_key(subdivision_code)
+    if code_key and "_code_key" in pool.columns:
+        picked = pool[pool["_code_key"].astype(str) == code_key].copy()
+        if not picked.empty:
+            return picked, "Spatial boundary (code)"
+
+    numeric_code_key = _subdivision_numeric_code_key(subdivision_code)
+    if numeric_code_key and "_code_numeric_key" in pool.columns:
+        picked = pool[pool["_code_numeric_key"].astype(str) == numeric_code_key].copy()
+        if not picked.empty:
+            return picked, "Spatial boundary (code)"
+
+    name_key = _subdivision_name_key(subdivision_type, subdivision_name)
+    if name_key and "_name_key" in pool.columns:
+        picked = pool[pool["_name_key"].astype(str) == name_key].copy()
+        if not picked.empty:
+            return picked, "Spatial boundary (name)"
+
+        # Conservative fuzzy fallback for minor naming deltas between ArcGIS layers and matched records.
+        if len(name_key) >= 6:
+            name_pool = pool[pool["_name_key"].astype(str) != ""].copy()
+            if not name_pool.empty:
+                name_pool["_name_score"] = name_pool["_name_key"].astype(str).map(
+                    lambda x: difflib.SequenceMatcher(None, name_key, str(x)).ratio()
+                )
+                name_pool = name_pool[name_pool["_name_score"] >= 0.90].copy()
+                if not name_pool.empty:
+                    best_score = float(name_pool["_name_score"].max())
+                    picked = name_pool[name_pool["_name_score"] >= max(0.90, best_score - 0.03)].copy()
+                    if not picked.empty:
+                        return picked.drop(columns=["_name_score"], errors="ignore"), "Spatial boundary (fuzzy)"
+
+    return pd.DataFrame(), ""
+
+def _match_confidence_from_method(match_method: str) -> str:
+    m = str(match_method).strip().lower()
+    if m in {"spatial boundary (code)", "spatial boundary (name)"}:
+        return "High"
+    if m == "spatial boundary (fuzzy)":
+        return "Medium"
+    if m in {"name anchored", "name + geocode context"}:
+        return "Low"
+    return "Unknown"
+
+def build_address_overlap_spending_rows(
+    overlap_subdivisions: pd.DataFrame,
+    subdivision_matches: pd.DataFrame,
+    tfl_spending: pd.DataFrame,
+) -> pd.DataFrame:
+    cols = [
+        "Subdivision Type",
+        "Subdivision",
+        "Code",
+        "Entity Type",
+        "TFL Entity",
+        "Match Method",
+        "Match Confidence",
+        "Map Source",
+        "Low",
+        "High",
+        "Mid",
+        "Lobbyists",
+    ]
+    if overlap_subdivisions.empty or subdivision_matches.empty or tfl_spending.empty:
+        return pd.DataFrame(columns=cols)
+
+    spend = tfl_spending.copy()
+    spend = ensure_cols(spend, {"Client": "", "Low": 0.0, "High": 0.0, "Lobbyists": 0})
+    spend["Client"] = spend["Client"].fillna("").astype(str).str.strip()
+    spend = spend[spend["Client"] != ""].copy()
+    if spend.empty:
+        return pd.DataFrame(columns=cols)
+    spend["Low"] = pd.to_numeric(spend["Low"], errors="coerce").fillna(0.0)
+    spend["High"] = pd.to_numeric(spend["High"], errors="coerce").fillna(0.0)
+    spend["Lobbyists"] = pd.to_numeric(spend["Lobbyists"], errors="coerce").fillna(0).astype(int)
+    spend["EntityType"] = spend["Client"].map(classify_requested_entity_type)
+    spend = (
+        spend.groupby("Client", as_index=False)
+        .agg(Low=("Low", "sum"), High=("High", "sum"), Lobbyists=("Lobbyists", "max"), EntityType=("EntityType", "first"))
+    )
+    spend_lookup = {
+        str(r.Client): {
+            "Low": float(r.Low),
+            "High": float(r.High),
+            "Lobbyists": int(r.Lobbyists),
+            "EntityType": str(r.EntityType).strip(),
+        }
+        for r in spend.itertuples(index=False)
+    }
+
+    rows: list[dict] = []
+    existing_keys: set[tuple[str, str, str, str]] = set()
+    pool_cache: dict[str, pd.DataFrame] = {}
+    for overlap in overlap_subdivisions.itertuples(index=False):
+        t = str(overlap.subdivision_type).strip()
+        n = str(overlap.subdivision_name).strip()
+        c = str(overlap.subdivision_code).strip()
+        if t not in pool_cache:
+            base_pool = subdivision_matches[subdivision_matches["subdivision_type"].astype(str) == t].copy()
+            pool_cache[t] = _prepare_subdivision_match_pool(base_pool, t)
+        pool = pool_cache.get(t, pd.DataFrame())
+        if pool.empty:
+            continue
+
+        picked, spatial_match_method = _pick_overlap_subdivision_matches(pool, t, n, c)
+        if picked.empty:
+            continue
+
+        matched_clients: set[str] = set()
+        picked_source_names = {
+            str(v).strip()
+            for v in picked.get("source_name", pd.Series(dtype=object)).dropna().astype(str).tolist()
+            if str(v).strip()
+        }
+        picked_source = "; ".join(sorted(picked_source_names))
+        for client_list in picked.get("match_clients", pd.Series(dtype=object)).tolist():
+            if isinstance(client_list, list):
+                matched_clients.update({str(x).strip() for x in client_list if str(x).strip()})
+
+        for client in sorted(matched_clients):
+            spend_vals = spend_lookup.get(client, {"Low": 0.0, "High": 0.0, "Lobbyists": 0, "EntityType": ""})
+            low = float(spend_vals.get("Low", 0.0))
+            high = float(spend_vals.get("High", 0.0))
+            entity_type = str(spend_vals.get("EntityType", "")).strip()
+            method = spatial_match_method or "Spatial boundary (name)"
+            rows.append(
+                {
+                    "Subdivision Type": t,
+                    "Subdivision": n,
+                    "Code": c,
+                    "Entity Type": entity_type,
+                    "TFL Entity": client,
+                    "Match Method": method,
+                    "Match Confidence": _match_confidence_from_method(method),
+                    "Map Source": picked_source,
+                    "Low": low,
+                    "High": high,
+                    "Mid": (low + high) / 2,
+                    "Lobbyists": int(spend_vals.get("Lobbyists", 0)),
+                }
+            )
+            existing_keys.add((t, n, c, client))
+
+    # Fallback for requested entity types without statewide polygon layers.
+    unsupported_types = {
+        "Hospital District",
+        "Emergency Services District",
+        "Local Government Corporation",
+        "Transit Authority",
+        "Port Authority",
+        "Housing Authority",
+        "Appraisal District",
+    }
+    county_lookup = {
+        _county_root_key(str(r.subdivision_name)): (str(r.subdivision_name), str(r.subdivision_code))
+        for r in overlap_subdivisions.itertuples(index=False)
+        if str(r.subdivision_type).strip() == "County" and _county_root_key(str(r.subdivision_name))
+    }
+    city_lookup = {
+        _city_root_key(str(r.subdivision_name)): (str(r.subdivision_name), str(r.subdivision_code))
+        for r in overlap_subdivisions.itertuples(index=False)
+        if str(r.subdivision_type).strip() == "City" and _city_root_key(str(r.subdivision_name))
+    }
+    school_lookup = {
+        _school_district_root_key(str(r.subdivision_name)): (str(r.subdivision_name), str(r.subdivision_code))
+        for r in overlap_subdivisions.itertuples(index=False)
+        if str(r.subdivision_type).strip() == "School District" and _school_district_root_key(str(r.subdivision_name))
+    }
+    county_lookup_keys = tuple(k for k in county_lookup.keys() if k)
+    city_lookup_keys = tuple(k for k in city_lookup.keys() if k)
+
+    for client, spend_vals in spend_lookup.items():
+        entity_type = str(spend_vals.get("EntityType", "")).strip()
+        if entity_type not in unsupported_types:
+            continue
+        low = float(spend_vals.get("Low", 0.0))
+        high = float(spend_vals.get("High", 0.0))
+        lob = int(spend_vals.get("Lobbyists", 0))
+
+        matched_targets: list[tuple[str, str, str, str, str]] = []
+        anchor_keys = _resolve_special_anchor_keys(
+            client_name=client,
+            entity_type=entity_type,
+            county_lookup_keys=county_lookup_keys,
+            city_lookup_keys=city_lookup_keys,
+        )
+        county_key = str(anchor_keys.get("county_key", "")).strip()
+        if county_key and county_key in county_lookup:
+            n, c = county_lookup[county_key]
+            matched_targets.append(("County", n, c, "Name anchored", "Name anchored via overlapping core boundaries"))
+
+        city_key = str(anchor_keys.get("city_key", "")).strip()
+        if city_key and city_key in city_lookup:
+            n, c = city_lookup[city_key]
+            matched_targets.append(("City", n, c, "Name anchored", "Name anchored via overlapping core boundaries"))
+
+        school_key = _school_district_root_key(client)
+        if school_key and school_key in school_lookup:
+            n, c = school_lookup[school_key]
+            matched_targets.append(("School District", n, c, "Name anchored", "Name anchored via overlapping core boundaries"))
+
+        geocoded = geocode_texas_entity_arcgis(client)
+        geocode_score = float(geocoded.get("score", 0.0)) if geocoded else 0.0
+        if geocoded and geocode_score >= 70:
+            try:
+                geo_lon = float(geocoded.get("lon", 0.0))
+                geo_lat = float(geocoded.get("lat", 0.0))
+            except Exception:
+                geo_lon = 0.0
+                geo_lat = 0.0
+
+            county_info = query_texas_county_for_point(round(geo_lon, 6), round(geo_lat, 6))
+            geo_county = str(county_info.get("county_name", "")).strip()
+            geo_county_key = _county_root_key(f"{geo_county} County") if geo_county else ""
+            if geo_county_key and geo_county_key in county_lookup:
+                n, c = county_lookup[geo_county_key]
+                matched_targets.append(("County", n, c, "Name + geocode context", "ArcGIS geocoded entity centroid (Texas)"))
+
+            geo_city = str(geocoded.get("city", "")).strip()
+            geo_city_key = _city_root_key(f"{geo_city} City") if geo_city else ""
+            if geo_city_key and geo_city_key in city_lookup:
+                n, c = city_lookup[geo_city_key]
+                matched_targets.append(("City", n, c, "Name + geocode context", "ArcGIS geocoded entity centroid (Texas)"))
+
+        for t, n, c, match_method, map_source in matched_targets:
+            row_key = (t, n, c, client)
+            if row_key in existing_keys:
+                continue
+            rows.append(
+                {
+                    "Subdivision Type": t,
+                    "Subdivision": n,
+                    "Code": c,
+                    "Entity Type": entity_type,
+                    "TFL Entity": client,
+                    "Match Method": match_method,
+                    "Match Confidence": _match_confidence_from_method(match_method),
+                    "Map Source": map_source,
+                    "Low": low,
+                    "High": high,
+                    "Mid": (low + high) / 2,
+                    "Lobbyists": lob,
+                }
+            )
+            existing_keys.add(row_key)
+
+    if not rows:
+        return pd.DataFrame(columns=cols)
+
+    out = pd.DataFrame(rows, columns=cols)
+    out["_method_order"] = out["Match Method"].map(
+        {
+            "Spatial boundary (code)": 0,
+            "Spatial boundary (name)": 1,
+            "Spatial boundary (fuzzy)": 2,
+            "Name anchored": 3,
+            "Name + geocode context": 4,
+        }
+    ).fillna(9)
+    out = out.sort_values(
+        ["_method_order", "Mid", "High", "Low", "Subdivision Type", "Subdivision", "TFL Entity"],
+        ascending=[True, False, False, False, True, True, True],
+    )
+    out = out.drop_duplicates(["Subdivision Type", "Subdivision", "Code", "TFL Entity"], keep="first")
+    out = out.drop(columns=["_method_order"], errors="ignore")
+    return out
+
+def _subdivision_color_hex(subdivision_type: str) -> str:
+    key = str(subdivision_type).strip()
+    return SUBDIVISION_TYPE_COLORS.get(key, "#718191")
+
+def _hex_to_rgba(color_hex: str, alpha: float = 0.88) -> list[float]:
+    color = str(color_hex).strip().lstrip("#")
+    if len(color) != 6 or not re.match(r"^[0-9a-fA-F]{6}$", color):
+        return [113, 129, 145, alpha]
+    return [int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16), alpha]
+
+def render_subdivision_map_legend(type_counts: dict[str, int]) -> None:
+    items = []
+    for subtype, count in sorted(type_counts.items(), key=lambda x: (-int(x[1]), str(x[0]))):
+        safe_type = html.escape(str(subtype), quote=True)
+        safe_count = f"{int(count):,}"
+        color = _subdivision_color_hex(str(subtype))
+        items.append(
+            f"""
+<div class="map-legend-item">
+  <div class="map-legend-left">
+    <span class="map-legend-chip" style="background:{color};"></span>
+    <span>{safe_type}</span>
+  </div>
+  <strong>{safe_count}</strong>
+</div>
+"""
+        )
+    if items:
+        st.markdown(f'<div class="map-legend">{"".join(items)}</div>', unsafe_allow_html=True)
+
+def build_overlap_map_points(
+    overlap_subdivisions: pd.DataFrame,
+    subdivision_matches: pd.DataFrame,
+) -> pd.DataFrame:
+    cols = [
+        "subdivision_type",
+        "subdivision_name",
+        "subdivision_code",
+        "lon",
+        "lat",
+        "match_count",
+        "high_total",
+        "match_method",
+        "source_name",
+    ]
+    if overlap_subdivisions.empty or subdivision_matches.empty:
+        return pd.DataFrame(columns=cols)
+
+    rows: list[dict] = []
+    pool_cache: dict[str, pd.DataFrame] = {}
+    seen_keys: set[tuple[str, str, str]] = set()
+
+    for overlap in overlap_subdivisions.itertuples(index=False):
+        subdivision_type = str(overlap.subdivision_type).strip()
+        subdivision_name = str(overlap.subdivision_name).strip()
+        subdivision_code = str(overlap.subdivision_code).strip()
+        if not subdivision_type or not subdivision_name:
+            continue
+
+        if subdivision_type not in pool_cache:
+            base_pool = subdivision_matches[
+                subdivision_matches["subdivision_type"].astype(str) == subdivision_type
+            ].copy()
+            pool_cache[subdivision_type] = _prepare_subdivision_match_pool(base_pool, subdivision_type)
+
+        pool = pool_cache.get(subdivision_type, pd.DataFrame())
+        if pool.empty:
+            continue
+
+        picked, match_method = _pick_overlap_subdivision_matches(
+            pool,
+            subdivision_type,
+            subdivision_name,
+            subdivision_code,
+        )
+        if picked.empty:
+            continue
+
+        picked["match_count"] = pd.to_numeric(picked.get("match_count", 0), errors="coerce").fillna(0)
+        picked = picked.sort_values(["match_count"], ascending=[False])
+        best = picked.iloc[0]
+
+        key = (subdivision_type, subdivision_name, subdivision_code)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+
+        rows.append(
+            {
+                "subdivision_type": subdivision_type,
+                "subdivision_name": subdivision_name,
+                "subdivision_code": subdivision_code,
+                "lon": float(best.get("lon", 0.0)),
+                "lat": float(best.get("lat", 0.0)),
+                "match_count": int(float(best.get("match_count", 0.0))),
+                "high_total": float(best.get("high_total", 0.0)),
+                "match_method": match_method or "Spatial boundary (name)",
+                "source_name": str(best.get("source_name", "")).strip(),
+            }
+        )
+
+    # Include name-anchored special-type points when their inferred county/city anchor
+    # is present in the overlapping core boundaries for this address.
+    overlap_county_keys = {
+        _county_root_key(str(r.subdivision_name))
+        for r in overlap_subdivisions.itertuples(index=False)
+        if str(r.subdivision_type).strip() == "County" and _county_root_key(str(r.subdivision_name))
+    }
+    overlap_city_keys = {
+        _city_root_key(str(r.subdivision_name))
+        for r in overlap_subdivisions.itertuples(index=False)
+        if str(r.subdivision_type).strip() == "City" and _city_root_key(str(r.subdivision_name))
+    }
+    if overlap_county_keys or overlap_city_keys:
+        special_types = set(SPECIAL_NAME_ANCHORED_ENTITY_TYPES) | {"Housing Authority"}
+        special_matches = subdivision_matches[
+            subdivision_matches["subdivision_type"].astype(str).isin(special_types)
+        ].copy()
+        county_lookup_keys = tuple(sorted(overlap_county_keys))
+        city_lookup_keys = tuple(sorted(overlap_city_keys))
+        for row in special_matches.itertuples(index=False):
+            subdivision_type = str(getattr(row, "subdivision_type", "")).strip()
+            subdivision_name = str(getattr(row, "subdivision_name", "")).strip()
+            subdivision_code = str(getattr(row, "subdivision_code", "")).strip()
+            if not subdivision_type or not subdivision_name:
+                continue
+
+            clients = getattr(row, "match_clients", [])
+            client_list = clients if isinstance(clients, list) else []
+            if not client_list:
+                client_list = [subdivision_name]
+
+            include_point = False
+            for client_name in client_list:
+                anchor_keys = _resolve_special_anchor_keys(
+                    client_name=str(client_name),
+                    entity_type=subdivision_type,
+                    county_lookup_keys=county_lookup_keys,
+                    city_lookup_keys=city_lookup_keys,
+                )
+                county_key = str(anchor_keys.get("county_key", "")).strip()
+                city_key = str(anchor_keys.get("city_key", "")).strip()
+                if (county_key and county_key in overlap_county_keys) or (city_key and city_key in overlap_city_keys):
+                    include_point = True
+                    break
+            if not include_point:
+                continue
+
+            key = (subdivision_type, subdivision_name, subdivision_code)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+
+            rows.append(
+                {
+                    "subdivision_type": subdivision_type,
+                    "subdivision_name": subdivision_name,
+                    "subdivision_code": subdivision_code,
+                    "lon": float(getattr(row, "lon", 0.0)),
+                    "lat": float(getattr(row, "lat", 0.0)),
+                    "match_count": int(getattr(row, "match_count", 0) or 0),
+                    "high_total": float(getattr(row, "high_total", 0.0) or 0.0),
+                    "match_method": "Name anchored",
+                    "source_name": str(getattr(row, "source_name", "")).strip(),
+                }
+            )
+
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    out = pd.DataFrame(rows, columns=cols).drop_duplicates(
+        ["subdivision_type", "subdivision_name", "subdivision_code"]
+    )
+    return out.sort_values(["subdivision_type", "subdivision_name"], ascending=[True, True])
+
+def render_address_overlap_arcgis_map(
+    lon: float,
+    lat: float,
+    matched_address: str,
+    overlap_points: pd.DataFrame,
+    height: int = 440,
+    basemap: str = "gray-vector",
+) -> None:
+    try:
+        lon_val = float(lon)
+        lat_val = float(lat)
+    except Exception:
+        return
+
+    point_rows = []
+    if isinstance(overlap_points, pd.DataFrame) and not overlap_points.empty:
+        for row in overlap_points.itertuples(index=False):
+            subdivision_type = str(getattr(row, "subdivision_type", "")).strip()
+            point_rows.append(
+                {
+                    "subdivision_type": html.escape(subdivision_type, quote=True),
+                    "subdivision_name": html.escape(str(getattr(row, "subdivision_name", "")).strip(), quote=True),
+                    "subdivision_code": html.escape(str(getattr(row, "subdivision_code", "")).strip(), quote=True),
+                    "lon": float(getattr(row, "lon", 0.0)),
+                    "lat": float(getattr(row, "lat", 0.0)),
+                    "match_count": int(getattr(row, "match_count", 0) or 0),
+                    "high_total": float(getattr(row, "high_total", 0.0) or 0.0),
+                    "match_method": html.escape(str(getattr(row, "match_method", "")).strip(), quote=True),
+                    "source_name": html.escape(str(getattr(row, "source_name", "")).strip(), quote=True),
+                    "color": _hex_to_rgba(_subdivision_color_hex(subdivision_type)),
+                }
+            )
+
+    points_json = json.dumps(point_rows, ensure_ascii=True)
+    address_json = json.dumps(
+        {
+            "lon": lon_val,
+            "lat": lat_val,
+            "matched_address": html.escape(str(matched_address).strip(), quote=True),
+        },
+        ensure_ascii=True,
+    )
+    basemap_safe = json.dumps(str(basemap).strip() or "gray-vector")
+
+    arcgis_html = f"""
+<div style="width:100%;height:{height}px;">
+  <div id="tfl-address-overlap-map" style="width:100%;height:100%;border-radius:14px;overflow:hidden;"></div>
+</div>
+<script src="https://js.arcgis.com/4.30/"></script>
+<script>
+  const overlapPoints = {points_json};
+  const addressPoint = {address_json};
+  const baseMapId = {basemap_safe};
+  require([
+    "esri/Map",
+    "esri/views/MapView",
+    "esri/layers/GraphicsLayer",
+    "esri/Graphic",
+    "esri/widgets/Home",
+    "esri/widgets/ScaleBar",
+    "esri/widgets/BasemapToggle",
+    "esri/widgets/Compass",
+    "esri/widgets/Fullscreen"
+  ], function(Map, MapView, GraphicsLayer, Graphic, Home, ScaleBar, BasemapToggle, Compass, Fullscreen) {{
+    const map = new Map({{ basemap: baseMapId }});
+    const overlapLayer = new GraphicsLayer();
+    const addressLayer = new GraphicsLayer();
+    map.add(overlapLayer);
+    map.add(addressLayer);
+
+    const view = new MapView({{
+      container: "tfl-address-overlap-map",
+      map,
+      center: [addressPoint.lon, addressPoint.lat],
+      zoom: 10,
+      constraints: {{ minZoom: 5 }}
+    }});
+
+    const formatUsd = (value) => {{
+      const numeric = Number(value || 0);
+      return numeric.toLocaleString("en-US", {{
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 0
+      }});
+    }};
+    const maxHigh = overlapPoints.reduce(
+      (acc, row) => Math.max(acc, Number(row.high_total || 0)),
+      0
+    );
+    const markerSizeFromHigh = (value) => {{
+      if (maxHigh <= 0) return 9;
+      const numeric = Math.max(0, Number(value || 0));
+      const ratio = Math.log10(numeric + 1) / Math.log10(maxHigh + 1);
+      return Math.max(8, Math.min(28, 8 + ratio * 20));
+    }};
+
+    for (const row of overlapPoints) {{
+      const markerSize = markerSizeFromHigh(row.high_total);
+      const pointGraphic = new Graphic({{
+        geometry: {{
+          type: "point",
+          longitude: row.lon,
+          latitude: row.lat
+        }},
+        symbol: {{
+          type: "simple-marker",
+          size: markerSize,
+          color: row.color || [113, 129, 145, 0.88],
+          outline: {{
+            color: [255, 255, 255, 0.82],
+            width: 1.1
+          }}
+        }},
+        popupTemplate: {{
+          title: row.subdivision_name || "Overlapping subdivision",
+          content: `<div><strong>Type:</strong> ${{row.subdivision_type || "N/A"}}</div>
+                    <div><strong>Code:</strong> ${{row.subdivision_code || "N/A"}}</div>
+                    <div><strong>Matched clients:</strong> ${{row.match_count || 0}}</div>
+                    <div><strong>Matched TFL high estimate:</strong> ${{formatUsd(row.high_total)}}</div>
+                    <div><strong>Match method:</strong> ${{row.match_method || "N/A"}}</div>
+                    <div><strong>Source:</strong> ${{row.source_name || "N/A"}}</div>`
+        }}
+      }});
+      overlapLayer.add(pointGraphic);
+    }}
+
+    const addressGraphic = new Graphic({{
+      geometry: {{
+        type: "point",
+        longitude: addressPoint.lon,
+        latitude: addressPoint.lat
+      }},
+      symbol: {{
+        type: "simple-marker",
+        style: "diamond",
+        size: 14,
+        color: [201, 34, 52, 0.95],
+        outline: {{
+          color: [255, 255, 255, 0.95],
+          width: 1.5
+        }}
+      }},
+      popupTemplate: {{
+        title: "Queried Address",
+        content: `<div>${{addressPoint.matched_address || "Address point"}}</div>`
+      }}
+    }});
+    addressLayer.add(addressGraphic);
+
+    const home = new Home({{ view }});
+    const basemapToggle = new BasemapToggle({{
+      view,
+      nextBasemap: baseMapId === "hybrid" ? "gray-vector" : "hybrid"
+    }});
+    const scaleBar = new ScaleBar({{ view, unit: "dual" }});
+    const compass = new Compass({{ view }});
+    const fullscreen = new Fullscreen({{ view }});
+
+    view.ui.add(home, "top-left");
+    view.ui.add(compass, "top-left");
+    view.ui.add(fullscreen, "top-left");
+    view.ui.add(basemapToggle, "top-right");
+    view.ui.add(scaleBar, "bottom-left");
+    view.popup.dockEnabled = true;
+
+    view.when(() => {{
+      const allGraphics = [...overlapLayer.graphics.toArray(), ...addressLayer.graphics.toArray()];
+      if (allGraphics.length > 0) {{
+        view.goTo(allGraphics, {{ padding: {{ top: 40, right: 30, bottom: 40, left: 30 }} }}).catch(() => {{}});
+      }}
+    }});
+  }});
+</script>
+"""
+    components.html(arcgis_html, height=height + 8, scrolling=False)
+
+def render_tfl_school_district_arcgis_map(matches: pd.DataFrame, height: int = 620) -> None:
+    if matches.empty:
+        st.info("No matching school-district clients to plot on the map.")
+        return
+
+    payload_rows = []
+    for row in matches.itertuples(index=False):
+        clients = row.match_clients if isinstance(row.match_clients, list) else []
+        safe_clients = [html.escape(str(c), quote=True) for c in clients]
+        payload_rows.append(
+            {
+                "fid": int(row.fid),
+                "district_name": html.escape(str(row.district_name), quote=True),
+                "district_code": html.escape(str(row.district_code), quote=True),
+                "lon": float(row.lon),
+                "lat": float(row.lat),
+                "match_count": int(row.match_count),
+                "high_total": float(getattr(row, "high_total", 0.0) or 0.0),
+                "match_clients_preview": html.escape(str(row.match_clients_preview), quote=True),
+                "match_clients": safe_clients[:14],
+                "extra_count": max(0, len(safe_clients) - 14),
+            }
+        )
+    payload_json = json.dumps(payload_rows, ensure_ascii=True)
+
+    arcgis_html = f"""
+<div style="width:100%;height:{height}px;">
+  <div id="tfl-arcgis-map" style="width:100%;height:100%;border-radius:14px;overflow:hidden;"></div>
+</div>
+<script src="https://js.arcgis.com/4.30/"></script>
+<script>
+  const tflPoints = {payload_json};
+  require([
+    "esri/Map",
+    "esri/views/MapView",
+    "esri/layers/FeatureLayer",
+    "esri/layers/GraphicsLayer",
+    "esri/Graphic"
+  ], function(Map, MapView, FeatureLayer, GraphicsLayer, Graphic) {{
+    const map = new Map({{ basemap: "gray-vector" }});
+    const districtLayer = new FeatureLayer({{
+      url: "{TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL}",
+      outFields: ["FID", "NAME20", "DISTRICT"],
+      popupEnabled: false,
+      labelsVisible: false,
+      labelingInfo: [{{
+        labelExpressionInfo: {{ expression: "$feature.NAME20" }},
+        symbol: {{
+          type: "text",
+          color: [73, 112, 150, 0.84],
+          haloColor: [255, 255, 255, 0.92],
+          haloSize: 0.8,
+          font: {{
+            size: 8,
+            family: "Avenir Next LT Pro",
+            weight: "normal"
+          }}
+        }}
+      }}],
+      renderer: {{
+        type: "simple",
+        symbol: {{
+          type: "simple-fill",
+          color: [30, 144, 255, 0.05],
+          outline: {{ color: [30, 144, 255, 0.35], width: 0.7 }}
+        }}
+      }},
+      opacity: 0.5
+    }});
+    map.add(districtLayer);
+
+    const graphics = new GraphicsLayer();
+    map.add(graphics);
+
+    const view = new MapView({{
+      container: "tfl-arcgis-map",
+      map,
+      center: [-99.3, 31.1],
+      zoom: 5
+    }});
+    const maxHigh = tflPoints.reduce(
+      (acc, row) => Math.max(acc, Number(row.high_total || 0)),
+      0
+    );
+    const markerSizeFromRow = (row) => {{
+      if (maxHigh > 0) {{
+        const numeric = Math.max(0, Number(row.high_total || 0));
+        const ratio = Math.log10(numeric + 1) / Math.log10(maxHigh + 1);
+        return Math.max(8, Math.min(30, 8 + ratio * 22));
+      }}
+      return Math.min(28, 8 + Math.log2((row.match_count || 1) + 1) * 5);
+    }};
+
+    for (const row of tflPoints) {{
+      const markerSize = markerSizeFromRow(row);
+      const clientsHtml = (row.match_clients || []).join(", ");
+      const extraHtml = row.extra_count > 0 ? `, +${{row.extra_count}} more` : "";
+      const content = `<div><strong>District code:</strong> ${{row.district_code || "N/A"}}</div>
+        <div><strong>Matched TFL high estimate:</strong> ${{Number(row.high_total || 0).toLocaleString("en-US", {{ style: "currency", currency: "USD", maximumFractionDigits: 0 }})}}</div>
+        <div style="margin-top:6px;"><strong>Matched TFL clients (${{row.match_count}}):</strong><br/>${{clientsHtml}}${{extraHtml}}</div>`;
+      const pointGraphic = new Graphic({{
+        geometry: {{
+          type: "point",
+          longitude: row.lon,
+          latitude: row.lat
+        }},
+        symbol: {{
+          type: "simple-marker",
+          size: markerSize,
+          color: [0, 224, 184, 0.85],
+          outline: {{
+            color: [7, 22, 39, 0.95],
+            width: 1
+          }}
+        }},
+        attributes: row,
+        popupTemplate: {{
+          title: row.district_name || "School District",
+          content
+        }}
+      }});
+      graphics.add(pointGraphic);
+    }}
+
+    const updateDistrictLabelVisibility = () => {{
+      districtLayer.labelsVisible = Number(view.zoom || 0) >= 8.5;
+    }};
+    view.watch("zoom", updateDistrictLabelVisibility);
+
+    view.when(() => {{
+      updateDistrictLabelVisibility();
+      if (graphics.graphics.length > 0) {{
+        view.goTo(graphics.graphics.toArray(), {{ padding: 40 }}).catch(() => {{}});
+      }}
+    }});
+  }});
+</script>
+"""
+    components.html(arcgis_html, height=height + 8, scrolling=False)
+
+def render_tfl_subdivision_arcgis_map(
+    matches: pd.DataFrame,
+    height: int = 640,
+    basemap: str = "gray-vector",
+) -> None:
+    if matches.empty:
+        st.info("No matching political-subdivision clients to plot on the map.")
+        return
+
+    type_colors = {
+        subtype: _hex_to_rgba(color_hex, alpha=0.9)
+        for subtype, color_hex in SUBDIVISION_TYPE_COLORS.items()
+    }
+    type_colors_json = json.dumps(type_colors, ensure_ascii=True)
+    payload_rows = []
+    for row in matches.itertuples(index=False):
+        clients = row.match_clients if isinstance(row.match_clients, list) else []
+        safe_clients = [html.escape(str(c), quote=True) for c in clients]
+        payload_rows.append(
+            {
+                "subdivision_type": html.escape(str(row.subdivision_type), quote=True),
+                "subdivision_name": html.escape(str(row.subdivision_name), quote=True),
+                "subdivision_code": html.escape(str(row.subdivision_code), quote=True),
+                "source_name": html.escape(str(getattr(row, "source_name", "")), quote=True),
+                "lon": float(row.lon),
+                "lat": float(row.lat),
+                "match_count": int(row.match_count),
+                "high_total": float(getattr(row, "high_total", 0.0) or 0.0),
+                "match_clients": safe_clients[:14],
+                "extra_count": max(0, len(safe_clients) - 14),
+            }
+        )
+    payload_json = json.dumps(payload_rows, ensure_ascii=True)
+    basemap_safe = json.dumps(str(basemap).strip() or "gray-vector")
+
+    arcgis_html = f"""
+<div style="width:100%;height:{height}px;">
+  <div id="tfl-subdivision-map" style="width:100%;height:100%;border-radius:14px;overflow:hidden;"></div>
+</div>
+<script src="https://js.arcgis.com/4.30/"></script>
+<script>
+  const tflPoints = {payload_json};
+  const baseMapId = {basemap_safe};
+  const typeColors = {type_colors_json};
+  require([
+    "esri/Map",
+    "esri/views/MapView",
+    "esri/layers/FeatureLayer",
+    "esri/layers/GraphicsLayer",
+    "esri/Graphic",
+    "esri/widgets/Home",
+    "esri/widgets/ScaleBar",
+    "esri/widgets/BasemapToggle",
+    "esri/widgets/Compass",
+    "esri/widgets/Fullscreen"
+  ], function(Map, MapView, FeatureLayer, GraphicsLayer, Graphic, Home, ScaleBar, BasemapToggle, Compass, Fullscreen) {{
+    const map = new Map({{ basemap: baseMapId }});
+
+    const districtLayer = new FeatureLayer({{
+      url: "{TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL}",
+      outFields: ["FID", "NAME20", "DISTRICT"],
+      popupEnabled: false,
+      labelsVisible: false,
+      labelingInfo: [{{
+        labelExpressionInfo: {{ expression: "$feature.NAME20" }},
+        symbol: {{
+          type: "text",
+          color: [73, 112, 150, 0.82],
+          haloColor: [255, 255, 255, 0.90],
+          haloSize: 0.8,
+          font: {{
+            size: 8,
+            family: "Avenir Next LT Pro",
+            weight: "normal"
+          }}
+        }}
+      }}],
+      renderer: {{
+        type: "simple",
+        symbol: {{
+          type: "simple-fill",
+          color: [73, 112, 150, 0.04],
+          outline: {{ color: [73, 112, 150, 0.32], width: 0.8 }}
+        }}
+      }},
+      opacity: 0.45
+    }});
+    map.add(districtLayer);
+
+    const countyLayer = new FeatureLayer({{
+      url: "{TEA_ARCGIS_COUNTY_LAYER_URL}",
+      outFields: ["FENAME", "FIPS"],
+      popupEnabled: false,
+      labelsVisible: true,
+      labelingInfo: [{{
+        labelExpressionInfo: {{ expression: "$feature.FENAME + ' County'" }},
+        symbol: {{
+          type: "text",
+          color: [196, 166, 125, 0.94],
+          haloColor: [13, 23, 36, 0.86],
+          haloSize: 1.0,
+          font: {{
+            size: 13,
+            family: "Avenir Next LT Pro",
+            weight: "600"
+          }}
+        }}
+      }}],
+      renderer: {{
+        type: "simple",
+        symbol: {{
+          type: "simple-fill",
+          color: [145, 111, 63, 0.03],
+          outline: {{ color: [145, 111, 63, 0.28], width: 0.8 }}
+        }}
+      }},
+      opacity: 0.30
+    }});
+    map.add(countyLayer);
+
+    const cityLayer = new FeatureLayer({{
+      url: "{CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL}",
+      outFields: ["NAME", "BASENAME", "GEOID", "STATE"],
+      definitionExpression: "STATE = '48'",
+      popupEnabled: false,
+      labelsVisible: true,
+      labelingInfo: [{{
+        labelExpressionInfo: {{ expression: "DefaultValue($feature.BASENAME, $feature.NAME)" }},
+        symbol: {{
+          type: "text",
+          color: [183, 104, 110, 0.94],
+          haloColor: [13, 23, 36, 0.80],
+          haloSize: 0.9,
+          font: {{
+            size: 11,
+            family: "Avenir Next LT Pro",
+            weight: "500"
+          }}
+        }}
+      }}],
+      renderer: {{
+        type: "simple",
+        symbol: {{
+          type: "simple-fill",
+          color: [158, 42, 43, 0.02],
+          outline: {{ color: [158, 42, 43, 0.16], width: 0.55 }}
+        }}
+      }},
+      opacity: 0.22
+    }});
+    map.add(cityLayer);
+
+    const graphics = new GraphicsLayer();
+    map.add(graphics);
+
+    const view = new MapView({{
+      container: "tfl-subdivision-map",
+      map,
+      center: [-99.3, 31.1],
+      zoom: 5,
+      constraints: {{ minZoom: 5 }}
+    }});
+
+    const formatUsd = (value) => {{
+      const numeric = Number(value || 0);
+      return numeric.toLocaleString("en-US", {{
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 0
+      }});
+    }};
+    const maxHigh = tflPoints.reduce(
+      (acc, row) => Math.max(acc, Number(row.high_total || 0)),
+      0
+    );
+    const markerSizeFromHigh = (value) => {{
+      if (maxHigh <= 0) return 9;
+      const numeric = Math.max(0, Number(value || 0));
+      const ratio = Math.log10(numeric + 1) / Math.log10(maxHigh + 1);
+      return Math.max(8, Math.min(34, 8 + ratio * 26));
+    }};
+
+    for (const row of tflPoints) {{
+      const markerSize = markerSizeFromHigh(row.high_total);
+      const clientsHtml = (row.match_clients || []).join(", ");
+      const extraHtml = row.extra_count > 0 ? `, +${{row.extra_count}} more` : "";
+      const content = `<div><strong>Type:</strong> ${{row.subdivision_type}}</div>
+        <div><strong>Code:</strong> ${{row.subdivision_code || "N/A"}}</div>
+        <div><strong>Matched TFL high estimate:</strong> ${{formatUsd(row.high_total)}}</div>
+        <div><strong>Source:</strong> ${{row.source_name || "N/A"}}</div>
+        <div style="margin-top:6px;"><strong>Matched TFL clients (${{row.match_count}}):</strong><br/>${{clientsHtml}}${{extraHtml}}</div>`;
+      const pointGraphic = new Graphic({{
+        geometry: {{
+          type: "point",
+          longitude: row.lon,
+          latitude: row.lat
+        }},
+        symbol: {{
+          type: "simple-marker",
+          size: markerSize,
+          color: typeColors[row.subdivision_type] || [113, 129, 145, 0.9],
+          outline: {{
+            color: [255, 255, 255, 0.88],
+            width: 1.1
+          }}
+        }},
+        attributes: row,
+        popupTemplate: {{
+          title: row.subdivision_name || "Political Subdivision",
+          content
+        }}
+      }});
+      graphics.add(pointGraphic);
+    }}
+
+    const updateLabelVisibility = () => {{
+      const zoom = Number(view.zoom || 0);
+      countyLayer.labelsVisible = zoom >= 5;
+      cityLayer.labelsVisible = zoom >= 6.2;
+      districtLayer.labelsVisible = zoom >= 8.5;
+    }};
+    view.watch("zoom", updateLabelVisibility);
+
+    const home = new Home({{ view }});
+    const basemapToggle = new BasemapToggle({{
+      view,
+      nextBasemap: baseMapId === "hybrid" ? "gray-vector" : "hybrid"
+    }});
+    const scaleBar = new ScaleBar({{ view, unit: "dual" }});
+    const compass = new Compass({{ view }});
+    const fullscreen = new Fullscreen({{ view }});
+
+    view.ui.add(home, "top-left");
+    view.ui.add(compass, "top-left");
+    view.ui.add(fullscreen, "top-left");
+    view.ui.add(basemapToggle, "top-right");
+    view.ui.add(scaleBar, "bottom-left");
+    view.popup.dockEnabled = true;
+
+    view.when(() => {{
+      updateLabelVisibility();
+      if (graphics.graphics.length > 0) {{
+        view.goTo(graphics.graphics.toArray(), {{ padding: {{ top: 44, right: 30, bottom: 44, left: 30 }} }}).catch(() => {{}});
+      }}
+    }});
+  }});
+</script>
+"""
+    components.html(arcgis_html, height=height + 8, scrolling=False)
 
 PRIMARY_PATTERNS = [
     (r"\bmetropolitan transit authority\b", "Transit Authority"),
@@ -4544,6 +10310,7 @@ def reset_filters(default_session: str) -> None:
     st.session_state.bill_search = ""
     st.session_state.activity_search = ""
     st.session_state.disclosure_search = ""
+    st.session_state.lobby_policy_focus = {}
     st.session_state.filter_lobbyshort = ""
     st.session_state.scope = "This Session"
     st.session_state.session = default_session
@@ -4564,8 +10331,10 @@ def reset_client_filters(default_session: str) -> None:
     st.session_state.client_query = ""
     st.session_state.client_name = ""
     st.session_state.client_bill_search = ""
+    st.session_state.client_bill_search_seed = ""
     st.session_state.client_activity_search = ""
     st.session_state.client_disclosure_search = ""
+    st.session_state.client_policy_focus = {}
     st.session_state.client_filter = ""
     st.session_state.client_scope = "This Session"
     st.session_state.client_session = default_session
@@ -6647,7 +12416,7 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         size=12,
     )
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 5, _pdf_safe_text("Prepared by Texas Lobby Data Center"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 5, _pdf_safe_text("Prepared by Texas Taxpayer Lobbying Transparency Center"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.cell(0, 5, _pdf_safe_text(f"Generated: {payload['generated_date']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.cell(0, 5, _pdf_safe_text(f"Scope: {payload['scope_session_label']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.cell(0, 5, _pdf_safe_text(f"Focus: {payload['focus_label']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
@@ -7060,7 +12829,7 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
     )
     pdf.ln(2)
     pdf.set_font("Helvetica", "I", 9)
-    pdf.cell(0, 5, _pdf_safe_text("Prepared by Texas Lobby Data Center"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 5, _pdf_safe_text("Prepared by Texas Taxpayer Lobbying Transparency Center"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.cell(0, 5, _pdf_safe_text(payload["disclaimer_note"]), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     output = pdf.output()
@@ -7144,20 +12913,20 @@ def _render_pdf_report_section(
 
 PLOTLY_CONFIG = {"displayModeBar": False, "responsive": True, "displaylogo": False}
 CHART_COLORS = [
-    "#1e90ff",
-    "#00e0b8",
-    "#ff9f43",
-    "#7d5fff",
-    "#f368e0",
-    "#54a0ff",
-    "#10ac84",
-    "#ee5253",
-    "#c8d6e5",
-    "#576574",
+    "#8caed3",
+    "#6f92b9",
+    "#5e7fa3",
+    "#4f6f8e",
+    "#4f8871",
+    "#7d8fa6",
+    "#8d7d96",
+    "#7b6f86",
+    "#a58a64",
+    "#6d7682",
 ]
-FUNDING_COLOR_MAP = {"Taxpayer Funded": "#00e0b8", "Private": "#1e90ff"}
-OPPOSITION_COLOR_MAP = {"Opposed by TFL lobbyist": "#ff6b6b", "Not opposed by TFL lobbyist": "#6c7cff"}
-TREND_COLOR_MAP = {"Low estimate": "#00e0b8", "High estimate": "#1e90ff"}
+FUNDING_COLOR_MAP = {"Taxpayer Funded": "#8caed3", "Private": "#6d7682"}
+OPPOSITION_COLOR_MAP = {"Opposed by TFL lobbyist": "#be7b7b", "Not opposed by TFL lobbyist": "#748bb0"}
+TREND_COLOR_MAP = {"Low estimate": "#8d7d96", "High estimate": "#8caed3"}
 
 def _session_base_number_series(s: pd.Series) -> pd.Series:
     base = s.fillna("").astype(str).str.strip().str.extract(r"^(\d+)", expand=False)
@@ -7181,7 +12950,7 @@ def _apply_plotly_layout(
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="IBM Plex Sans", color="rgba(235,245,255,0.9)", size=12),
+        font=dict(family="IBM Plex Sans", color="rgba(235,245,255,0.92)", size=12),
         margin=dict(l=8, r=8, t=margin_top, b=8),
         showlegend=showlegend,
         legend_title_text=legend_title,
@@ -7191,12 +12960,12 @@ def _apply_plotly_layout(
             y=1.02,
             xanchor="left",
             x=0,
-            font=dict(size=11, color="rgba(235,245,255,0.75)"),
+            font=dict(size=11, color="rgba(223,234,247,0.78)"),
         ),
         hoverlabel=dict(
-            bgcolor="rgba(7,22,39,0.95)",
-            bordercolor="rgba(255,255,255,0.08)",
-            font=dict(color="rgba(235,245,255,0.95)", size=12),
+            bgcolor="rgba(16,27,41,0.96)",
+            bordercolor="rgba(255,255,255,0.10)",
+            font=dict(color="rgba(237,245,255,0.95)", size=12),
         ),
     )
     if height:
@@ -7206,14 +12975,14 @@ def _apply_plotly_layout(
         zeroline=False,
         showline=False,
         ticks="outside",
-        tickfont=dict(color="rgba(235,245,255,0.75)"),
+        tickfont=dict(color="rgba(223,234,247,0.78)"),
     )
     fig.update_yaxes(
         showgrid=False,
         zeroline=False,
         showline=False,
         ticks="outside",
-        tickfont=dict(color="rgba(235,245,255,0.75)"),
+        tickfont=dict(color="rgba(223,234,247,0.78)"),
     )
     return fig
 
@@ -9417,22 +15186,64 @@ if _active_page != _lobby_page:
 # =========================================================
 # APP HEADER
 # =========================================================
-st.markdown('<div class="big-title">Lobby Look-Up</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Search any lobbyist and explore clients, witness activity, policy areas, and filings.</div>', unsafe_allow_html=True)
-cta_left, cta_right = st.columns([3, 1])
-with cta_left:
-    st.markdown(
-        """
-<div class="callout fade-up">
-  <div class="callout-title">Why this matters</div>
-  <div class="callout-body">Taxpayer-funded lobbying means public dollars are used to influence public policy. This dashboard shows who is paid, which clients fund the work, and where they show up on legislation so Texans can see the full picture.</div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-with cta_right:
-    if st.button("Read the policy fix", width="stretch", help="Open the Solutions page."):
-        st.switch_page(_solutions_page)
+_render_page_intro(
+    kicker="Lobbyist Workspace",
+    title="Lobbyist Evidence View",
+    subtitle=(
+        "Search by lobbyist or bill, establish statewide context, then drill into reported positions, subjects, activities, and disclosures."
+    ),
+    pills=[
+        "Session and scope aware",
+        "Autocomplete with disambiguation",
+        "CSV and PDF evidence export",
+    ],
+)
+_render_journey("lobby")
+_render_workspace_guide(
+    question=(
+        "How much taxpayer-funded lobbying is reported, who is involved, and where does that activity appear in the legislative process?"
+    ),
+    steps=[
+        "Set session and scope before searching.",
+        "Confirm the exact lobbyist identity in autocomplete matches.",
+        "Read Statewide Snapshot before profile-level tabs.",
+        "Use bill mode when the investigation starts with a bill number.",
+    ],
+    method_note="When multiple names share a short code, use explicit match selection to avoid conflation.",
+)
+_render_quickstart(
+    "lobby",
+    [
+        "Set session and scope before searching.",
+        "Use autocomplete to confirm the exact lobbyist record.",
+        "Review Statewide Snapshot before profile tabs and exports.",
+    ],
+    note="Bill-first searches route to a focused bill context with lobbyist linkage.",
+)
+_render_evidence_guardrails(
+    can_answer=[
+        "Which lobbyists report taxpayer-funded and private clients in the selected scope.",
+        "How witness, activity, subject, disclosure, and staff-link records connect by session.",
+        "Where taxpayer-funded share and concentration are highest in the current selection.",
+    ],
+    cannot_answer=[
+        "Exact invoice-level compensation from range-based filings.",
+        "Intent or legal conclusions without corroborating evidence.",
+    ],
+    next_checks=[
+        "Confirm the selected lobbyist identity before profile-level exports.",
+        "Pivot to Clients or Legislators to verify downstream claims.",
+    ],
+)
+_render_workspace_links(
+    "lobby_top",
+    [
+        ("Open Clients", _client_page, "Validate entity-level contracts, activity, and disclosures."),
+        ("Open Legislators", _member_page, "Connect results to authored bills and witness records."),
+        ("Open Map & Address", _map_page, "Check local overlap by jurisdiction and street address."),
+        ("Open Policy Context", _solutions_page, "Review policy framework against observed patterns."),
+    ],
+)
 
 # Validate workbook path
 if not PATH:
@@ -9514,6 +15325,8 @@ if "filter_lobbyshort" not in st.session_state:
     st.session_state.filter_lobbyshort = ""
 if "recent_lobby_searches" not in st.session_state:
     st.session_state.recent_lobby_searches = []
+if "lobby_policy_focus" not in st.session_state:
+    st.session_state.lobby_policy_focus = {}
 
 st.sidebar.header("Data")
 
@@ -9615,6 +15428,7 @@ if recent:
             st.session_state.bill_search = ""
             st.session_state.activity_search = ""
             st.session_state.disclosure_search = ""
+            st.session_state.lobby_policy_focus = {}
             st.session_state.filter_lobbyshort = ""
 
 tfl_session_val = _tfl_session_for_filter(st.session_state.session, tfl_sessions)
@@ -9940,6 +15754,10 @@ with f2:
         help="Reset search, match, and table filters to defaults.",
     ):
         reset_filters(default_session)
+st.markdown(
+    '<div class="app-note"><strong>Interpretation:</strong> Match selection controls identity resolution. Confirm the selected lobbyist label before using profile-level outputs or exported evidence.</div>',
+    unsafe_allow_html=True,
+)
 if st.session_state.lobbyshort and not st.session_state.lobby_filerid and not lobbyist_index.empty:
     dup = lobbyist_index[lobbyist_index["LobbyShort"].astype(str).str.strip() == st.session_state.lobbyshort]
     if dup["FilerID"].nunique(dropna=True) > 1 or dup["Lobby Name"].nunique() > 1:
@@ -10104,8 +15922,16 @@ if bill_mode:
 # =========================================================
 # TABS
 # =========================================================
-tab_all, tab_overview, tab_bills, tab_policy, tab_staff, tab_activities, tab_disclosures = st.tabs(
-    ["All Lobbyists", "Overview", "Bills", "Policy Areas", "Staff History", "Activities", "Disclosures"]
+tab_all, tab_overview, tab_bills, tab_policy, tab_activities, tab_disclosures, tab_staff = st.tabs(
+    [
+        "1. Statewide Baseline (Read First)",
+        "2. Selected Lobbyist",
+        "3. Bills & Outcomes",
+        "4. Policy Subjects",
+        "5. Spending Activity",
+        "6. Disclosures",
+        "7. Staff Links",
+    ]
 )
 
 def kpi_card(title: str, value: str, sub: str = "", help_text: str = ""):
@@ -10673,6 +16499,24 @@ else:
 
         bills = build_bills_with_status(wit, Bill_Status_All, Fiscal_Impact, session)
         mentions = build_policy_mentions(bills, Bill_Sub_All, session)
+        bill_subjects = pd.DataFrame(columns=["Session", "Bill", "Subject"])
+        if (
+            isinstance(Bill_Sub_All, pd.DataFrame)
+            and {"Session", "Bill", "Subject"}.issubset(Bill_Sub_All.columns)
+            and isinstance(bills, pd.DataFrame)
+            and {"Session", "Bill"}.issubset(bills.columns)
+            and not bills.empty
+        ):
+            bill_subjects = Bill_Sub_All[
+                Bill_Sub_All["Session"].astype(str).str.strip() == session
+            ].merge(
+                bills[["Session", "Bill"]].drop_duplicates(),
+                on=["Session", "Bill"],
+                how="inner",
+            )
+            bill_subjects = bill_subjects[
+                bill_subjects["Subject"].fillna("").astype(str).str.strip() != ""
+            ].copy()
 
         # Lobbyist-reported subject matters (Lobby_Sub_All)
         lobby_sub_counts, subject_non_empty = build_lobby_subject_counts(
@@ -10827,6 +16671,12 @@ else:
                     top_subject_pct = float(mentions.iloc[0].get("Share", 0.0)) * 100
                 except Exception:
                     top_subject_pct = None
+            top_author = ""
+            if not bills.empty and "Author" in bills.columns:
+                author_series = bills["Author"].fillna("").astype(str).str.strip()
+                author_series = author_series[author_series != ""]
+                if not author_series.empty:
+                    top_author = str(author_series.value_counts().index[0]).strip()
 
             insight_items = []
             if total_clients:
@@ -10889,6 +16739,42 @@ else:
 """,
                 unsafe_allow_html=True,
             )
+
+            if top_client_label:
+                st.markdown(
+                    f"""
+<div class="handoff-card">
+  <div class="handoff-kicker">Cross-Page Handoff</div>
+  <div class="handoff-title">Validate The Largest Client Context</div>
+  <div class="handoff-sub">Top client by midpoint in this profile: <strong>{html.escape(top_client_label, quote=True)}</strong> ({html.escape(top_client_range, quote=True)}).</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+                handoff_cols = st.columns(3 if top_author else 2)
+                with handoff_cols[0]:
+                    if st.button("Open Client Profile", key="lobby_handoff_client_btn", width="stretch"):
+                        st.session_state.client_query = top_client_label
+                        st.session_state.client_query_input = top_client_label
+                        st.session_state.client_name = ""
+                        st.session_state.client_session = st.session_state.session
+                        st.session_state.client_scope = st.session_state.scope
+                        st.switch_page(_client_page)
+                with handoff_cols[1]:
+                    if st.button("Open In Map & Address", key="lobby_handoff_map_btn", width="stretch"):
+                        st.session_state.map_session = st.session_state.session
+                        st.session_state.map_scope = st.session_state.scope
+                        st.session_state.map_overlap_entity_filter = top_client_label
+                        st.switch_page(_map_page)
+                if top_author:
+                    with handoff_cols[2]:
+                        if st.button("Open Top Author", key="lobby_handoff_member_btn", width="stretch"):
+                            st.session_state.member_query = top_author
+                            st.session_state.member_query_input = top_author
+                            st.session_state.member_name = ""
+                            st.session_state.member_session = st.session_state.session
+                            st.switch_page(_member_page)
+
             o1, o2, o3, o4 = st.columns(4)
             with o1:
                 kpi_card(
@@ -11237,6 +17123,108 @@ else:
 
                 st.caption(f"{len(filtered):,} bills")
                 st.dataframe(filtered[show_cols].sort_values(["Bill"]), width="stretch", height=520, hide_index=True)
+
+                top_filtered_author = ""
+                top_filtered_bill = ""
+                if not filtered.empty:
+                    if "Author" in filtered.columns:
+                        author_counts = (
+                            filtered["Author"]
+                            .fillna("")
+                            .astype(str)
+                            .str.strip()
+                        )
+                        author_counts = author_counts[author_counts != ""]
+                        if not author_counts.empty:
+                            top_filtered_author = str(author_counts.value_counts().index[0]).strip()
+                    if "Bill" in filtered.columns:
+                        bill_counts = (
+                            filtered["Bill"]
+                            .fillna("")
+                            .astype(str)
+                            .str.strip()
+                        )
+                        bill_counts = bill_counts[bill_counts != ""]
+                        if not bill_counts.empty:
+                            top_filtered_bill = str(bill_counts.value_counts().index[0]).strip()
+
+                if top_filtered_author or top_filtered_bill:
+                    handoff_bits = []
+                    if top_filtered_author:
+                        handoff_bits.append(f"Frequent author in current view: {top_filtered_author}.")
+                    if top_filtered_bill:
+                        handoff_bits.append(f"Most repeated bill in current view: {top_filtered_bill}.")
+                    handoff_sub = " ".join(handoff_bits) if handoff_bits else "Carry this filtered slice into the next analysis step."
+                    st.markdown(
+                        f"""
+<div class="handoff-card">
+  <div class="handoff-kicker">Intra-Page Bridge</div>
+  <div class="handoff-title">Carry This Bill Slice Forward</div>
+  <div class="handoff-sub">{html.escape(handoff_sub, quote=True)}</div>
+</div>
+""",
+                        unsafe_allow_html=True,
+                    )
+                    bnav1, bnav2, bnav3 = st.columns(3)
+                    with bnav1:
+                        if st.button(
+                            "Open Frequent Author",
+                            key="lobby_bills_to_member_btn",
+                            width="stretch",
+                            disabled=not bool(top_filtered_author),
+                            help="Open the Legislators page with the most frequent author from this filtered bill set.",
+                        ):
+                            st.session_state.member_query = top_filtered_author
+                            st.session_state.member_query_input = top_filtered_author
+                            st.session_state.member_name = ""
+                            st.session_state.member_session = st.session_state.session
+                            st.switch_page(_member_page)
+                    with bnav2:
+                        if st.button(
+                            "Run Top Bill In Bill Mode",
+                            key="lobby_bills_bill_mode_btn",
+                            width="stretch",
+                            disabled=not bool(top_filtered_bill),
+                            help="Switch this workspace into bill-first mode using the top bill in the current filtered view.",
+                        ):
+                            st.session_state.search_query = top_filtered_bill
+                            st.session_state.lobbyshort = ""
+                            st.session_state.lobby_filerid = None
+                            st.session_state.lobby_selected_key = ""
+                            st.session_state.lobby_all_matches = False
+                            st.session_state.lobby_merge_keys = []
+                            st.session_state.lobby_candidate_map = {}
+                            st.session_state.lobby_match_query = top_filtered_bill
+                            st.session_state.lobby_match_select = "No match"
+                            st.session_state.bill_search = ""
+                            st.session_state.activity_search = ""
+                            st.session_state.disclosure_search = ""
+                            st.session_state.lobby_policy_focus = {}
+                            st.rerun()
+                    with bnav3:
+                        if st.button(
+                            "Carry Filtered Bills To Policy",
+                            key="lobby_bills_focus_policy_btn",
+                            width="stretch",
+                            disabled=filtered.empty,
+                            help="Use this filtered bill set as the scope for the Policy Subjects tab.",
+                        ):
+                            focus_bills = (
+                                filtered.get("Bill", pd.Series(dtype=object))
+                                .dropna()
+                                .astype(str)
+                                .str.strip()
+                            )
+                            focus_bills = focus_bills[focus_bills != ""].drop_duplicates().tolist()
+                            st.session_state.lobby_policy_focus = {
+                                "session": session,
+                                "lobbyshort": lobbyshort,
+                                "bill_ids": focus_bills[:500],
+                            }
+                            st.success(
+                                f"Policy Subjects is now focused to {len(focus_bills):,} bill(s) from this Bills tab view."
+                            )
+
                 export_context = []
                 if st.session_state.bill_search.strip():
                     export_context.append(f"Bill search: {_shorten_text(st.session_state.bill_search, 28)}")
@@ -11264,6 +17252,30 @@ else:
 """,
                 unsafe_allow_html=True,
             )
+            policy_focus = st.session_state.get("lobby_policy_focus", {})
+            focus_bill_ids = []
+            focus_active = False
+            if isinstance(policy_focus, dict):
+                focus_session = str(policy_focus.get("session", "")).strip()
+                focus_lobbyshort = str(policy_focus.get("lobbyshort", "")).strip()
+                if focus_session == session and focus_lobbyshort == lobbyshort:
+                    focus_bill_ids = [
+                        str(b).strip()
+                        for b in policy_focus.get("bill_ids", [])
+                        if str(b).strip()
+                    ]
+                    focus_active = bool(focus_bill_ids)
+            if focus_active:
+                p_focus_left, p_focus_right = st.columns([4, 1])
+                with p_focus_left:
+                    st.caption(
+                        f"Focused to {len(focus_bill_ids):,} bill(s) carried from Bills tab filters."
+                    )
+                with p_focus_right:
+                    if st.button("Clear Bills Focus", key="lobby_policy_focus_clear_btn", width="stretch"):
+                        st.session_state.lobby_policy_focus = {}
+                        focus_active = False
+                        focus_bill_ids = []
             if not require_columns(
                 Bill_Sub_All,
                 ["Bill", "Subject"],
@@ -11271,59 +17283,132 @@ else:
                 "Texas Legislature Online bill subject data is required for policy analysis.",
             ):
                 st.info("Policy area view needs Texas Legislature Online bill subject data with Bill and Subject columns.")
-            elif mentions.empty:
-                st.info("No subjects found (Texas Legislature Online bill subject data returned 0 rows). Try another session or clear the lobbyist filter.")
             else:
-                chart_mentions = mentions.copy()
+                policy_mentions = mentions.copy()
+                if focus_active:
+                    focus_norm = {
+                        re.sub(r"\s+", " ", bill.upper()).strip()
+                        for bill in focus_bill_ids
+                        if bill
+                    }
+                    focus_subjects = bill_subjects.copy()
+                    if not focus_subjects.empty and focus_norm:
+                        focus_subjects["BillNorm"] = (
+                            focus_subjects["Bill"]
+                            .fillna("")
+                            .astype(str)
+                            .str.upper()
+                            .str.replace(r"\s+", " ", regex=True)
+                            .str.strip()
+                        )
+                        focus_subjects = focus_subjects[focus_subjects["BillNorm"].isin(focus_norm)].copy()
+                        focus_subjects = focus_subjects[focus_subjects["Subject"].fillna("").astype(str).str.strip() != ""].copy()
+                        if not focus_subjects.empty:
+                            policy_mentions = (
+                                focus_subjects.groupby("Subject")["Bill"]
+                                .nunique()
+                                .reset_index(name="Mentions")
+                                .sort_values("Mentions", ascending=False)
+                            )
+                            total_mentions = int(policy_mentions["Mentions"].sum()) or 1
+                            policy_mentions["Share"] = (policy_mentions["Mentions"] / total_mentions).fillna(0)
+                        else:
+                            policy_mentions = pd.DataFrame(columns=["Subject", "Mentions", "Share"])
+                    else:
+                        policy_mentions = pd.DataFrame(columns=["Subject", "Mentions", "Share"])
+
+                if policy_mentions.empty:
+                    if focus_active:
+                        st.info(
+                            "No bill-subject rows matched the focused Bills-tab slice. Clear focus or broaden filters."
+                        )
+                    else:
+                        st.info(
+                            "No subjects found (Texas Legislature Online bill subject data returned 0 rows). Try another session or clear the lobbyist filter."
+                        )
+                chart_mentions = policy_mentions.copy()
                 chart_mentions["SharePct"] = (chart_mentions["Share"] * 100).round(1)
                 chart_mentions = chart_mentions.sort_values("Share", ascending=False)
                 top_mentions = chart_mentions.head(20)
-                c1, c2 = st.columns(2)
-                with c1:
-                    fig_share = px.bar(
-                        top_mentions,
-                        x="SharePct",
-                        y="Subject",
-                        orientation="h",
-                        text="SharePct",
-                    )
-                    fig_share.update_traces(
-                        texttemplate="%{text:.1f}%",
-                        textposition="outside",
-                        marker_color="#1e90ff",
-                        cliponaxis=False,
-                        hovertemplate="%{y}: %{x:.1f}%<extra></extra>",
-                    )
-                    _apply_plotly_layout(fig_share, showlegend=False, margin_top=12)
-                    fig_share.update_layout(margin=dict(l=8, r=36, t=12, b=8))
-                    fig_share.update_xaxes(
-                        showgrid=True,
-                        gridcolor="rgba(255,255,255,0.08)",
-                        ticksuffix="%",
-                        title_text="Share (%)",
-                    )
-                    fig_share.update_yaxes(title_text="", categoryorder="total descending")
-                    st.plotly_chart(fig_share, width="stretch", config=PLOTLY_CONFIG)
-                with c2:
-                    fig_tree = px.treemap(
-                        top_mentions,
-                        path=["Subject"],
-                        values="Mentions",
-                        color="SharePct",
-                        color_continuous_scale=["#0b1a2b", "#1e90ff", "#00e0b8"],
-                    )
-                    fig_tree.update_traces(
-                        hovertemplate="%{label}<br>%{value} mentions (%{color:.1f}%)<extra></extra>"
-                    )
-                    _apply_plotly_layout(fig_tree, showlegend=False, margin_top=12)
-                    fig_tree.update_layout(coloraxis_showscale=False)
-                    st.plotly_chart(fig_tree, width="stretch", config=PLOTLY_CONFIG)
+                if not top_mentions.empty:
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        fig_share = px.bar(
+                            top_mentions,
+                            x="SharePct",
+                            y="Subject",
+                            orientation="h",
+                            text="SharePct",
+                        )
+                        fig_share.update_traces(
+                            texttemplate="%{text:.1f}%",
+                            textposition="outside",
+                            marker_color="#1e90ff",
+                            cliponaxis=False,
+                            hovertemplate="%{y}: %{x:.1f}%<extra></extra>",
+                        )
+                        _apply_plotly_layout(fig_share, showlegend=False, margin_top=12)
+                        fig_share.update_layout(margin=dict(l=8, r=36, t=12, b=8))
+                        fig_share.update_xaxes(
+                            showgrid=True,
+                            gridcolor="rgba(255,255,255,0.08)",
+                            ticksuffix="%",
+                            title_text="Share (%)",
+                        )
+                        fig_share.update_yaxes(title_text="", categoryorder="total descending")
+                        st.plotly_chart(fig_share, width="stretch", config=PLOTLY_CONFIG)
+                    with c2:
+                        fig_tree = px.treemap(
+                            top_mentions,
+                            path=["Subject"],
+                            values="Mentions",
+                            color="SharePct",
+                            color_continuous_scale=["#0b1a2b", "#1e90ff", "#00e0b8"],
+                        )
+                        fig_tree.update_traces(
+                            hovertemplate="%{label}<br>%{value} mentions (%{color:.1f}%)<extra></extra>"
+                        )
+                        _apply_plotly_layout(fig_tree, showlegend=False, margin_top=12)
+                        fig_tree.update_layout(coloraxis_showscale=False)
+                        st.plotly_chart(fig_tree, width="stretch", config=PLOTLY_CONFIG)
 
-                m2 = mentions.copy()
-                m2["Share"] = (m2["Share"] * 100).round(0).astype("Int64").astype(str) + "%"
-                m2 = m2.rename(columns={"Subject": "Policy Area"})
-                st.dataframe(m2[["Policy Area", "Mentions", "Share"]], width="stretch", height=520, hide_index=True)
-                _ = export_dataframe(m2, "policy_areas.csv")
+                    m2 = policy_mentions.copy()
+                    m2["Share"] = (m2["Share"] * 100).round(0).astype("Int64").astype(str) + "%"
+                    m2 = m2.rename(columns={"Subject": "Policy Area"})
+                    st.dataframe(m2[["Policy Area", "Mentions", "Share"]], width="stretch", height=520, hide_index=True)
+                    export_ctx = [f"Bills-tab focus: {len(focus_bill_ids):,} bill(s)"] if focus_active else None
+                    _ = export_dataframe(m2, "policy_areas.csv", context=export_ctx)
+
+                    top_policy_subject = str(top_mentions.iloc[0].get("Subject", "")).strip()
+                    if top_policy_subject:
+                        st.markdown(
+                            f"""
+<div class="handoff-card">
+  <div class="handoff-kicker">Intra-Page Bridge</div>
+  <div class="handoff-title">Reconnect Policy Subjects To Bill Detail</div>
+  <div class="handoff-sub">Top policy subject in this view: <strong>{html.escape(top_policy_subject, quote=True)}</strong>. Use actions below to continue the same analysis thread.</div>
+</div>
+""",
+                            unsafe_allow_html=True,
+                        )
+                        pnav1, pnav2 = st.columns(2)
+                        with pnav1:
+                            if st.button(
+                                "Use Top Subject In Bills Tab",
+                                key="lobby_policy_to_bills_btn",
+                                width="stretch",
+                                help="Prefill the Bills tab search box with the top subject from this view.",
+                            ):
+                                st.session_state.bill_search = top_policy_subject
+                                st.success("Bills tab search has been prefilled with the top policy subject.")
+                        with pnav2:
+                            if st.button(
+                                "Open Policy Context Page",
+                                key="lobby_policy_open_context_btn",
+                                width="stretch",
+                                help="Open the policy context page to connect this subject trend to drafting options.",
+                            ):
+                                st.switch_page(_solutions_page)
 
             st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
             st.subheader("Reported Subject Matters (Texas Ethics Commission filings)")
