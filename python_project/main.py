@@ -1814,6 +1814,172 @@ div[data-testid="stPlotlyChart"]{
     font-size: 0.86rem;
     margin: 0.2rem 0 0.42rem 0;
 }
+.map-tab-banner{
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 18px;
+    padding: 14px 15px 12px 15px;
+    margin: 0.2rem 0 0.65rem 0;
+    background: linear-gradient(130deg, rgba(30,144,255,0.18), rgba(0,224,184,0.10), rgba(10,22,34,0.90));
+    box-shadow: 0 16px 28px rgba(0,0,0,0.26);
+}
+.map-tab-banner::after{
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(transparent 19px, rgba(255,255,255,0.03) 20px),
+        linear-gradient(90deg, transparent 19px, rgba(255,255,255,0.03) 20px);
+    background-size: 24px 24px;
+    opacity: 0.16;
+    pointer-events: none;
+}
+.map-tab-banner > *{
+    position: relative;
+    z-index: 1;
+}
+.map-tab-title{
+    font-size: 1.12rem;
+    font-weight: 700;
+    margin: 0;
+}
+.map-tab-sub{
+    color: var(--muted);
+    margin-top: 0.25rem;
+    line-height: 1.45;
+}
+.map-tab-pill-row{
+    margin-top: 0.52rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.map-tab-pill{
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: 0.76rem;
+    background: rgba(7,22,39,0.46);
+    color: rgba(234,242,248,0.96);
+}
+.map-controls-shell{
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 10px 12px 8px 12px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    box-shadow: 0 14px 26px rgba(0,0,0,0.22);
+}
+.map-workflow-card{
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 10px 12px;
+    background: linear-gradient(145deg, rgba(25, 63, 99, 0.52), rgba(13, 26, 38, 0.90));
+}
+.map-workflow-title{
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 0.66rem;
+    color: var(--muted);
+    margin-bottom: 0.28rem;
+}
+.map-workflow-step{
+    font-size: 0.88rem;
+    margin: 0.18rem 0;
+    color: rgba(232,241,249,0.96);
+}
+.map-workflow-step strong{
+    color: var(--accent2);
+}
+.map-context-grid{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 8px;
+    margin-top: 0.45rem;
+}
+.map-context-card{
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 8px 10px;
+    background: rgba(7,22,39,0.54);
+}
+.map-context-label{
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.62rem;
+    color: var(--muted);
+}
+.map-context-value{
+    margin-top: 2px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: rgba(242,248,252,0.96);
+}
+.map-stage-shell{
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 16px;
+    padding: 11px 12px 10px 12px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
+    box-shadow: 0 12px 22px rgba(0,0,0,0.2);
+    margin: 0.48rem 0 0.72rem 0;
+}
+.map-stage-title{
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+}
+.map-stage-sub{
+    color: var(--muted);
+    margin-top: 0.2rem;
+    line-height: 1.42;
+    font-size: 0.9rem;
+}
+.map-toolbar-strong{
+    color: rgba(232,244,251,0.95);
+    font-size: 0.87rem;
+    margin: 0.2rem 0 0.45rem 0;
+}
+.map-side-stat-grid{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+}
+.map-side-stat{
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 12px;
+    background: rgba(13, 25, 39, 0.84);
+    padding: 8px 10px;
+}
+.map-side-stat-label{
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.62rem;
+    color: var(--muted);
+}
+.map-side-stat-value{
+    font-size: 1.02rem;
+    font-weight: 700;
+    margin-top: 2px;
+}
+.map-score-chip{
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.18);
+    padding: 3px 8px;
+    font-size: 0.75rem;
+    background: rgba(7,22,39,0.44);
+    margin-right: 5px;
+    margin-top: 4px;
+}
+.map-batch-rank-shell{
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 14px;
+    padding: 9px 10px 8px 10px;
+    background: rgba(11,22,34,0.78);
+}
 
 [data-testid="stTextInput"] input,
 [data-testid="stTextInput"] textarea,
@@ -4047,6 +4213,50 @@ def _page_map_address():
         st.session_state.map_overlap_address_query = ""
     if "map_basemap_label" not in st.session_state or st.session_state.map_basemap_label not in MAP_BASEMAP_OPTIONS:
         st.session_state.map_basemap_label = next(iter(MAP_BASEMAP_OPTIONS.keys()))
+    if "map_recent_addresses" not in st.session_state:
+        st.session_state.map_recent_addresses = []
+    if "map_subdivision_sort" not in st.session_state:
+        st.session_state.map_subdivision_sort = "Highest High Estimate"
+    if "map_subdivision_map_cap" not in st.session_state:
+        st.session_state.map_subdivision_map_cap = 650
+    if "map_subdivision_client_filter" not in st.session_state:
+        st.session_state.map_subdivision_client_filter = ""
+    if "map_overlap_method_filter" not in st.session_state:
+        st.session_state.map_overlap_method_filter = []
+    if "map_overlap_subdivision_type_filter" not in st.session_state:
+        st.session_state.map_overlap_subdivision_type_filter = []
+    if "map_overlap_focus_selected_subdivision" not in st.session_state:
+        st.session_state.map_overlap_focus_selected_subdivision = False
+    if "map_overlap_use_coverage_filters" not in st.session_state:
+        st.session_state.map_overlap_use_coverage_filters = True
+    if "map_overlap_focus_selected_clients" not in st.session_state:
+        st.session_state.map_overlap_focus_selected_clients = False
+    if "map_overlap_input_mode" not in st.session_state:
+        st.session_state.map_overlap_input_mode = "Street Address"
+    if "map_overlap_query_kind" not in st.session_state:
+        st.session_state.map_overlap_query_kind = "address"
+    if "map_overlap_query_lat" not in st.session_state:
+        st.session_state.map_overlap_query_lat = None
+    if "map_overlap_query_lon" not in st.session_state:
+        st.session_state.map_overlap_query_lon = None
+    if "map_overlap_coord_lat" not in st.session_state:
+        st.session_state.map_overlap_coord_lat = 31.000000
+    if "map_overlap_coord_lon" not in st.session_state:
+        st.session_state.map_overlap_coord_lon = -99.000000
+    if "map_overlap_batch_input" not in st.session_state:
+        st.session_state.map_overlap_batch_input = ""
+    if "map_overlap_batch_results" not in st.session_state:
+        st.session_state.map_overlap_batch_results = []
+    if "map_overlap_batch_max" not in st.session_state:
+        st.session_state.map_overlap_batch_max = 8
+    if "map_overlap_batch_status_filter" not in st.session_state:
+        st.session_state.map_overlap_batch_status_filter = []
+    if "map_overlap_batch_sort" not in st.session_state:
+        st.session_state.map_overlap_batch_sort = "Highest High Total"
+    if "map_selected_subdivision_context" not in st.session_state:
+        st.session_state.map_selected_subdivision_context = {}
+    if "map_overlap_last_row_count" not in st.session_state:
+        st.session_state.map_overlap_last_row_count = 0
 
     sessions = (
         Lobby_TFL_Client_All.get("Session", pd.Series(dtype=object))
@@ -4122,9 +4332,30 @@ def _page_map_address():
         st.session_state.map_subdivision_types_filter = []
         st.session_state.map_min_match_count = 1
         st.session_state.map_subdivision_name_filter = ""
+        st.session_state.map_subdivision_sort = "Highest High Estimate"
+        st.session_state.map_subdivision_map_cap = 650
+        st.session_state.map_subdivision_client_filter = ""
         st.session_state.map_overlap_confidence_filter = []
         st.session_state.map_overlap_entity_filter = ""
         st.session_state.map_overlap_sort = "Highest High"
+        st.session_state.map_overlap_method_filter = []
+        st.session_state.map_overlap_subdivision_type_filter = []
+        st.session_state.map_overlap_focus_selected_subdivision = False
+        st.session_state.map_overlap_use_coverage_filters = True
+        st.session_state.map_overlap_focus_selected_clients = False
+        st.session_state.map_overlap_input_mode = "Street Address"
+        st.session_state.map_overlap_query_kind = "address"
+        st.session_state.map_overlap_query_lat = None
+        st.session_state.map_overlap_query_lon = None
+        st.session_state.map_overlap_coord_lat = 31.000000
+        st.session_state.map_overlap_coord_lon = -99.000000
+        st.session_state.map_overlap_batch_input = ""
+        st.session_state.map_overlap_batch_results = []
+        st.session_state.map_overlap_batch_max = 8
+        st.session_state.map_overlap_batch_status_filter = []
+        st.session_state.map_overlap_batch_sort = "Highest High Total"
+        st.session_state.map_selected_subdivision_context = {}
+        st.session_state.map_overlap_last_row_count = 0
         st.session_state.map_basemap_label = next(iter(MAP_BASEMAP_OPTIONS.keys()))
         st.rerun()
 
@@ -4231,69 +4462,17 @@ def _page_map_address():
 
     st.markdown(
         """
-<div class="card geo-hero">
-  <div class="geo-kicker">Workflow</div>
-  <div class="geo-title">Jurisdiction Overlap Workflow</div>
-  <div class="geo-lead">Use map filters to establish a jurisdiction baseline, then run address overlap to identify matched taxpayer-funded entities and reported spending ranges.</div>
-  <div class="geo-step"><strong>Step 1:</strong> Set session/scope and filter subdivision types.</div>
-  <div class="geo-step"><strong>Step 2:</strong> Review mapped matches and exported table rows.</div>
-  <div class="geo-step"><strong>Step 3:</strong> Run address overlap, then open specific entities in Client Look-Up.</div>
+<div class="map-workflow-card">
+  <div class="map-workflow-title">Workflow</div>
+  <div class="map-workflow-step"><strong>1.</strong> Use Coverage to set subdivision context.</div>
+  <div class="map-workflow-step"><strong>2.</strong> Switch to Address to run overlap and apply coverage focus.</div>
 </div>
 """,
         unsafe_allow_html=True,
     )
-    st.caption(
-        "Boundary layers include school districts, counties, cities, junior college districts, groundwater conservation districts, municipal utility districts, "
-        "drainage districts, fresh water supply districts, irrigation districts, levee improvement districts, municipal management districts, regional districts, "
-        "river authorities, soil and water control districts, special utility districts, water improvement districts, water control and improvement districts, "
-        "regional mobility authorities, navigation districts, and transit-provider areas (NCTCOG regional coverage)."
-    )
-    st.caption(
-        "Port authorities are matched through navigation/seaport sources. Hospital districts, emergency services districts, appraisal districts, and local "
-        "government corporations use county/city name-anchored centroid proxies when anchor terms can be resolved from client names, with ArcGIS geocoded "
-        "centroid fallback when direct anchors are weak."
-    )
-    with st.expander("Map Sources", expanded=False):
-        source_lines = []
-        for label, url, detail in MAP_DATA_SOURCES:
-            safe_label = html.escape(str(label))
-            safe_detail = html.escape(str(detail))
-            source_lines.append(f"- [{safe_label}]({url})  \n  {safe_detail}")
-        st.markdown("\n".join(source_lines))
-
-    st.markdown('<div class="section-sub">Address Search</div>', unsafe_allow_html=True)
-    search_col, clear_col = st.columns([5, 1.2])
-    with search_col:
-        with st.form("map_overlap_lookup_form", clear_on_submit=False):
-            st.text_input(
-                "Texas address",
-                placeholder="e.g., 1100 Congress Ave, Austin, TX 78701",
-                key="map_overlap_address_input",
-                help="Use a complete Texas street address for best geocoder quality.",
-            )
-            find_overlap_clicked = st.form_submit_button("Find overlap", use_container_width=True)
-    with clear_col:
-        clear_overlap_clicked = st.button(
-            "Clear",
-            key="map_overlap_clear_btn",
-            width="stretch",
-            help="Clear address input and overlap results.",
-        )
-
-    if find_overlap_clicked:
-        st.session_state.map_overlap_address_query = st.session_state.map_overlap_address_input.strip()
-    if clear_overlap_clicked:
-        st.session_state.map_overlap_address_input = ""
-        st.session_state.map_overlap_address_query = ""
-
-    overlap_address = st.session_state.get("map_overlap_address_query", "").strip()
-
     top1, top2, top3, top4 = st.columns(4)
     with top1:
-        kpi_card(
-            "Taxpayer-Funded Total",
-            f"{fmt_usd(all_stats.get('tfl_low_total', 0.0))} - {fmt_usd(all_stats.get('tfl_high_total', 0.0))}",
-        )
+        kpi_card("Taxpayer-Funded Total", f"{fmt_usd(all_stats.get('tfl_low_total', 0.0))} - {fmt_usd(all_stats.get('tfl_high_total', 0.0))}")
     with top2:
         kpi_card("Matched TFL Clients", f"{len(matched_subdivision_clients):,}")
     with top3:
@@ -4301,409 +4480,217 @@ def _page_map_address():
     with top4:
         kpi_card("Matched Other Subdivisions", f"{subdivision_other_count:,}")
 
-    if subdivision_matches.empty:
-        st.info("No mapped political-subdivision matches were found for taxpayer-funded clients in this scope/session.")
-    else:
-        st.markdown('<div class="section-sub">Map Filters</div>', unsafe_allow_html=True)
-        filter_left, filter_mid, filter_right, filter_style = st.columns([2.2, 1.1, 1.1, 1.1])
-        all_geo_types = sorted(
-            {str(v).strip() for v in subdivision_matches.get("subdivision_type", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()}
-        )
-        with filter_left:
+    tab_cov, tab_addr = st.tabs(["Coverage & Drill-Down", "Address Overlap"])
+
+    with tab_cov:
+        st.markdown('<div class="map-tab-banner"><div class="map-tab-title">Coverage View</div><div class="map-tab-sub">Filter subdivisions, review map/table, and set selected subdivision context.</div></div>', unsafe_allow_html=True)
+        if subdivision_matches.empty:
+            st.info("No mapped subdivision matches found.")
+        else:
+            all_types = sorted({str(v).strip() for v in subdivision_matches.get("subdivision_type", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()})
             if "map_subdivision_types_filter" not in st.session_state:
-                st.session_state.map_subdivision_types_filter = list(all_geo_types)
+                st.session_state.map_subdivision_types_filter = list(all_types)
+            st.session_state.map_subdivision_types_filter = [str(v) for v in st.session_state.get("map_subdivision_types_filter", []) if str(v) in all_types] or list(all_types)
+            c1, c2, c3, c4 = st.columns([1.8, 1.0, 1.2, 1.0])
+            with c1:
+                selected_types = st.multiselect("Subdivision types", all_types, key="map_subdivision_types_filter")
+            with c2:
+                max_match = max(1, int(pd.to_numeric(subdivision_matches.get("match_count", pd.Series([1])), errors="coerce").fillna(1).max()))
+                if int(st.session_state.get("map_min_match_count", 1)) > max_match:
+                    st.session_state.map_min_match_count = max_match
+                min_match = st.slider("Min matched clients", 1, max_match, key="map_min_match_count")
+            with c3:
+                q = st.text_input("Subdivision search", key="map_subdivision_name_filter", placeholder="Name or code").strip().lower()
+            with c4:
+                st.selectbox("Map style", list(MAP_BASEMAP_OPTIONS.keys()), key="map_basemap_label")
+                active_map_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.map_basemap_label, "gray-vector")
+
+            f = subdivision_matches.copy()
+            if selected_types:
+                f = f[f["subdivision_type"].astype(str).isin(selected_types)].copy()
             else:
-                current_geo_type_filter = [
-                    str(v)
-                    for v in st.session_state.get("map_subdivision_types_filter", [])
-                    if str(v) in all_geo_types
-                ]
-                if not current_geo_type_filter and all_geo_types:
-                    current_geo_type_filter = list(all_geo_types)
-                st.session_state.map_subdivision_types_filter = current_geo_type_filter
-            selected_geo_types = st.multiselect(
-                "Subdivision types",
-                all_geo_types,
-                key="map_subdivision_types_filter",
-                help="Filter map and table to selected subdivision categories.",
-            )
-        with filter_mid:
-            max_match_count = max(
-                1,
-                int(pd.to_numeric(subdivision_matches.get("match_count", pd.Series([1])), errors="coerce").fillna(1).max()),
-            )
-            if st.session_state.get("map_min_match_count", 1) > max_match_count:
-                st.session_state.map_min_match_count = max_match_count
-            min_match_count = st.slider(
-                "Minimum matched clients",
-                min_value=1,
-                max_value=max_match_count,
-                key="map_min_match_count",
-                help="Show only subdivisions with at least this many matched taxpayer-funded clients.",
-            )
-        with filter_right:
-            map_subdivision_query = st.text_input(
-                "Subdivision search",
-                key="map_subdivision_name_filter",
-                placeholder="Name or code",
-                help="Filter map/table by subdivision name or code.",
-            ).strip()
-        with filter_style:
-            st.selectbox(
-                "Map style",
-                list(MAP_BASEMAP_OPTIONS.keys()),
-                key="map_basemap_label",
-                help="Choose the basemap style.",
-            )
-            active_map_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.map_basemap_label, "gray-vector")
-
-        filtered_subdivision_matches = subdivision_matches.copy()
-        if selected_geo_types:
-            filtered_subdivision_matches = filtered_subdivision_matches[
-                filtered_subdivision_matches["subdivision_type"].astype(str).isin(selected_geo_types)
-            ].copy()
-        else:
-            filtered_subdivision_matches = filtered_subdivision_matches.iloc[0:0].copy()
-        filtered_subdivision_matches["match_count"] = pd.to_numeric(
-            filtered_subdivision_matches.get("match_count", 0), errors="coerce"
-        ).fillna(0).astype(int)
-        filtered_subdivision_matches["high_total"] = pd.to_numeric(
-            filtered_subdivision_matches.get("high_total", 0.0), errors="coerce"
-        ).fillna(0.0)
-        filtered_subdivision_matches = filtered_subdivision_matches[
-            filtered_subdivision_matches["match_count"] >= int(min_match_count)
-        ].copy()
-        if map_subdivision_query:
-            q = map_subdivision_query.lower()
-            filtered_subdivision_matches = filtered_subdivision_matches[
-                filtered_subdivision_matches["subdivision_name"].astype(str).str.lower().str.contains(q, na=False)
-                | filtered_subdivision_matches["subdivision_code"].astype(str).str.lower().str.contains(q, na=False)
-            ].copy()
-
-        st.caption(
-            f"Showing {len(filtered_subdivision_matches):,} of {len(subdivision_matches):,} matched subdivisions."
-        )
-
-        if filtered_subdivision_matches.empty:
-            st.warning("No subdivisions match current filters. Adjust type, minimum matched clients, or search.")
-        else:
-            filtered_type_counts = (
-                filtered_subdivision_matches["subdivision_type"].value_counts().to_dict()
-            )
-            render_subdivision_map_legend(filtered_type_counts)
-            st.markdown(
-                '<div class="map-toolbar-note">Map controls: Home resets view, Basemap switches context, marker size scales with matched TFL high estimate, and popups show detail.</div>',
-                unsafe_allow_html=True,
-            )
-            render_tfl_subdivision_arcgis_map(
-                filtered_subdivision_matches,
-                height=680,
-                basemap=active_map_basemap,
-            )
-            subdivision_view = (
-                filtered_subdivision_matches[
-                    [
-                        "subdivision_type",
-                        "subdivision_name",
-                        "subdivision_code",
-                        "match_count",
-                        "high_total",
-                        "match_clients_preview",
-                        "source_name",
-                        "source_url",
-                    ]
-                ]
-                .rename(
-                    columns={
-                        "subdivision_type": "Subdivision Type",
-                        "subdivision_name": "Subdivision",
-                        "subdivision_code": "Code",
-                        "match_count": "Matched TFL Client Count",
-                        "high_total": "Matched TFL High Estimate",
-                        "match_clients_preview": "Matched TFL Clients",
-                        "source_name": "Map Source",
-                        "source_url": "Map Source URL",
-                    }
-                )
-                .sort_values(
-                    ["Matched TFL Client Count", "Matched TFL High Estimate", "Subdivision Type", "Subdivision"],
-                    ascending=[False, False, True, True],
-                )
-            )
-            subdivision_view["Matched TFL High Estimate"] = subdivision_view["Matched TFL High Estimate"].astype(float).apply(fmt_usd)
-            st.dataframe(subdivision_view, width="stretch", height=360, hide_index=True)
-            _ = export_dataframe(
-                subdivision_view,
-                "tfl_political_subdivision_matches.csv",
-                label="Download subdivision matches CSV",
-            )
-
-    st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Address Overlap Results</div>', unsafe_allow_html=True)
-    st.caption(
-        "Use address search to identify overlapping subdivisions, review address context, then inspect matched TFL entities."
-    )
-    if not overlap_address:
-        st.info("Enter a Texas address above and click Find overlap.")
-    if overlap_address:
-        geocoded = geocode_address_arcgis(overlap_address)
-        if not geocoded:
-            st.warning("Could not geocode that address. Try a more complete Texas street address.")
-        else:
-            matched_addr = geocoded.get("matched_address", overlap_address)
-            score = float(geocoded.get("score", 0.0))
-            lon = float(geocoded.get("lon", 0.0))
-            lat = float(geocoded.get("lat", 0.0))
-            region_abbr = str(geocoded.get("region_abbr", "")).strip().upper()
-            city_name = str(geocoded.get("city", "")).strip()
-            postal = str(geocoded.get("postal", "")).strip()
-            st.markdown(
-                f"""
-<div class="callout geo-note">
-  <div class="callout-title">Matched Address</div>
-  <div class="callout-body">{html.escape(matched_addr)} | Score: {score:.0f} | City: {html.escape(city_name or 'N/A')} | ZIP: {html.escape(postal or 'N/A')}</div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-            if score < 80:
-                st.warning("Address match confidence is low. Try a more complete address including street, city, and ZIP.")
-            elif score < 90:
-                st.info("Address match confidence is moderate. Results are still shown, but a fuller address may improve precision.")
-            if region_abbr and region_abbr != "TX":
-                st.warning("The matched address appears outside Texas. Results below are Texas subdivision overlaps only.")
-
-            overlap_subdivisions = query_texas_subdivisions_for_point(round(lon, 6), round(lat, 6))
-            st.markdown('<div class="section-sub">Address Context</div>', unsafe_allow_html=True)
-            if overlap_subdivisions.empty:
-                st.info("No overlapping Texas subdivision polygons were found for this address.")
-                render_address_overlap_arcgis_map(
-                    lon=lon,
-                    lat=lat,
-                    matched_address=matched_addr,
-                    overlap_points=pd.DataFrame(),
-                    height=380,
-                    basemap=active_map_basemap,
-                )
+                f = f.iloc[0:0].copy()
+            f["match_count"] = pd.to_numeric(f.get("match_count", 0), errors="coerce").fillna(0).astype(int)
+            f["high_total"] = pd.to_numeric(f.get("high_total", 0.0), errors="coerce").fillna(0.0)
+            f["low_total"] = pd.to_numeric(f.get("low_total", 0.0), errors="coerce").fillna(0.0)
+            f = f[f["match_count"] >= int(min_match)].copy()
+            if q:
+                f = f[f["subdivision_name"].astype(str).str.lower().str.contains(q, na=False) | f["subdivision_code"].astype(str).str.lower().str.contains(q, na=False)].copy()
+            f = f.sort_values(["high_total", "match_count", "subdivision_name"], ascending=[False, False, True])
+            st.caption(f"Showing {len(f):,} of {len(subdivision_matches):,} matched subdivisions.")
+            if f.empty:
+                st.warning("No subdivisions match current filters.")
             else:
-                overlap_display = (
-                    overlap_subdivisions.rename(
-                        columns={
-                            "subdivision_type": "Subdivision Type",
-                            "subdivision_name": "Subdivision",
-                            "subdivision_code": "Code",
-                            "source_name": "Map Source",
-                            "source_url": "Map Source URL",
-                        }
-                    )
-                    .sort_values(["Subdivision Type", "Subdivision"], ascending=[True, True])
+                render_subdivision_map_legend(f["subdivision_type"].value_counts().to_dict())
+                render_tfl_subdivision_arcgis_map(f.head(900), height=650, basemap=active_map_basemap)
+                view = f[["subdivision_type", "subdivision_name", "subdivision_code", "match_count", "low_total", "high_total", "match_clients_preview"]].rename(
+                    columns={"subdivision_type": "Subdivision Type", "subdivision_name": "Subdivision", "subdivision_code": "Code", "match_count": "Matched TFL Client Count", "low_total": "Matched TFL Low Estimate", "high_total": "Matched TFL High Estimate", "match_clients_preview": "Matched TFL Clients"}
                 )
-                overlap_map_points = build_overlap_map_points(
-                    overlap_subdivisions=overlap_subdivisions,
-                    subdivision_matches=subdivision_matches,
-                )
-                st.markdown(
-                    '<div class="map-toolbar-note">Diamond marker = queried address. Circle markers = overlapping subdivision centroids sized by matched TFL high estimate.</div>',
-                    unsafe_allow_html=True,
-                )
-                render_address_overlap_arcgis_map(
-                    lon=lon,
-                    lat=lat,
-                    matched_address=matched_addr,
-                    overlap_points=overlap_map_points,
-                    height=430,
-                    basemap=active_map_basemap,
-                )
-                st.dataframe(overlap_display, width="stretch", height=220, hide_index=True)
-
-                if {"IsTFL", "Client", "Low", "High", "Lobbyists"}.issubset(all_clients.columns):
-                    tfl_spending_source = all_clients[all_clients["IsTFL"] == 1][["Client", "Low", "High", "Lobbyists"]].copy()
-                else:
-                    tfl_spending_source = pd.DataFrame(columns=["Client", "Low", "High", "Lobbyists"])
-                overlap_spend = build_address_overlap_spending_rows(
-                    overlap_subdivisions=overlap_subdivisions,
-                    subdivision_matches=subdivision_matches,
-                    tfl_spending=tfl_spending_source,
-                )
-                if overlap_spend.empty:
-                    st.info("No taxpayer-funded client names in this scope/session matched the overlapping subdivisions.")
-                else:
-                    confidence_counts = overlap_spend["Match Confidence"].value_counts().to_dict()
-                    badge_order = ["High", "Medium", "Low", "Unknown"]
-                    badge_style = {
-                        "High": "background: rgba(0,224,184,0.16); border-color: rgba(0,224,184,0.45); color: rgba(220,255,248,0.96);",
-                        "Medium": "background: rgba(241,196,15,0.16); border-color: rgba(241,196,15,0.45); color: rgba(255,248,218,0.96);",
-                        "Low": "background: rgba(230,126,34,0.16); border-color: rgba(230,126,34,0.45); color: rgba(255,236,222,0.96);",
-                        "Unknown": "background: rgba(149,165,166,0.14); border-color: rgba(149,165,166,0.40); color: rgba(230,238,240,0.94);",
+                display_view = view.copy()
+                display_view["Matched TFL Low Estimate"] = display_view["Matched TFL Low Estimate"].astype(float).apply(fmt_usd)
+                display_view["Matched TFL High Estimate"] = display_view["Matched TFL High Estimate"].astype(float).apply(fmt_usd)
+                st.dataframe(display_view, width="stretch", height=300, hide_index=True)
+                _ = export_dataframe(view, "subdivision_coverage_map.csv", label="Download coverage CSV")
+                labels = []
+                rows = []
+                for r in f.itertuples(index=False):
+                    code = str(getattr(r, "subdivision_code", "")).strip() or "N/A"
+                    labels.append(f"{r.subdivision_type} | {r.subdivision_name} ({code})")
+                    rows.append(r)
+                pick = st.selectbox("Subdivision drill-down", labels) if labels else ""
+                if pick:
+                    row = rows[labels.index(pick)]
+                    clients = sorted({str(v).strip() for v in (getattr(row, "match_clients", []) if isinstance(getattr(row, "match_clients", []), list) else []) if str(v).strip()})
+                    st.session_state.map_selected_subdivision_context = {
+                        "subdivision_type": str(getattr(row, "subdivision_type", "")).strip(),
+                        "subdivision_name": str(getattr(row, "subdivision_name", "")).strip(),
+                        "subdivision_code": str(getattr(row, "subdivision_code", "")).strip(),
+                        "high_total": float(getattr(row, "high_total", 0.0) or 0.0),
+                        "match_count": int(getattr(row, "match_count", 0) or 0),
+                        "clients": clients,
                     }
-                    confidence_badges = []
-                    for level in badge_order:
-                        count = int(confidence_counts.get(level, 0))
-                        if count <= 0:
-                            continue
-                        style = badge_style.get(level, "")
-                        confidence_badges.append(
-                            f'<span class="pill" style="{style}"><b>{html.escape(level)}</b> {count}</span>'
-                        )
-                    if confidence_badges:
-                        st.markdown(
-                            f'<div class="pill-list">{"".join(confidence_badges)}</div>',
-                            unsafe_allow_html=True,
-                        )
+                    st.markdown(f'<div class="app-note"><strong>Selected subdivision:</strong> {html.escape(st.session_state.map_selected_subdivision_context.get("subdivision_type", ""))} | {html.escape(st.session_state.map_selected_subdivision_context.get("subdivision_name", ""))}</div>', unsafe_allow_html=True)
 
-                    fc1, fc2, fc3 = st.columns([1.4, 1.8, 1.2])
-                    with fc1:
-                        if "map_overlap_confidence_filter" not in st.session_state:
-                            st.session_state.map_overlap_confidence_filter = [
-                                c for c in badge_order if c in confidence_counts
-                            ]
-                        else:
-                            valid_confidence = [c for c in badge_order if c in confidence_counts]
-                            selected_confidence = [
-                                str(c)
-                                for c in st.session_state.get("map_overlap_confidence_filter", [])
-                                if str(c) in valid_confidence
-                            ]
-                            if not selected_confidence and valid_confidence:
-                                selected_confidence = list(valid_confidence)
-                            st.session_state.map_overlap_confidence_filter = selected_confidence
-                        overlap_confidence = st.multiselect(
-                            "Confidence",
-                            badge_order,
-                            key="map_overlap_confidence_filter",
-                            help="Filter overlap rows by confidence level.",
-                        )
-                    with fc2:
-                        overlap_entity_filter = st.text_input(
-                            "Entity filter",
-                            key="map_overlap_entity_filter",
-                            placeholder="Filter TFL entity name",
-                            help="Filter overlap rows by entity name.",
-                        ).strip()
-                    with fc3:
-                        overlap_sort = st.selectbox(
-                            "Sort",
-                            ["Highest High", "Highest Mid", "Entity A-Z", "Subdivision A-Z"],
-                            key="map_overlap_sort",
-                        )
+    with tab_addr:
+        st.markdown('<div class="map-tab-banner"><div class="map-tab-title">Address Overlap View</div><div class="map-tab-sub">Run street address or coordinates and focus overlap with coverage selection.</div></div>', unsafe_allow_html=True)
+        active_map_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.get("map_basemap_label", ""), "gray-vector")
+        ctx = st.session_state.get("map_selected_subdivision_context", {}) if isinstance(st.session_state.get("map_selected_subdivision_context", {}), dict) else {}
+        selected_type = str(ctx.get("subdivision_type", "")).strip()
+        selected_name = str(ctx.get("subdivision_name", "")).strip()
+        selected_code = str(ctx.get("subdivision_code", "")).strip()
+        selected_clients = [str(v).strip() for v in ctx.get("clients", []) if str(v).strip()]
+        selected_client_set = set(selected_clients)
+        if selected_name:
+            st.markdown(f'<div class="app-note"><strong>Active context:</strong> {html.escape(selected_type)} | {html.escape(selected_name)} ({html.escape(selected_code or "N/A")})</div>', unsafe_allow_html=True)
+        if st.session_state.get("map_overlap_input_mode") not in {"Street Address", "Coordinates"}:
+            st.session_state.map_overlap_input_mode = "Street Address"
+        mode = st.radio("Lookup mode", ["Street Address", "Coordinates"], key="map_overlap_input_mode", horizontal=True)
+        analysis_point = None
+        if mode == "Street Address":
+            a1, a2 = st.columns([5, 1.2])
+            with a1:
+                with st.form("map_overlap_lookup_form", clear_on_submit=False):
+                    st.text_input("Texas address", placeholder="e.g., 1100 Congress Ave, Austin, TX 78701", key="map_overlap_address_input")
+                    go = st.form_submit_button("Find overlap", use_container_width=True)
+            with a2:
+                clear = st.button("Clear", key="map_overlap_clear_btn", width="stretch")
+            if go:
+                st.session_state.map_overlap_address_query = st.session_state.map_overlap_address_input.strip()
+            if clear:
+                st.session_state.map_overlap_address_input = ""
+                st.session_state.map_overlap_address_query = ""
+            addr = st.session_state.get("map_overlap_address_query", "").strip()
+            if addr:
+                g = geocode_address_arcgis(addr)
+                if g:
+                    analysis_point = {"query": addr, "matched": str(g.get("matched_address", addr)).strip() or addr, "score": float(g.get("score", 0.0)), "lon": float(g.get("lon", 0.0)), "lat": float(g.get("lat", 0.0)), "region": str(g.get("region_abbr", "")).strip().upper(), "city": str(g.get("city", "")).strip(), "postal": str(g.get("postal", "")).strip()}
+                else:
+                    st.warning("Could not geocode that address.")
+        else:
+            a1, a2, a3 = st.columns([1.2, 1.2, 1.2])
+            with a1:
+                st.number_input("Latitude", min_value=24.0, max_value=37.5, step=0.000001, format="%.6f", key="map_overlap_coord_lat")
+            with a2:
+                st.number_input("Longitude", min_value=-107.5, max_value=-93.0, step=0.000001, format="%.6f", key="map_overlap_coord_lon")
+            with a3:
+                run = st.button("Analyze coordinates", key="map_overlap_coord_run_btn", width="stretch")
+            if run:
+                st.session_state.map_overlap_query_lat = float(st.session_state.get("map_overlap_coord_lat", 31.0))
+                st.session_state.map_overlap_query_lon = float(st.session_state.get("map_overlap_coord_lon", -99.0))
+            if st.session_state.get("map_overlap_query_lat") is not None and st.session_state.get("map_overlap_query_lon") is not None:
+                lat = float(st.session_state.get("map_overlap_query_lat", 31.0))
+                lon = float(st.session_state.get("map_overlap_query_lon", -99.0))
+                analysis_point = {"query": f"{lat:.6f}, {lon:.6f}", "matched": f"Coordinates ({lat:.6f}, {lon:.6f})", "score": None, "lon": lon, "lat": lat, "region": "TX", "city": "", "postal": ""}
 
-                    filtered_overlap_spend = overlap_spend.copy()
-                    if overlap_confidence:
-                        filtered_overlap_spend = filtered_overlap_spend[
-                            filtered_overlap_spend["Match Confidence"].astype(str).isin(overlap_confidence)
-                        ].copy()
-                    if overlap_entity_filter:
-                        filtered_overlap_spend = filtered_overlap_spend[
-                            filtered_overlap_spend["TFL Entity"].astype(str).str.contains(overlap_entity_filter, case=False, na=False)
-                        ].copy()
-
-                    if overlap_sort == "Highest High":
-                        filtered_overlap_spend = filtered_overlap_spend.sort_values(
-                            ["High", "Mid", "Low", "TFL Entity"],
-                            ascending=[False, False, False, True],
-                        )
-                    elif overlap_sort == "Highest Mid":
-                        filtered_overlap_spend = filtered_overlap_spend.sort_values(
-                            ["Mid", "High", "Low", "TFL Entity"],
-                            ascending=[False, False, False, True],
-                        )
-                    elif overlap_sort == "Entity A-Z":
-                        filtered_overlap_spend = filtered_overlap_spend.sort_values(
-                            ["TFL Entity", "Subdivision Type", "Subdivision"],
-                            ascending=[True, True, True],
-                        )
+        if analysis_point is None:
+            st.info("Enter lookup details to view overlap.")
+        else:
+            score_txt = f"{float(analysis_point['score']):.0f}" if analysis_point["score"] is not None else "N/A"
+            st.markdown(f'<div class="callout geo-note"><div class="callout-title">Matched Location</div><div class="callout-body">{html.escape(analysis_point["matched"])} | Score: {score_txt} | City: {html.escape(analysis_point["city"] or "N/A")} | ZIP: {html.escape(analysis_point["postal"] or "N/A")}</div></div>', unsafe_allow_html=True)
+            if analysis_point["score"] is not None and float(analysis_point["score"]) < 80:
+                st.warning("Address match confidence is low.")
+            overlap_sub = query_texas_subdivisions_for_point(round(float(analysis_point["lon"]), 6), round(float(analysis_point["lat"]), 6))
+            overlap_points = build_overlap_map_points(overlap_subdivisions=overlap_sub, subdivision_matches=subdivision_matches)
+            overlap_spend = build_address_overlap_spending_rows(overlap_subdivisions=overlap_sub, subdivision_matches=subdivision_matches, tfl_spending=tfl_spending_source)
+            st.session_state.map_overlap_last_row_count = int(overlap_spend.shape[0]) if isinstance(overlap_spend, pd.DataFrame) else 0
+            filtered_spend = overlap_spend.copy()
+            if not overlap_spend.empty:
+                conf = [c for c in ["High", "Medium", "Low", "Unknown"] if c in overlap_spend["Match Confidence"].value_counts().to_dict()]
+                st.session_state.map_overlap_confidence_filter = [str(v) for v in st.session_state.get("map_overlap_confidence_filter", []) if str(v) in conf] or list(conf)
+                f1, f2, f3 = st.columns([1.5, 1.8, 1.2])
+                with f1:
+                    overlap_conf = st.multiselect("Confidence", conf, key="map_overlap_confidence_filter")
+                with f2:
+                    ent_q = st.text_input("Entity filter", key="map_overlap_entity_filter", placeholder="Filter TFL entity name").strip()
+                with f3:
+                    sort_mode = st.selectbox("Sort", ["Highest High", "Highest Mid", "Entity A-Z", "Subdivision A-Z"], key="map_overlap_sort")
+                t1, t2, t3 = st.columns([1.4, 1.7, 1.7])
+                with t1:
+                    st.checkbox("Use coverage types", key="map_overlap_use_coverage_filters")
+                with t2:
+                    st.checkbox("Focus selected subdivision", key="map_overlap_focus_selected_subdivision", disabled=not bool(selected_name))
+                with t3:
+                    st.checkbox("Focus selected clients", key="map_overlap_focus_selected_clients", disabled=not bool(selected_client_set))
+                if overlap_conf:
+                    filtered_spend = filtered_spend[filtered_spend["Match Confidence"].astype(str).isin(overlap_conf)].copy()
+                if ent_q:
+                    filtered_spend = filtered_spend[filtered_spend["TFL Entity"].astype(str).str.contains(ent_q, case=False, na=False)].copy()
+                if st.session_state.get("map_overlap_use_coverage_filters", True):
+                    c_types = [str(v) for v in st.session_state.get("map_subdivision_types_filter", []) if str(v).strip()]
+                    if c_types:
+                        filtered_spend = filtered_spend[filtered_spend["Subdivision Type"].astype(str).isin(c_types)].copy()
+                if st.session_state.get("map_overlap_focus_selected_subdivision", False) and selected_name:
+                    filtered_spend = filtered_spend[(filtered_spend["Subdivision Type"].astype(str) == selected_type) & (filtered_spend["Subdivision"].astype(str) == selected_name)].copy()
+                    if selected_code:
+                        filtered_spend = filtered_spend[filtered_spend["Code"].astype(str) == selected_code].copy()
+                if st.session_state.get("map_overlap_focus_selected_clients", False) and selected_client_set:
+                    filtered_spend = filtered_spend[filtered_spend["TFL Entity"].astype(str).isin(selected_client_set)].copy()
+                if sort_mode == "Highest High":
+                    filtered_spend = filtered_spend.sort_values(["High", "Mid", "Low", "TFL Entity"], ascending=[False, False, False, True])
+                elif sort_mode == "Highest Mid":
+                    filtered_spend = filtered_spend.sort_values(["Mid", "High", "Low", "TFL Entity"], ascending=[False, False, False, True])
+                elif sort_mode == "Entity A-Z":
+                    filtered_spend = filtered_spend.sort_values(["TFL Entity", "Subdivision Type", "Subdivision"], ascending=[True, True, True])
+                else:
+                    filtered_spend = filtered_spend.sort_values(["Subdivision Type", "Subdivision", "TFL Entity"], ascending=[True, True, True])
+                if not overlap_points.empty:
+                    if filtered_spend.empty:
+                        overlap_points = overlap_points.iloc[0:0].copy()
                     else:
-                        filtered_overlap_spend = filtered_overlap_spend.sort_values(
-                            ["Subdivision Type", "Subdivision", "TFL Entity"],
-                            ascending=[True, True, True],
-                        )
+                        allowed = {(str(r["Subdivision Type"]).strip(), str(r["Subdivision"]).strip(), str(r["Code"]).strip()) for _, r in filtered_spend[["Subdivision Type", "Subdivision", "Code"]].drop_duplicates().iterrows()}
+                        overlap_points = overlap_points[overlap_points.apply(lambda r: (str(r.get("subdivision_type", "")).strip(), str(r.get("subdivision_name", "")).strip(), str(r.get("subdivision_code", "")).strip()) in allowed, axis=1)].copy()
+                st.caption(f"Showing {len(filtered_spend):,} of {len(overlap_spend):,} overlap rows.")
 
-                    st.caption(f"Showing {len(filtered_overlap_spend):,} of {len(overlap_spend):,} overlap rows.")
-                    if filtered_overlap_spend.empty:
-                        st.warning("No overlap rows match current filters.")
-                        filtered_overlap_spend = overlap_spend.iloc[0:0].copy()
-
-                    ol1, ol2, ol3, ol4 = st.columns(4)
-                    with ol1:
-                        kpi_card("Overlapping TFL Entities", f"{int(filtered_overlap_spend['TFL Entity'].nunique()):,}")
-                    with ol2:
-                        kpi_card("Combined Low Total", fmt_usd(float(filtered_overlap_spend["Low"].sum())))
-                    with ol3:
-                        kpi_card("Combined High Total", fmt_usd(float(filtered_overlap_spend["High"].sum())))
-                    with ol4:
-                        kpi_card("Matched Subdivisions", f"{int(filtered_overlap_spend['Subdivision'].nunique()):,}")
-
-                    jump_left, jump_right = st.columns([4, 1.2])
-                    with jump_left:
-                        overlap_entity_options = sorted(
-                            {
-                                str(v).strip()
-                                for v in filtered_overlap_spend["TFL Entity"].dropna().astype(str).tolist()
-                                if str(v).strip()
-                            }
-                        )
-                        open_entity = st.selectbox(
-                            "Open matched entity in Client Look-Up",
-                            overlap_entity_options,
-                            key="map_overlap_open_client_select",
-                            help="Jump to Client Look-Up with this entity prefilled.",
-                        ) if overlap_entity_options else ""
-                    with jump_right:
-                        open_client_clicked = st.button(
-                            "Open Client",
-                            key="map_overlap_open_client_btn",
-                            width="stretch",
-                        )
-                    if open_client_clicked and open_entity:
-                        st.session_state.client_query = open_entity
-                        st.session_state.client_query_input = open_entity
-                        st.session_state.client_name = ""
-                        st.switch_page(_client_page)
-
-                    overlap_spend_display = filtered_overlap_spend.copy()
-                    overlap_spend_display["Low"] = overlap_spend_display["Low"].astype(float).apply(fmt_usd)
-                    overlap_spend_display["High"] = overlap_spend_display["High"].astype(float).apply(fmt_usd)
-                    overlap_spend_display["Mid"] = overlap_spend_display["Mid"].astype(float).apply(fmt_usd)
-                    overlap_spend_display = overlap_spend_display.rename(
-                        columns={
-                            "Lobbyists": "Lobbyists Under Contract",
-                            "Mid": "Midpoint",
-                        }
-                    )
-                    st.dataframe(
-                        overlap_spend_display[
-                            [
-                                "Subdivision Type",
-                                "Subdivision",
-                                "Code",
-                                "Entity Type",
-                                "TFL Entity",
-                                "Match Method",
-                                "Match Confidence",
-                                "Map Source",
-                                "Low",
-                                "High",
-                                "Midpoint",
-                                "Lobbyists Under Contract",
-                            ]
-                        ],
-                        width="stretch",
-                        height=420,
-                        hide_index=True,
-                    )
-                    _ = export_dataframe(
-                        filtered_overlap_spend,
-                        "address_overlap_tfl_entity_spending.csv",
-                        label="Download filtered overlap entity spending CSV",
-                    )
-                    _render_workspace_links(
-                        "map_overlap_next",
-                        [
-                            ("Open Clients", _client_page, "Investigate a matched entity profile in detail."),
-                            ("Open Lobbyists", _lobby_page, "Return to statewide lobbyist-level context."),
-                            ("Open Legislators", _member_page, "Connect overlap entities to bill and witness activity."),
-                        ],
-                    )
+            render_address_overlap_arcgis_map(lon=float(analysis_point["lon"]), lat=float(analysis_point["lat"]), matched_address=analysis_point["matched"], overlap_points=overlap_points, height=430, basemap=active_map_basemap)
+            overlap_display = overlap_sub.rename(columns={"subdivision_type": "Subdivision Type", "subdivision_name": "Subdivision", "subdivision_code": "Code", "source_name": "Map Source", "source_url": "Map Source URL"}) if not overlap_sub.empty else pd.DataFrame(columns=["Subdivision Type", "Subdivision", "Code", "Map Source", "Map Source URL"])
+            st.dataframe(overlap_display, width="stretch", height=220, hide_index=True)
+            if not overlap_spend.empty:
+                disp = filtered_spend.copy()
+                disp["Low"] = disp["Low"].astype(float).apply(fmt_usd)
+                disp["High"] = disp["High"].astype(float).apply(fmt_usd)
+                disp["Mid"] = disp["Mid"].astype(float).apply(fmt_usd)
+                disp = disp.rename(columns={"Lobbyists": "Lobbyists Under Contract", "Mid": "Midpoint"})
+                st.dataframe(disp[["Subdivision Type", "Subdivision", "Code", "Entity Type", "TFL Entity", "Match Method", "Match Confidence", "Map Source", "Low", "High", "Midpoint", "Lobbyists Under Contract"]], width="stretch", height=390, hide_index=True)
+                _ = export_dataframe(filtered_spend, "address_overlap_tfl_entity_spending.csv", label="Download filtered overlap entity spending CSV")
+                summary_row = pd.DataFrame([{"Input": analysis_point["query"], "Matched Location": analysis_point["matched"], "Latitude": float(analysis_point["lat"]), "Longitude": float(analysis_point["lon"]), "Subdivision Overlaps": int(overlap_sub.shape[0]), "Overlap Rows (All)": int(overlap_spend.shape[0]), "Overlap Rows (Filtered)": int(filtered_spend.shape[0]), "Unique TFL Entities (Filtered)": int(filtered_spend["TFL Entity"].nunique()), "Combined Low (Filtered)": float(filtered_spend["Low"].sum()), "Combined High (Filtered)": float(filtered_spend["High"].sum())}])
+                _ = export_dataframe(summary_row, "address_overlap_executive_summary.csv", label="Download overlap executive summary CSV")
+                if not filtered_spend.empty:
+                    jump_l, jump_r = st.columns([4, 1.2])
+                    with jump_l:
+                        opts = sorted({str(v).strip() for v in filtered_spend["TFL Entity"].dropna().astype(str).tolist() if str(v).strip()})
+                        open_entity = st.selectbox("Open matched entity in Client Look-Up", opts, key="map_overlap_open_client_select") if opts else ""
+                    with jump_r:
+                        open_click = st.button("Open Client", key="map_overlap_open_client_btn", width="stretch")
+                    if open_click and open_entity:
+                        _open_client_lookup(open_entity)
+            _render_workspace_links(
+                "map_overlap_next",
+                [
+                    ("Open Clients", _client_page, "Investigate a matched entity profile in detail."),
+                    ("Open Lobbyists", _lobby_page, "Return to statewide lobbyist-level context."),
+                    ("Open Legislators", _member_page, "Connect overlap entities to bill and witness activity."),
+                ],
+            )
 
     st.markdown(
         """
@@ -4715,6 +4702,7 @@ footer {visibility: hidden;}
 """,
         unsafe_allow_html=True,
     )
+    return
 
 def _page_member_lookup():
     _render_page_intro(
