@@ -3,6 +3,7 @@ import re
 import difflib
 import html
 import json
+import math
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -1980,6 +1981,283 @@ div[data-testid="stPlotlyChart"]{
     padding: 9px 10px 8px 10px;
     background: rgba(11,22,34,0.78);
 }
+.map-flow-grid{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0.5rem 0 0.65rem 0;
+}
+.map-flow-card{
+    border: 1px solid rgba(167, 188, 211, 0.30);
+    border-radius: 13px;
+    background: linear-gradient(180deg, rgba(30, 48, 68, 0.62), rgba(14, 26, 40, 0.88));
+    padding: 10px 11px 9px 11px;
+}
+.map-flow-kicker{
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.62rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+}
+.map-flow-title{
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: rgba(242,248,252,0.96);
+}
+.map-flow-sub{
+    margin-top: 2px;
+    color: rgba(193, 209, 227, 0.84);
+    font-size: 0.82rem;
+    line-height: 1.38;
+}
+.map-rail-title{
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-size: 0.64rem;
+    color: var(--muted);
+    margin: 0.2rem 0 0.42rem 0;
+}
+.map-control-stack{
+    display: grid;
+    gap: 0.68rem;
+}
+.map-inline-note{
+    font-size: 0.82rem;
+    color: rgba(190, 208, 226, 0.82);
+    margin: 0.14rem 0 0.25rem 0;
+    line-height: 1.38;
+}
+.map-insight-grid{
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0.35rem 0 0.55rem 0;
+}
+.map-insight{
+    border: 1px solid rgba(165, 186, 208, 0.28);
+    border-radius: 12px;
+    padding: 8px 10px;
+    background: rgba(15, 27, 41, 0.86);
+}
+.map-insight-label{
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.6rem;
+    color: var(--muted);
+}
+.map-insight-value{
+    margin-top: 3px;
+    font-size: 1.06rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+.map-insight-sub{
+    margin-top: 2px;
+    font-size: 0.74rem;
+    color: rgba(187, 204, 222, 0.78);
+    line-height: 1.35;
+}
+.map-selected-shell{
+    border: 1px solid rgba(170, 192, 215, 0.34);
+    border-radius: 13px;
+    padding: 9px 11px;
+    background: linear-gradient(160deg, rgba(30, 144, 255, 0.16), rgba(0, 224, 184, 0.10), rgba(11, 22, 35, 0.90));
+}
+.map-selected-title{
+    font-size: 0.86rem;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+.map-selected-sub{
+    font-size: 0.8rem;
+    color: rgba(193, 209, 227, 0.85);
+    line-height: 1.38;
+}
+.map-score-chip.is-high{
+    border-color: rgba(66, 210, 162, 0.42);
+    background: rgba(22, 103, 80, 0.34);
+}
+.map-score-chip.is-medium{
+    border-color: rgba(227, 192, 108, 0.42);
+    background: rgba(102, 80, 32, 0.32);
+}
+.map-score-chip.is-low{
+    border-color: rgba(206, 122, 122, 0.42);
+    background: rgba(109, 48, 57, 0.30);
+}
+.map-score-chip.is-unknown{
+    border-color: rgba(173, 192, 214, 0.30);
+    background: rgba(32, 47, 67, 0.44);
+}
+.map-batch-head{
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 0.25rem;
+}
+.map-batch-head h4{
+    margin: 0;
+    font-size: 0.98rem;
+}
+.map-batch-head .meta{
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+.map-mission-shell{
+    border: 1px solid rgba(171, 192, 214, 0.34);
+    border-radius: 14px;
+    padding: 10px 12px;
+    margin: 0.45rem 0 0.55rem 0;
+    background:
+        linear-gradient(135deg, rgba(116, 147, 178, 0.18), rgba(19, 33, 48, 0.88) 62%),
+        linear-gradient(180deg, rgba(24, 39, 57, 0.92), rgba(14, 25, 39, 0.90));
+    box-shadow: 0 14px 26px rgba(2, 9, 16, 0.35);
+}
+.map-mission-title{
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.66rem;
+    color: rgba(194, 212, 230, 0.90);
+    margin-bottom: 4px;
+    font-weight: 700;
+}
+.map-mission-sub{
+    color: rgba(211, 225, 239, 0.92);
+    font-size: 0.86rem;
+    line-height: 1.42;
+}
+.map-overview-shell{
+    border: 1px solid rgba(170, 191, 214, 0.34);
+    border-radius: 14px;
+    padding: 11px 12px;
+    margin: 0.25rem 0 0.65rem 0;
+    background:
+        linear-gradient(145deg, rgba(116, 147, 178, 0.16), rgba(18, 31, 45, 0.90) 62%),
+        linear-gradient(180deg, rgba(24, 39, 57, 0.92), rgba(14, 25, 39, 0.90));
+    box-shadow: 0 14px 26px rgba(2, 9, 16, 0.32);
+}
+.map-overview-title{
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.66rem;
+    color: rgba(194, 212, 230, 0.90);
+    margin-bottom: 4px;
+    font-weight: 700;
+}
+.map-overview-sub{
+    color: rgba(214, 227, 240, 0.90);
+    font-size: 0.84rem;
+    line-height: 1.4;
+    margin-bottom: 0.45rem;
+}
+.map-overview-grid{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+.map-overview-card{
+    border: 1px solid rgba(167, 188, 210, 0.28);
+    border-radius: 11px;
+    padding: 8px 9px;
+    background: rgba(11, 23, 36, 0.82);
+}
+.map-overview-label{
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.58rem;
+    color: rgba(188, 206, 224, 0.82);
+}
+.map-overview-value{
+    margin-top: 3px;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+}
+.map-overview-subtext{
+    margin-top: 2px;
+    color: rgba(181, 199, 218, 0.78);
+    font-size: 0.73rem;
+    line-height: 1.32;
+}
+.map-overview-foot{
+    margin-top: 0.48rem;
+    color: rgba(201, 216, 233, 0.88);
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+.map-signal-grid{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 8px;
+    margin: 0.4rem 0 0.65rem 0;
+}
+.map-signal{
+    border: 1px solid rgba(166, 188, 211, 0.30);
+    border-radius: 12px;
+    padding: 8px 10px;
+    background: rgba(13, 24, 37, 0.86);
+}
+.map-signal-label{
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.6rem;
+    color: rgba(191, 208, 226, 0.86);
+}
+.map-signal-value{
+    margin-top: 3px;
+    font-size: 1.03rem;
+    font-weight: 700;
+    line-height: 1.22;
+    color: var(--text);
+}
+.map-signal-sub{
+    margin-top: 2px;
+    font-size: 0.75rem;
+    color: rgba(184, 202, 221, 0.79);
+    line-height: 1.34;
+}
+.map-brief-grid{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 8px;
+    margin: 0.35rem 0 0.55rem 0;
+}
+.map-brief-card{
+    border: 1px solid rgba(164, 186, 209, 0.30);
+    border-radius: 12px;
+    padding: 8px 10px;
+    background: linear-gradient(180deg, rgba(28, 45, 65, 0.60), rgba(15, 27, 41, 0.86));
+}
+.map-brief-label{
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.6rem;
+    color: rgba(190, 208, 226, 0.86);
+}
+.map-brief-value{
+    margin-top: 3px;
+    font-size: 1.02rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+.map-brief-sub{
+    margin-top: 2px;
+    font-size: 0.74rem;
+    color: rgba(183, 201, 220, 0.79);
+    line-height: 1.33;
+}
+.map-lead-banner{
+    border: 1px solid rgba(169, 191, 214, 0.32);
+    border-radius: 11px;
+    padding: 8px 10px;
+    margin: 0.3rem 0 0.45rem 0;
+    background: rgba(14, 27, 42, 0.88);
+    font-size: 0.84rem;
+    color: rgba(213, 226, 240, 0.92);
+}
 
 [data-testid="stTextInput"] input,
 [data-testid="stTextInput"] textarea,
@@ -2026,6 +2304,21 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input{
 @media (max-width: 768px){
     .policy-title{
         font-size: 1.5rem;
+    }
+    .map-flow-grid{
+        grid-template-columns: 1fr;
+    }
+    .map-insight-grid{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .map-signal-grid{
+        grid-template-columns: 1fr;
+    }
+    .map-brief-grid{
+        grid-template-columns: 1fr;
+    }
+    .map-overview-grid{
+        grid-template-columns: 1fr;
     }
     .journey-grid{
         grid-template-columns: 1fr;
@@ -4126,61 +4419,30 @@ footer {visibility: hidden;}
 
 def _page_map_address():
     _render_page_intro(
-        kicker="Geographic Analysis",
-        title="Map & Address",
+        kicker="Geospatial Investigations",
+        title="Map & Address Intelligence",
         subtitle=(
-            "Map taxpayer-funded entities across Texas political subdivisions, then test a Texas address to identify overlap and reported spending ranges."
+            "Build a jurisdiction baseline, investigate a specific Texas location, and prioritize taxpayer-funded entities for deeper filing-level review."
         ),
         pills=[
-            "Subdivision match baseline",
-            "Address overlap analysis",
-            "Confidence-rated match methods",
+            "Mission-aligned investigation flow",
+            "Confidence-weighted overlap analysis",
+            "Batch triage for field leads",
         ],
     )
-    _render_journey("map")
     _render_workspace_guide(
         question=(
-            "At this location or jurisdiction, which taxpayer-funded entities overlap and what spending ranges are reported?"
+            "At this location or jurisdiction, which taxpayer-funded entities show the strongest overlap signal and what should be investigated first?"
         ),
         steps=[
-            "Set session and scope before running geographic analysis.",
-            "Filter subdivision types and minimum matched-client count.",
-            "Run address overlap and review match-confidence badges.",
-            "Open matched entities in Clients for filing-level validation.",
+            "Set session, scope, and map style in the control deck.",
+            "Use Coverage Intelligence to establish context and pick a subdivision anchor.",
+            "Run Address Investigation, apply confidence/method filters, and review ranked leads.",
+            "Use Batch Triage to compare addresses and queue follow-up in Clients.",
         ],
-        method_note="Overlap combines boundary intersection and name-based fallback matching; confidence levels indicate match strength.",
-    )
-    _render_workspace_links(
-        "map_top",
-        [
-            ("Open Clients", _client_page, "Validate matched entities using filings and disclosures."),
-            ("Open Lobbyists", _lobby_page, "Return to statewide totals and concentration."),
-            ("Open Legislators", _member_page, "Add bill and witness context for implicated entities."),
-        ],
-    )
-    _render_quickstart(
-        "map",
-        [
-            "Set session and scope first so totals and overlap rows are aligned.",
-            "Use subdivision filters to establish a geographic baseline.",
-            "Review confidence levels before citing overlap rows as evidence.",
-        ],
-        note="Rows can include both spatial matches and name-anchored fallback matches.",
-    )
-    _render_evidence_guardrails(
-        can_answer=[
-            "Which taxpayer-funded entities overlap selected jurisdictions or an address in this scope.",
-            "How overlap totals compare using reported low/high compensation ranges.",
-            "Whether overlap rows are high, medium, or low confidence by match method.",
-        ],
-        cannot_answer=[
-            "Exact geospatial exposure outside available boundary layers.",
-            "Definitive overlap certainty when results rely on name-based fallback matching.",
-        ],
-        next_checks=[
-            "Open matched entities in Clients before citing profile-level conclusions.",
-            "Use confidence badges to separate strong vs tentative matches.",
-        ],
+        method_note=(
+            "Spatial boundary matches are stronger evidence than name-anchored fallback matching. Treat low-confidence rows as leads, not conclusions."
+        ),
     )
 
     if not PATH:
@@ -4203,60 +4465,52 @@ def _page_map_address():
         .tolist()
     )
 
-    if "map_scope" not in st.session_state:
-        st.session_state.map_scope = "This Session"
-    if "map_session" not in st.session_state:
-        st.session_state.map_session = None
-    if "map_overlap_address_input" not in st.session_state:
-        st.session_state.map_overlap_address_input = ""
-    if "map_overlap_address_query" not in st.session_state:
-        st.session_state.map_overlap_address_query = ""
-    if "map_basemap_label" not in st.session_state or st.session_state.map_basemap_label not in MAP_BASEMAP_OPTIONS:
+    map_defaults = {
+        "map_scope": "This Session",
+        "map_session": None,
+        "map_overlap_address_input": "",
+        "map_overlap_address_query": "",
+        "map_basemap_label": next(iter(MAP_BASEMAP_OPTIONS.keys())),
+        "map_recent_addresses": [],
+        "map_subdivision_sort": "Highest High Estimate",
+        "map_subdivision_map_cap": 650,
+        "map_subdivision_client_filter": "",
+        "map_subdivision_types_filter": [],
+        "map_min_match_count": 1,
+        "map_subdivision_name_filter": "",
+        "map_overlap_confidence_filter": [],
+        "map_overlap_entity_filter": "",
+        "map_overlap_sort": "Highest High",
+        "map_overlap_method_filter": [],
+        "map_overlap_subdivision_type_filter": [],
+        "map_overlap_focus_selected_subdivision": False,
+        "map_overlap_use_coverage_filters": True,
+        "map_overlap_focus_selected_clients": False,
+        "map_overlap_input_mode": "Street Address",
+        "map_overlap_query_kind": "address",
+        "map_overlap_query_lat": None,
+        "map_overlap_query_lon": None,
+        "map_overlap_coord_lat": 31.000000,
+        "map_overlap_coord_lon": -99.000000,
+        "map_overlap_batch_input": "",
+        "map_overlap_batch_results": [],
+        "map_overlap_batch_max": 8,
+        "map_overlap_batch_status_filter": [],
+        "map_overlap_batch_sort": "Highest Triage Score",
+        "map_selected_subdivision_context": {},
+        "map_overlap_last_row_count": 0,
+    }
+    for key, default_value in map_defaults.items():
+        if key not in st.session_state:
+            if isinstance(default_value, list):
+                st.session_state[key] = []
+            elif isinstance(default_value, dict):
+                st.session_state[key] = {}
+            else:
+                st.session_state[key] = default_value
+
+    if st.session_state.get("map_basemap_label") not in MAP_BASEMAP_OPTIONS:
         st.session_state.map_basemap_label = next(iter(MAP_BASEMAP_OPTIONS.keys()))
-    if "map_recent_addresses" not in st.session_state:
-        st.session_state.map_recent_addresses = []
-    if "map_subdivision_sort" not in st.session_state:
-        st.session_state.map_subdivision_sort = "Highest High Estimate"
-    if "map_subdivision_map_cap" not in st.session_state:
-        st.session_state.map_subdivision_map_cap = 650
-    if "map_subdivision_client_filter" not in st.session_state:
-        st.session_state.map_subdivision_client_filter = ""
-    if "map_overlap_method_filter" not in st.session_state:
-        st.session_state.map_overlap_method_filter = []
-    if "map_overlap_subdivision_type_filter" not in st.session_state:
-        st.session_state.map_overlap_subdivision_type_filter = []
-    if "map_overlap_focus_selected_subdivision" not in st.session_state:
-        st.session_state.map_overlap_focus_selected_subdivision = False
-    if "map_overlap_use_coverage_filters" not in st.session_state:
-        st.session_state.map_overlap_use_coverage_filters = True
-    if "map_overlap_focus_selected_clients" not in st.session_state:
-        st.session_state.map_overlap_focus_selected_clients = False
-    if "map_overlap_input_mode" not in st.session_state:
-        st.session_state.map_overlap_input_mode = "Street Address"
-    if "map_overlap_query_kind" not in st.session_state:
-        st.session_state.map_overlap_query_kind = "address"
-    if "map_overlap_query_lat" not in st.session_state:
-        st.session_state.map_overlap_query_lat = None
-    if "map_overlap_query_lon" not in st.session_state:
-        st.session_state.map_overlap_query_lon = None
-    if "map_overlap_coord_lat" not in st.session_state:
-        st.session_state.map_overlap_coord_lat = 31.000000
-    if "map_overlap_coord_lon" not in st.session_state:
-        st.session_state.map_overlap_coord_lon = -99.000000
-    if "map_overlap_batch_input" not in st.session_state:
-        st.session_state.map_overlap_batch_input = ""
-    if "map_overlap_batch_results" not in st.session_state:
-        st.session_state.map_overlap_batch_results = []
-    if "map_overlap_batch_max" not in st.session_state:
-        st.session_state.map_overlap_batch_max = 8
-    if "map_overlap_batch_status_filter" not in st.session_state:
-        st.session_state.map_overlap_batch_status_filter = []
-    if "map_overlap_batch_sort" not in st.session_state:
-        st.session_state.map_overlap_batch_sort = "Highest High Total"
-    if "map_selected_subdivision_context" not in st.session_state:
-        st.session_state.map_selected_subdivision_context = {}
-    if "map_overlap_last_row_count" not in st.session_state:
-        st.session_state.map_overlap_last_row_count = 0
 
     sessions = (
         Lobby_TFL_Client_All.get("Session", pd.Series(dtype=object))
@@ -4276,8 +4530,33 @@ def _page_map_address():
     if st.session_state.map_session is None or str(st.session_state.map_session).strip().lower() in {"none", "nan", "null", ""}:
         st.session_state.map_session = default_session
 
+    def _reset_map_state(default_session_val: str) -> None:
+        for key, default_value in map_defaults.items():
+            if isinstance(default_value, list):
+                st.session_state[key] = []
+            elif isinstance(default_value, dict):
+                st.session_state[key] = {}
+            else:
+                st.session_state[key] = default_value
+        st.session_state.map_session = default_session_val
+        st.session_state.map_basemap_label = next(iter(MAP_BASEMAP_OPTIONS.keys()))
+        for transient_key in ["map_subdivision_pick", "map_overlap_recent_pick", "map_overlap_open_client_select"]:
+            if transient_key in st.session_state:
+                del st.session_state[transient_key]
+
+    def _open_client_lookup(entity_name: str) -> None:
+        value = str(entity_name).strip()
+        if not value:
+            return
+        st.session_state.client_query = value
+        st.session_state.client_query_input = value
+        st.session_state.client_name = ""
+        st.session_state.client_session = st.session_state.map_session
+        st.session_state.client_scope = st.session_state.map_scope
+        st.switch_page(_client_page)
+
     st.markdown('<div id="filter-bar-marker"></div>', unsafe_allow_html=True)
-    fl1, fl2 = st.columns([2, 1.4])
+    fl1, fl2, fl3 = st.columns([2.0, 1.2, 0.8], gap="small")
     with fl1:
         label_to_session = {}
         session_labels = []
@@ -4305,59 +4584,41 @@ def _page_map_address():
             horizontal=True,
             help="Use selected session only or all sessions for compensation totals and matched entities.",
         )
+    with fl3:
+        st.markdown('<div class="map-inline-note">Workspace reset</div>', unsafe_allow_html=True)
+        reset_clicked = st.button(
+            "Reset",
+            key="map_reset_filters_btn",
+            help="Reset session, scope, coverage filters, and address lookup fields.",
+            width="stretch",
+        )
+    if reset_clicked:
+        _reset_map_state(default_session)
+        st.rerun()
 
     active_parts = [
         f"Session: {_session_label(st.session_state.map_session)}",
         f"Scope: {st.session_state.map_scope}",
     ]
+    active_ctx = st.session_state.get("map_selected_subdivision_context", {})
+    if isinstance(active_ctx, dict) and str(active_ctx.get("subdivision_name", "")).strip():
+        active_parts.append(
+            f"Context: {str(active_ctx.get('subdivision_type', '')).strip()} | "
+            f"{str(active_ctx.get('subdivision_name', '')).strip()}"
+        )
     chips_html = "".join([f'<span class="chip">{html.escape(c)}</span>' for c in active_parts])
     st.markdown(
         f'<div class="filter-summary"><span class="filter-summary-label">Active filters</span>{chips_html}</div>',
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<div class="app-note"><strong>Interpretation:</strong> Overlap combines boundary intersection with name matching fallback. Use confidence levels and client drill-down before drawing conclusions.</div>',
+        '<div class="map-mission-shell"><div class="map-mission-title">Investigation Focus</div><div class="map-mission-sub">Move from statewide geographic exposure to location-level leads. Prioritize stronger spatial matches before citing totals publicly.</div></div>',
         unsafe_allow_html=True,
     )
-    if st.button(
-        "Reset map filters",
-        key="map_reset_filters_btn",
-        help="Reset session, scope, subdivision filters, and address query.",
-        width="content",
-    ):
-        st.session_state.map_scope = "This Session"
-        st.session_state.map_session = default_session
-        st.session_state.map_overlap_address_input = ""
-        st.session_state.map_overlap_address_query = ""
-        st.session_state.map_subdivision_types_filter = []
-        st.session_state.map_min_match_count = 1
-        st.session_state.map_subdivision_name_filter = ""
-        st.session_state.map_subdivision_sort = "Highest High Estimate"
-        st.session_state.map_subdivision_map_cap = 650
-        st.session_state.map_subdivision_client_filter = ""
-        st.session_state.map_overlap_confidence_filter = []
-        st.session_state.map_overlap_entity_filter = ""
-        st.session_state.map_overlap_sort = "Highest High"
-        st.session_state.map_overlap_method_filter = []
-        st.session_state.map_overlap_subdivision_type_filter = []
-        st.session_state.map_overlap_focus_selected_subdivision = False
-        st.session_state.map_overlap_use_coverage_filters = True
-        st.session_state.map_overlap_focus_selected_clients = False
-        st.session_state.map_overlap_input_mode = "Street Address"
-        st.session_state.map_overlap_query_kind = "address"
-        st.session_state.map_overlap_query_lat = None
-        st.session_state.map_overlap_query_lon = None
-        st.session_state.map_overlap_coord_lat = 31.000000
-        st.session_state.map_overlap_coord_lon = -99.000000
-        st.session_state.map_overlap_batch_input = ""
-        st.session_state.map_overlap_batch_results = []
-        st.session_state.map_overlap_batch_max = 8
-        st.session_state.map_overlap_batch_status_filter = []
-        st.session_state.map_overlap_batch_sort = "Highest High Total"
-        st.session_state.map_selected_subdivision_context = {}
-        st.session_state.map_overlap_last_row_count = 0
-        st.session_state.map_basemap_label = next(iter(MAP_BASEMAP_OPTIONS.keys()))
-        st.rerun()
+    st.markdown(
+        '<div class="app-note"><strong>Interpretation:</strong> Overlap combines boundary intersection with name-based fallback matching. Confidence labels are evidence strength, not certainty.</div>',
+        unsafe_allow_html=True,
+    )
 
     tfl_session_val = _tfl_session_for_filter(st.session_state.map_session, tfl_sessions)
     active_map_basemap = MAP_BASEMAP_OPTIONS.get(
@@ -4400,6 +4661,9 @@ def _page_map_address():
         tfl_session_val,
         st.session_state.map_scope,
     )
+    tfl_spending_source = all_clients.copy()
+    if not tfl_spending_source.empty and "IsTFL" in tfl_spending_source.columns:
+        tfl_spending_source = tfl_spending_source[tfl_spending_source["IsTFL"] == 1].copy()
 
     subdivision_match_cols = [
         "subdivision_type",
@@ -4447,64 +4711,201 @@ def _page_map_address():
         ].shape[0]
     ) if not subdivision_matches.empty else 0
 
-    def kpi_card(title: str, value: str, sub: str = "", help_text: str = ""):
-        tooltip_attr = f' title="{html.escape(help_text, quote=True)}"' if help_text else ""
-        st.markdown(
-            f"""
-<div class="card"{tooltip_attr}>
-  <div class="kpi-title">{title}</div>
-  <div class="kpi-value">{value}</div>
-  <div class="kpi-sub">{sub}</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
+    total_tfl_clients = int(all_stats.get("tfl_clients", 0))
+    total_clients = int(all_stats.get("total_clients", 0))
+    matched_client_count = len(matched_subdivision_clients)
+    matched_rate = (matched_client_count / total_tfl_clients) if total_tfl_clients else 0.0
+    unmatched_tfl_clients = max(0, total_tfl_clients - matched_client_count)
+    subdivision_high_total = float(
+        pd.to_numeric(subdivision_matches.get("high_total", 0.0), errors="coerce").fillna(0.0).sum()
+    ) if not subdivision_matches.empty else 0.0
+    avg_match_depth = float(
+        pd.to_numeric(subdivision_matches.get("match_count", 0), errors="coerce").fillna(0).mean()
+    ) if not subdivision_matches.empty else 0.0
+    median_subdivision_high = float(
+        pd.to_numeric(subdivision_matches.get("high_total", 0.0), errors="coerce").fillna(0.0).median()
+    ) if not subdivision_matches.empty else 0.0
+    core_subdivision_rows = int(sum(subdivision_type_counts.get(t, 0) for t in subdivision_core_types))
+    core_share = (core_subdivision_rows / len(subdivision_matches)) if len(subdivision_matches) else 0.0
+    top10_share = 0.0
+    if not subdivision_matches.empty and subdivision_high_total > 0:
+        top10_share = float(
+            pd.to_numeric(subdivision_matches.get("high_total", 0.0), errors="coerce")
+            .fillna(0.0)
+            .sort_values(ascending=False)
+            .head(10)
+            .sum()
+        ) / subdivision_high_total
 
     st.markdown(
         """
-<div class="map-workflow-card">
-  <div class="map-workflow-title">Workflow</div>
-  <div class="map-workflow-step"><strong>1.</strong> Use Coverage to set subdivision context.</div>
-  <div class="map-workflow-step"><strong>2.</strong> Switch to Address to run overlap and apply coverage focus.</div>
+<div class="map-flow-grid">
+  <div class="map-flow-card">
+    <div class="map-flow-kicker">Track A</div>
+    <div class="map-flow-title">Coverage Intelligence</div>
+    <div class="map-flow-sub">Set subdivision filters, inspect statewide patterning, and anchor one context for downstream investigation.</div>
+  </div>
+  <div class="map-flow-card">
+    <div class="map-flow-kicker">Track B</div>
+    <div class="map-flow-title">Address Investigation</div>
+    <div class="map-flow-sub">Run one address, apply confidence filters, and rank investigative entity leads.</div>
+  </div>
 </div>
 """,
         unsafe_allow_html=True,
     )
-    top1, top2, top3, top4 = st.columns(4)
-    with top1:
-        kpi_card("Taxpayer-Funded Total", f"{fmt_usd(all_stats.get('tfl_low_total', 0.0))} - {fmt_usd(all_stats.get('tfl_high_total', 0.0))}")
-    with top2:
-        kpi_card("Matched TFL Clients", f"{len(matched_subdivision_clients):,}")
-    with top3:
-        kpi_card("Matched Core Subdivisions", f"{int(sum(subdivision_type_counts.get(t, 0) for t in subdivision_core_types)):,}")
-    with top4:
-        kpi_card("Matched Other Subdivisions", f"{subdivision_other_count:,}")
 
-    tab_cov, tab_addr = st.tabs(["Coverage & Drill-Down", "Address Overlap"])
+    signal_html = "".join(
+        [
+            (
+                '<div class="map-signal"><div class="map-signal-label">Taxpayer-funded range</div>'
+                f'<div class="map-signal-value">{fmt_usd(all_stats.get("tfl_low_total", 0.0))} - {fmt_usd(all_stats.get("tfl_high_total", 0.0))}</div>'
+                f'<div class="map-signal-sub">{total_tfl_clients:,} entities in scope</div></div>'
+            ),
+            (
+                '<div class="map-signal"><div class="map-signal-label">Mapped entities</div>'
+                f'<div class="map-signal-value">{matched_client_count:,}</div>'
+                f'<div class="map-signal-sub">{matched_rate:.1%} of taxpayer-funded entities</div></div>'
+            ),
+            (
+                '<div class="map-signal"><div class="map-signal-label">Matched subdivisions</div>'
+                f'<div class="map-signal-value">{len(subdivision_matches):,}</div>'
+                f'<div class="map-signal-sub">{core_subdivision_rows:,} core / {subdivision_other_count:,} other</div></div>'
+            ),
+            (
+                '<div class="map-signal"><div class="map-signal-label">Concentration pressure</div>'
+                f'<div class="map-signal-value">{top10_share:.1%}</div>'
+                f'<div class="map-signal-sub">top 10 subdivisions share of matched high totals ({total_clients:,} total clients)</div></div>'
+            ),
+        ]
+    )
+    st.markdown(f'<div class="map-signal-grid">{signal_html}</div>', unsafe_allow_html=True)
+
+    overview_entity = pd.DataFrame()
+    if not tfl_spending_source.empty:
+        overview_entity = tfl_spending_source.copy()
+        overview_entity["Entity Type"] = overview_entity["Client"].map(classify_requested_entity_type)
+        overview_entity = (
+            overview_entity.groupby("Entity Type", as_index=False)
+            .agg(
+                Entities=("Client", "nunique"),
+                Low=("Low", "sum"),
+                High=("High", "sum"),
+            )
+            .sort_values("High", ascending=False)
+            .head(10)
+            .copy()
+        )
+
+    overview_left, overview_right = st.columns([1.45, 1.0], gap="large")
+    with overview_left:
+        st.markdown(
+            f"""
+<div class="map-overview-shell">
+  <div class="map-overview-title">Page Overview</div>
+  <div class="map-overview-sub">
+    This workspace is built for triage, not final attribution. Use it to prioritize where to audit filings next.
+  </div>
+  <div class="map-overview-grid">
+    <div class="map-overview-card">
+      <div class="map-overview-label">Coverage Diagnostics</div>
+      <div class="map-overview-value">{matched_rate:.1%}</div>
+      <div class="map-overview-subtext">Mapped taxpayer-funded entities ({matched_client_count:,} of {total_tfl_clients:,})</div>
+    </div>
+    <div class="map-overview-card">
+      <div class="map-overview-label">Core Boundary Share</div>
+      <div class="map-overview-value">{core_share:.1%}</div>
+      <div class="map-overview-subtext">School district, county, city rows in matched subdivision records</div>
+    </div>
+    <div class="map-overview-card">
+      <div class="map-overview-label">Average Match Depth</div>
+      <div class="map-overview-value">{avg_match_depth:,.1f}</div>
+      <div class="map-overview-subtext">Average taxpayer-funded entities per matched subdivision row</div>
+    </div>
+    <div class="map-overview-card">
+      <div class="map-overview-label">Median Subdivision High</div>
+      <div class="map-overview-value">{fmt_usd(median_subdivision_high)}</div>
+      <div class="map-overview-subtext">Central tendency of matched high totals across subdivisions</div>
+    </div>
+  </div>
+  <div class="map-overview-foot">
+    Unmapped taxpayer-funded entities: <strong>{unmatched_tfl_clients:,}</strong>. Review coverage gaps before using area-level conclusions.
+  </div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+    with overview_right:
+        if not overview_entity.empty:
+            entity_mix_display = overview_entity.copy()
+            entity_mix_display["Low"] = entity_mix_display["Low"].astype(float).apply(fmt_usd)
+            entity_mix_display["High"] = entity_mix_display["High"].astype(float).apply(fmt_usd)
+            st.markdown('<div class="map-rail-title">Top Entity Types In Scope</div>', unsafe_allow_html=True)
+            st.dataframe(entity_mix_display, width="stretch", height=292, hide_index=True)
+
+    tab_cov, tab_addr = st.tabs(["Coverage Intelligence", "Address Investigation"])
 
     with tab_cov:
-        st.markdown('<div class="map-tab-banner"><div class="map-tab-title">Coverage View</div><div class="map-tab-sub">Filter subdivisions, review map/table, and set selected subdivision context.</div></div>', unsafe_allow_html=True)
+        st.markdown(
+            """
+<div class="map-stage-shell">
+  <div class="map-stage-title">Coverage Intelligence</div>
+  <div class="map-stage-sub">Establish statewide context before running location-level overlap.</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="map-tab-banner"><div class="map-tab-title">Coverage Workspace</div><div class="map-tab-sub">Filter by subdivision type, match depth, and entity name, then set a context anchor for Address Investigation.</div></div>',
+            unsafe_allow_html=True,
+        )
         if subdivision_matches.empty:
             st.info("No mapped subdivision matches found.")
         else:
             all_types = sorted({str(v).strip() for v in subdivision_matches.get("subdivision_type", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()})
-            if "map_subdivision_types_filter" not in st.session_state:
-                st.session_state.map_subdivision_types_filter = list(all_types)
-            st.session_state.map_subdivision_types_filter = [str(v) for v in st.session_state.get("map_subdivision_types_filter", []) if str(v) in all_types] or list(all_types)
-            c1, c2, c3, c4 = st.columns([1.8, 1.0, 1.2, 1.0])
-            with c1:
-                selected_types = st.multiselect("Subdivision types", all_types, key="map_subdivision_types_filter")
-            with c2:
-                max_match = max(1, int(pd.to_numeric(subdivision_matches.get("match_count", pd.Series([1])), errors="coerce").fillna(1).max()))
-                if int(st.session_state.get("map_min_match_count", 1)) > max_match:
-                    st.session_state.map_min_match_count = max_match
-                min_match = st.slider("Min matched clients", 1, max_match, key="map_min_match_count")
-            with c3:
-                q = st.text_input("Subdivision search", key="map_subdivision_name_filter", placeholder="Name or code").strip().lower()
-            with c4:
-                st.selectbox("Map style", list(MAP_BASEMAP_OPTIONS.keys()), key="map_basemap_label")
-                active_map_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.map_basemap_label, "gray-vector")
+            active_types = [str(v) for v in st.session_state.get("map_subdivision_types_filter", []) if str(v) in all_types]
+            if not active_types:
+                active_types = list(all_types)
+                st.session_state.map_subdivision_types_filter = active_types
 
+            max_match = max(1, int(pd.to_numeric(subdivision_matches.get("match_count", pd.Series([1])), errors="coerce").fillna(1).max()))
+            if int(st.session_state.get("map_min_match_count", 1)) > max_match:
+                st.session_state.map_min_match_count = max_match
+            current_cap = int(st.session_state.get("map_subdivision_map_cap", 650) or 650)
+            current_cap = max(100, min(900, current_cap))
+            st.session_state.map_subdivision_map_cap = current_cap
+
+            cov_tab_filters = st.container()
+            cov_tab_outputs = st.container()
+            with cov_tab_filters:
+                cov_l, cov_r = st.columns([1.0, 1.95], gap="large")
+                with cov_l:
+                    st.markdown('<div class="map-rail-title">Coverage Controls</div>', unsafe_allow_html=True)
+                    selected_types = st.multiselect("Subdivision types", all_types, key="map_subdivision_types_filter")
+                    min_match = st.slider("Min matched clients", 1, max_match, key="map_min_match_count")
+                    st.selectbox(
+                        "Coverage sort",
+                        ["Highest High Estimate", "Highest Matched Client Count", "Subdivision A-Z", "Subdivision Type then Name"],
+                        key="map_subdivision_sort",
+                    )
+                    st.number_input("Map point cap", min_value=100, max_value=900, step=50, key="map_subdivision_map_cap")
+                    q = st.text_input("Subdivision search", key="map_subdivision_name_filter", placeholder="Name or code").strip().lower()
+                    client_q = st.text_input(
+                        "Client filter",
+                        key="map_subdivision_client_filter",
+                        placeholder="Filter matched client names",
+                    ).strip().lower()
+                    st.selectbox("Map style", list(MAP_BASEMAP_OPTIONS.keys()), key="map_basemap_label")
+                    st.markdown(
+                        '<div class="map-inline-note">Coverage filters can flow into Address Investigation when "Use coverage types" is enabled.</div>',
+                        unsafe_allow_html=True,
+                    )
+                with cov_r:
+                    st.markdown(
+                        '<div class="map-inline-note">Use Map &amp; Table subtab to review rendered outputs and CSV export after filter changes.</div>',
+                        unsafe_allow_html=True,
+                    )
+            active_map_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.map_basemap_label, "gray-vector")
             f = subdivision_matches.copy()
             if selected_types:
                 f = f[f["subdivision_type"].astype(str).isin(selected_types)].copy()
@@ -4515,44 +4916,258 @@ def _page_map_address():
             f["low_total"] = pd.to_numeric(f.get("low_total", 0.0), errors="coerce").fillna(0.0)
             f = f[f["match_count"] >= int(min_match)].copy()
             if q:
-                f = f[f["subdivision_name"].astype(str).str.lower().str.contains(q, na=False) | f["subdivision_code"].astype(str).str.lower().str.contains(q, na=False)].copy()
-            f = f.sort_values(["high_total", "match_count", "subdivision_name"], ascending=[False, False, True])
-            st.caption(f"Showing {len(f):,} of {len(subdivision_matches):,} matched subdivisions.")
-            if f.empty:
-                st.warning("No subdivisions match current filters.")
-            else:
-                render_subdivision_map_legend(f["subdivision_type"].value_counts().to_dict())
-                render_tfl_subdivision_arcgis_map(f.head(900), height=650, basemap=active_map_basemap)
-                view = f[["subdivision_type", "subdivision_name", "subdivision_code", "match_count", "low_total", "high_total", "match_clients_preview"]].rename(
-                    columns={"subdivision_type": "Subdivision Type", "subdivision_name": "Subdivision", "subdivision_code": "Code", "match_count": "Matched TFL Client Count", "low_total": "Matched TFL Low Estimate", "high_total": "Matched TFL High Estimate", "match_clients_preview": "Matched TFL Clients"}
+                f = f[
+                    f["subdivision_name"].astype(str).str.lower().str.contains(q, na=False)
+                    | f["subdivision_code"].astype(str).str.lower().str.contains(q, na=False)
+                ].copy()
+            if client_q:
+                client_series = f.get(
+                    "match_clients",
+                    pd.Series([[] for _ in range(len(f))], index=f.index, dtype=object),
                 )
-                display_view = view.copy()
-                display_view["Matched TFL Low Estimate"] = display_view["Matched TFL Low Estimate"].astype(float).apply(fmt_usd)
-                display_view["Matched TFL High Estimate"] = display_view["Matched TFL High Estimate"].astype(float).apply(fmt_usd)
-                st.dataframe(display_view, width="stretch", height=300, hide_index=True)
-                _ = export_dataframe(view, "subdivision_coverage_map.csv", label="Download coverage CSV")
-                labels = []
-                rows = []
-                for r in f.itertuples(index=False):
-                    code = str(getattr(r, "subdivision_code", "")).strip() or "N/A"
-                    labels.append(f"{r.subdivision_type} | {r.subdivision_name} ({code})")
-                    rows.append(r)
-                pick = st.selectbox("Subdivision drill-down", labels) if labels else ""
-                if pick:
-                    row = rows[labels.index(pick)]
-                    clients = sorted({str(v).strip() for v in (getattr(row, "match_clients", []) if isinstance(getattr(row, "match_clients", []), list) else []) if str(v).strip()})
-                    st.session_state.map_selected_subdivision_context = {
-                        "subdivision_type": str(getattr(row, "subdivision_type", "")).strip(),
-                        "subdivision_name": str(getattr(row, "subdivision_name", "")).strip(),
-                        "subdivision_code": str(getattr(row, "subdivision_code", "")).strip(),
-                        "high_total": float(getattr(row, "high_total", 0.0) or 0.0),
-                        "match_count": int(getattr(row, "match_count", 0) or 0),
-                        "clients": clients,
-                    }
-                    st.markdown(f'<div class="app-note"><strong>Selected subdivision:</strong> {html.escape(st.session_state.map_selected_subdivision_context.get("subdivision_type", ""))} | {html.escape(st.session_state.map_selected_subdivision_context.get("subdivision_name", ""))}</div>', unsafe_allow_html=True)
+                preview_series = f.get(
+                    "match_clients_preview",
+                    pd.Series([""] * len(f), index=f.index, dtype=object),
+                )
+                preview_mask = preview_series.astype(str).str.lower().str.contains(client_q, na=False)
+                client_mask = client_series.apply(
+                    lambda items: (
+                        any(client_q in str(item).lower() for item in items)
+                        if isinstance(items, list)
+                        else client_q in str(items).lower()
+                    )
+                )
+                f = f[preview_mask | client_mask].copy()
+
+            cov_sort = str(st.session_state.get("map_subdivision_sort", "Highest High Estimate"))
+            if cov_sort == "Highest Matched Client Count":
+                f = f.sort_values(["match_count", "high_total", "subdivision_name"], ascending=[False, False, True])
+            elif cov_sort == "Subdivision A-Z":
+                f = f.sort_values(["subdivision_name", "subdivision_type"], ascending=[True, True])
+            elif cov_sort == "Subdivision Type then Name":
+                f = f.sort_values(["subdivision_type", "subdivision_name", "high_total"], ascending=[True, True, False])
+            else:
+                f = f.sort_values(["high_total", "match_count", "subdivision_name"], ascending=[False, False, True])
+
+            coverage_client_set = set()
+            for names in f.get("match_clients", pd.Series(dtype=object)).tolist():
+                if isinstance(names, list):
+                    coverage_client_set.update({str(x).strip() for x in names if str(x).strip()})
+            coverage_high_total = float(f["high_total"].sum()) if not f.empty else 0.0
+            coverage_top_label = "No subdivision in filtered set"
+            if not f.empty:
+                top_row = f.iloc[0]
+                coverage_top_label = f"{str(top_row['subdivision_type']).strip()} | {str(top_row['subdivision_name']).strip()}"
+
+            labels = []
+            rows = []
+            for row in f.itertuples(index=False):
+                code = str(getattr(row, "subdivision_code", "")).strip() or "N/A"
+                labels.append(f"{row.subdivision_type} | {row.subdivision_name} ({code})")
+                rows.append(row)
+            pick_options = [""] + labels
+            if st.session_state.get("map_subdivision_pick", "") not in pick_options:
+                st.session_state.map_subdivision_pick = ""
+
+            with cov_tab_filters:
+                drill_col, insight_col = st.columns([1.05, 1.95], gap="large")
+                with drill_col:
+                    st.markdown('<div class="map-rail-title">Drill-Down Context</div>', unsafe_allow_html=True)
+                    if f.empty:
+                        st.info("No context options are available because there are no filtered subdivisions.")
+                    else:
+                        pick = st.selectbox(
+                            "Subdivision drill-down",
+                            pick_options,
+                            key="map_subdivision_pick",
+                            help="Choose a subdivision context before running Address Investigation.",
+                        )
+                        if pick and pick in labels:
+                            row = rows[labels.index(pick)]
+                            clients = sorted(
+                                {
+                                    str(v).strip()
+                                    for v in (
+                                        getattr(row, "match_clients", [])
+                                        if isinstance(getattr(row, "match_clients", []), list)
+                                        else []
+                                    )
+                                    if str(v).strip()
+                                }
+                            )
+                            st.session_state.map_selected_subdivision_context = {
+                                "subdivision_type": str(getattr(row, "subdivision_type", "")).strip(),
+                                "subdivision_name": str(getattr(row, "subdivision_name", "")).strip(),
+                                "subdivision_code": str(getattr(row, "subdivision_code", "")).strip(),
+                                "high_total": float(getattr(row, "high_total", 0.0) or 0.0),
+                                "match_count": int(getattr(row, "match_count", 0) or 0),
+                                "clients": clients,
+                            }
+                    if st.button(
+                        "Clear selected subdivision context",
+                        key="map_clear_selected_subdivision_context_btn",
+                        width="content",
+                    ):
+                        st.session_state.map_selected_subdivision_context = {}
+                        if "map_subdivision_pick" in st.session_state:
+                            st.session_state.map_subdivision_pick = ""
+                        st.rerun()
+
+                    selected_ctx = st.session_state.get("map_selected_subdivision_context", {})
+                    if isinstance(selected_ctx, dict) and str(selected_ctx.get("subdivision_name", "")).strip():
+                        selected_clients = [str(v).strip() for v in selected_ctx.get("clients", []) if str(v).strip()]
+                        preview = ", ".join(selected_clients[:5])
+                        if len(selected_clients) > 5:
+                            preview += f", +{len(selected_clients) - 5} more"
+                        st.markdown(
+                            f"""
+<div class="map-selected-shell">
+  <div class="map-selected-title">Selected Context: {html.escape(str(selected_ctx.get("subdivision_type", "")))}</div>
+  <div class="map-selected-sub">{html.escape(str(selected_ctx.get("subdivision_name", "")))} ({html.escape(str(selected_ctx.get("subdivision_code", "") or "N/A"))})</div>
+  <div class="map-selected-sub">Matched clients: {int(selected_ctx.get("match_count", 0)):,} | High estimate: {fmt_usd(float(selected_ctx.get("high_total", 0.0) or 0.0))}</div>
+  <div class="map-selected-sub">Client preview: {html.escape(preview or "No client preview available.")}</div>
+</div>
+""",
+                            unsafe_allow_html=True,
+                        )
+                with insight_col:
+                    st.markdown(
+                        f"""
+<div class="map-insight-grid">
+  <div class="map-insight">
+    <div class="map-insight-label">Filtered Subdivisions</div>
+    <div class="map-insight-value">{len(f):,}</div>
+    <div class="map-insight-sub">of {len(subdivision_matches):,} matched records</div>
+  </div>
+  <div class="map-insight">
+    <div class="map-insight-label">Matched Clients</div>
+    <div class="map-insight-value">{len(coverage_client_set):,}</div>
+    <div class="map-insight-sub">distinct entities in current filtered set</div>
+  </div>
+  <div class="map-insight">
+    <div class="map-insight-label">Combined High</div>
+    <div class="map-insight-value">{fmt_usd(coverage_high_total)}</div>
+    <div class="map-insight-sub">sum across filtered subdivision rows</div>
+  </div>
+  <div class="map-insight">
+    <div class="map-insight-label">Top Subdivision</div>
+    <div class="map-insight-value" style="font-size:0.86rem;">{html.escape(coverage_top_label)}</div>
+    <div class="map-insight-sub">highest row under current sort</div>
+  </div>
+</div>
+""",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(f"Filtered set: {len(f):,} of {len(subdivision_matches):,} matched subdivisions.")
+            with cov_tab_outputs:
+                st.caption(f"Showing {len(f):,} of {len(subdivision_matches):,} matched subdivisions.")
+                if f.empty:
+                    st.warning("No subdivisions match current filters.")
+                else:
+                    render_subdivision_map_legend(f["subdivision_type"].value_counts().to_dict())
+                    map_cap = int(st.session_state.get("map_subdivision_map_cap", 650) or 650)
+                    map_cap = max(100, min(900, map_cap))
+                    plot_rows = f.head(map_cap).copy()
+                    render_tfl_subdivision_arcgis_map(plot_rows, height=650, basemap=active_map_basemap)
+                    if len(plot_rows) < len(f):
+                        st.caption(f"Map capped at {len(plot_rows):,} points. Table includes all filtered rows.")
+                    view = f[["subdivision_type", "subdivision_name", "subdivision_code", "match_count", "low_total", "high_total", "match_clients_preview"]].rename(
+                        columns={"subdivision_type": "Subdivision Type", "subdivision_name": "Subdivision", "subdivision_code": "Code", "match_count": "Matched TFL Client Count", "low_total": "Matched TFL Low Estimate", "high_total": "Matched TFL High Estimate", "match_clients_preview": "Matched TFL Clients"}
+                    )
+                    display_view = view.copy()
+                    display_view["Matched TFL Low Estimate"] = display_view["Matched TFL Low Estimate"].astype(float).apply(fmt_usd)
+                    display_view["Matched TFL High Estimate"] = display_view["Matched TFL High Estimate"].astype(float).apply(fmt_usd)
+                    st.dataframe(display_view, width="stretch", height=330, hide_index=True)
+                    _ = export_dataframe(view, "subdivision_coverage_map.csv", label="Download coverage CSV")
+                    chart_col, summary_col = st.columns([1.45, 1.0], gap="large")
+                    with chart_col:
+                        top_chart = (
+                            f[["subdivision_name", "subdivision_type", "high_total"]]
+                            .sort_values("high_total", ascending=False)
+                            .head(15)
+                            .copy()
+                        )
+                        if not top_chart.empty:
+                            fig_cov = px.bar(
+                                top_chart.sort_values("high_total", ascending=True),
+                                x="high_total",
+                                y="subdivision_name",
+                                color="subdivision_type",
+                                orientation="h",
+                                labels={
+                                    "high_total": "Matched TFL High Estimate",
+                                    "subdivision_name": "Subdivision",
+                                    "subdivision_type": "Type",
+                                },
+                                title="Top Subdivisions by Matched High Estimate",
+                            )
+                            fig_cov.update_layout(
+                                height=390,
+                                margin=dict(l=10, r=10, t=52, b=10),
+                                legend_title_text="Type",
+                                xaxis_tickprefix="$",
+                                xaxis_tickformat=",",
+                            )
+                            st.plotly_chart(fig_cov, width="stretch", config=PLOTLY_CONFIG)
+                    with summary_col:
+                        type_rollup = (
+                            f.groupby("subdivision_type", as_index=False)
+                            .agg(
+                                Subdivisions=("subdivision_name", "nunique"),
+                                MatchedClients=("match_count", "sum"),
+                                HighTotal=("high_total", "sum"),
+                            )
+                            .sort_values("HighTotal", ascending=False)
+                        )
+                        if not type_rollup.empty:
+                            type_display = type_rollup.copy()
+                            type_display["HighTotal"] = type_display["HighTotal"].astype(float).apply(fmt_usd)
+                            type_display = type_display.rename(columns={"subdivision_type": "Subdivision Type", "HighTotal": "Matched High"})
+                            st.dataframe(type_display, width="stretch", height=390, hide_index=True)
+            all_tfl_name_set = {
+                str(v).strip()
+                for v in tfl_spending_source.get("Client", pd.Series(dtype=object)).dropna().astype(str).tolist()
+                if str(v).strip()
+            }
+            unmatched_clients = sorted(all_tfl_name_set - matched_subdivision_clients)
+            if unmatched_clients:
+                with st.expander("Coverage Gaps: entities with no subdivision match", expanded=False):
+                    unmatched_view = (
+                        tfl_spending_source[tfl_spending_source["Client"].astype(str).isin(unmatched_clients)][
+                            ["Client", "Low", "High", "Lobbyists"]
+                        ]
+                        .sort_values("High", ascending=False)
+                        .head(120)
+                        .copy()
+                    )
+                    if not unmatched_view.empty:
+                        unmatched_display = unmatched_view.copy()
+                        unmatched_display["Low"] = unmatched_display["Low"].astype(float).apply(fmt_usd)
+                        unmatched_display["High"] = unmatched_display["High"].astype(float).apply(fmt_usd)
+                        st.caption(
+                            f"{len(unmatched_clients):,} taxpayer-funded entities are outside current subdivision matches."
+                        )
+                        st.dataframe(unmatched_display, width="stretch", height=280, hide_index=True)
+                        _ = export_dataframe(
+                            unmatched_view,
+                            "coverage_gaps_unmatched_entities.csv",
+                            label="Download unmatched coverage entities CSV",
+                        )
 
     with tab_addr:
-        st.markdown('<div class="map-tab-banner"><div class="map-tab-title">Address Overlap View</div><div class="map-tab-sub">Run street address or coordinates and focus overlap with coverage selection.</div></div>', unsafe_allow_html=True)
+        st.markdown(
+            """
+<div class="map-stage-shell">
+  <div class="map-stage-title">Address Investigation</div>
+  <div class="map-stage-sub">Resolve one location, apply confidence-aware filters, and produce export-ready investigative leads.</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="map-tab-banner"><div class="map-tab-title">Address Workspace</div><div class="map-tab-sub">Use the selected coverage context to tighten overlap filtering and prioritize follow-up in Clients.</div></div>',
+            unsafe_allow_html=True,
+        )
         active_map_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.get("map_basemap_label", ""), "gray-vector")
         ctx = st.session_state.get("map_selected_subdivision_context", {}) if isinstance(st.session_state.get("map_selected_subdivision_context", {}), dict) else {}
         selected_type = str(ctx.get("subdivision_type", "")).strip()
@@ -4560,138 +5175,1656 @@ def _page_map_address():
         selected_code = str(ctx.get("subdivision_code", "")).strip()
         selected_clients = [str(v).strip() for v in ctx.get("clients", []) if str(v).strip()]
         selected_client_set = set(selected_clients)
-        if selected_name:
-            st.markdown(f'<div class="app-note"><strong>Active context:</strong> {html.escape(selected_type)} | {html.escape(selected_name)} ({html.escape(selected_code or "N/A")})</div>', unsafe_allow_html=True)
-        if st.session_state.get("map_overlap_input_mode") not in {"Street Address", "Coordinates"}:
-            st.session_state.map_overlap_input_mode = "Street Address"
-        mode = st.radio("Lookup mode", ["Street Address", "Coordinates"], key="map_overlap_input_mode", horizontal=True)
         analysis_point = None
+        addr_tab_lookup = st.container()
+        addr_tab_results = st.container()
+        addr_tab_batch = st.container()
+
+        with addr_tab_lookup:
+            context_cards = []
+            context_cards.append(
+                f"""
+<div class="map-context-card">
+  <div class="map-context-label">Subdivision Context</div>
+  <div class="map-context-value">{html.escape(f"{selected_type} | {selected_name}" if selected_name else "Not selected")}</div>
+</div>
+"""
+            )
+            context_cards.append(
+                f"""
+<div class="map-context-card">
+  <div class="map-context-label">Subdivision Code</div>
+  <div class="map-context-value">{html.escape(selected_code or "N/A")}</div>
+</div>
+"""
+            )
+            context_cards.append(
+                f"""
+<div class="map-context-card">
+  <div class="map-context-label">Selected Clients</div>
+  <div class="map-context-value">{len(selected_client_set):,}</div>
+</div>
+"""
+            )
+            context_cards.append(
+                f"""
+<div class="map-context-card">
+  <div class="map-context-label">Map Style</div>
+  <div class="map-context-value">{html.escape(st.session_state.get("map_basemap_label", "Gray Canvas"))}</div>
+</div>
+"""
+            )
+            st.markdown(f'<div class="map-context-grid">{"".join(context_cards)}</div>', unsafe_allow_html=True)
+            if selected_name:
+                st.markdown(
+                    f'<div class="app-note"><strong>Active context:</strong> {html.escape(selected_type)} | {html.escape(selected_name)} ({html.escape(selected_code or "N/A")})</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<div class="app-note"><strong>No subdivision context selected.</strong> You can still run Address Investigation; use Coverage drill-down to set context-aware focus filters.</div>',
+                    unsafe_allow_html=True,
+                )
+            if st.session_state.get("map_overlap_input_mode") not in {"Street Address", "Coordinates"}:
+                st.session_state.map_overlap_input_mode = "Street Address"
+            mode = st.radio("Lookup mode", ["Street Address", "Coordinates"], key="map_overlap_input_mode", horizontal=True)
+            if mode == "Street Address":
+                a1, a2 = st.columns([5, 1.2])
+                with a1:
+                    with st.form("map_overlap_lookup_form", clear_on_submit=False):
+                        st.text_input("Texas address", placeholder="e.g., 1100 Congress Ave, Austin, TX 78701", key="map_overlap_address_input")
+                        go = st.form_submit_button("Investigate address", use_container_width=True)
+                with a2:
+                    clear = st.button("Clear address", key="map_overlap_clear_btn", width="stretch")
+                if go:
+                    st.session_state.map_overlap_address_query = st.session_state.map_overlap_address_input.strip()
+                    st.session_state.map_overlap_query_kind = "address"
+                    recent_value = st.session_state.map_overlap_address_query
+                    if recent_value:
+                        old_recent = [
+                            str(v).strip()
+                            for v in st.session_state.get("map_recent_addresses", [])
+                            if str(v).strip()
+                        ]
+                        updated_recent = [recent_value] + [v for v in old_recent if v.lower() != recent_value.lower()]
+                        st.session_state.map_recent_addresses = updated_recent[:8]
+                if clear:
+                    st.session_state.map_overlap_address_input = ""
+                    st.session_state.map_overlap_address_query = ""
+                    st.session_state.map_overlap_query_kind = "address"
+                recent_addresses = [str(v).strip() for v in st.session_state.get("map_recent_addresses", []) if str(v).strip()]
+                if recent_addresses:
+                    r1, r2 = st.columns([4.5, 1.0])
+                    recent_options = [""] + recent_addresses
+                    if st.session_state.get("map_overlap_recent_pick", "") not in recent_options:
+                        st.session_state.map_overlap_recent_pick = ""
+                    with r1:
+                        recent_pick = st.selectbox("Recent lookups", recent_options, key="map_overlap_recent_pick")
+                    with r2:
+                        use_recent = st.button("Use recent", key="map_overlap_use_recent_btn", width="stretch")
+                    if use_recent and recent_pick:
+                        st.session_state.map_overlap_address_input = recent_pick
+                        st.session_state.map_overlap_address_query = recent_pick
+                        st.session_state.map_overlap_query_kind = "address"
+                        st.rerun()
+                addr = st.session_state.get("map_overlap_address_query", "").strip()
+                if addr:
+                    g = geocode_address_arcgis(addr)
+                    if g:
+                        analysis_point = {
+                            "query": addr,
+                            "matched": str(g.get("matched_address", addr)).strip() or addr,
+                            "score": float(g.get("score", 0.0)),
+                            "lon": float(g.get("lon", 0.0)),
+                            "lat": float(g.get("lat", 0.0)),
+                            "region": str(g.get("region_abbr", "")).strip().upper(),
+                            "city": str(g.get("city", "")).strip(),
+                            "postal": str(g.get("postal", "")).strip(),
+                        }
+                        if analysis_point["region"] and analysis_point["region"] != "TX":
+                            st.warning(
+                                f"Geocoder returned {analysis_point['region']}. Verify this address is in Texas before using overlap totals."
+                            )
+                    else:
+                        st.warning("Could not geocode that address.")
+            else:
+                a1, a2, a3 = st.columns([1.2, 1.2, 1.2])
+                with a1:
+                    st.number_input("Latitude", min_value=24.0, max_value=37.5, step=0.000001, format="%.6f", key="map_overlap_coord_lat")
+                with a2:
+                    st.number_input("Longitude", min_value=-107.5, max_value=-93.0, step=0.000001, format="%.6f", key="map_overlap_coord_lon")
+                with a3:
+                    run = st.button("Investigate coordinates", key="map_overlap_coord_run_btn", width="stretch")
+                if run:
+                    st.session_state.map_overlap_query_lat = float(st.session_state.get("map_overlap_coord_lat", 31.0))
+                    st.session_state.map_overlap_query_lon = float(st.session_state.get("map_overlap_coord_lon", -99.0))
+                    st.session_state.map_overlap_query_kind = "coordinates"
+                if st.session_state.get("map_overlap_query_lat") is not None and st.session_state.get("map_overlap_query_lon") is not None:
+                    lat = float(st.session_state.get("map_overlap_query_lat", 31.0))
+                    lon = float(st.session_state.get("map_overlap_query_lon", -99.0))
+                    analysis_point = {
+                        "query": f"{lat:.6f}, {lon:.6f}",
+                        "matched": f"Coordinates ({lat:.6f}, {lon:.6f})",
+                        "score": None,
+                        "lon": lon,
+                        "lat": lat,
+                        "region": "TX",
+                        "city": "",
+                        "postal": "",
+                    }
+
+        with addr_tab_results:
+            if analysis_point is None:
+                st.session_state.map_overlap_last_row_count = 0
+                st.info("Run a lookup to populate overlap results.")
+            else:
+                score_txt = f"{float(analysis_point['score']):.0f}" if analysis_point["score"] is not None else "N/A"
+                st.markdown(
+                    f'<div class="callout geo-note"><div class="callout-title">Matched Location</div><div class="callout-body">{html.escape(analysis_point["matched"])} | Score: {score_txt} | City: {html.escape(analysis_point["city"] or "N/A")} | ZIP: {html.escape(analysis_point["postal"] or "N/A")}</div></div>',
+                    unsafe_allow_html=True,
+                )
+                if analysis_point["score"] is None:
+                    st.markdown('<span class="map-score-chip is-unknown">Geocode score unavailable (coordinate mode)</span>', unsafe_allow_html=True)
+                elif float(analysis_point["score"]) >= 90:
+                    st.markdown(f'<span class="map-score-chip is-high">Geocode score: {score_txt}</span>', unsafe_allow_html=True)
+                elif float(analysis_point["score"]) >= 80:
+                    st.markdown(f'<span class="map-score-chip is-medium">Geocode score: {score_txt}</span>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<span class="map-score-chip is-low">Geocode score: {score_txt}</span>', unsafe_allow_html=True)
+                if analysis_point["score"] is not None and float(analysis_point["score"]) < 80:
+                    st.warning("Address match confidence is low.")
+
+                overlap_sub = query_texas_subdivisions_for_point(round(float(analysis_point["lon"]), 6), round(float(analysis_point["lat"]), 6))
+                overlap_points = build_overlap_map_points(overlap_subdivisions=overlap_sub, subdivision_matches=subdivision_matches)
+                overlap_spend = build_address_overlap_spending_rows(
+                    overlap_subdivisions=overlap_sub,
+                    subdivision_matches=subdivision_matches,
+                    tfl_spending=tfl_spending_source,
+                )
+                st.session_state.map_overlap_last_row_count = int(overlap_spend.shape[0]) if isinstance(overlap_spend, pd.DataFrame) else 0
+                filtered_spend = overlap_spend.copy()
+                if not overlap_spend.empty:
+                    conf = [c for c in ["High", "Medium", "Low", "Unknown"] if c in overlap_spend["Match Confidence"].value_counts().to_dict()]
+                    st.session_state.map_overlap_confidence_filter = [str(v) for v in st.session_state.get("map_overlap_confidence_filter", []) if str(v) in conf] or list(conf)
+                    method_options = sorted({str(v).strip() for v in overlap_spend.get("Match Method", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()})
+                    type_options = sorted({str(v).strip() for v in overlap_spend.get("Subdivision Type", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()})
+                    st.session_state.map_overlap_method_filter = [str(v) for v in st.session_state.get("map_overlap_method_filter", []) if str(v) in method_options] or list(method_options)
+                    st.session_state.map_overlap_subdivision_type_filter = [str(v) for v in st.session_state.get("map_overlap_subdivision_type_filter", []) if str(v) in type_options] or list(type_options)
+
+                    f1, f2, f3, f4 = st.columns([1.25, 1.45, 1.45, 1.0])
+                    with f1:
+                        overlap_conf = st.multiselect("Confidence", conf, key="map_overlap_confidence_filter")
+                    with f2:
+                        st.multiselect("Match method", method_options, key="map_overlap_method_filter")
+                    with f3:
+                        st.multiselect("Subdivision type", type_options, key="map_overlap_subdivision_type_filter")
+                    with f4:
+                        sort_mode = st.selectbox("Sort", ["Highest High", "Highest Mid", "Entity A-Z", "Subdivision A-Z"], key="map_overlap_sort")
+
+                    t1, t2, t3, t4 = st.columns([1.5, 1.2, 1.6, 1.6])
+                    with t1:
+                        ent_q = st.text_input("Entity filter", key="map_overlap_entity_filter", placeholder="Filter TFL entity name").strip()
+                    with t2:
+                        st.checkbox("Use coverage types", key="map_overlap_use_coverage_filters")
+                    with t3:
+                        st.checkbox("Focus selected subdivision", key="map_overlap_focus_selected_subdivision", disabled=not bool(selected_name))
+                    with t4:
+                        st.checkbox("Focus selected clients", key="map_overlap_focus_selected_clients", disabled=not bool(selected_client_set))
+
+                    if overlap_conf:
+                        filtered_spend = filtered_spend[filtered_spend["Match Confidence"].astype(str).isin(overlap_conf)].copy()
+                    method_filter = [str(v).strip() for v in st.session_state.get("map_overlap_method_filter", []) if str(v).strip()]
+                    if method_filter:
+                        filtered_spend = filtered_spend[filtered_spend["Match Method"].astype(str).isin(method_filter)].copy()
+                    subtype_filter = [str(v).strip() for v in st.session_state.get("map_overlap_subdivision_type_filter", []) if str(v).strip()]
+                    if subtype_filter:
+                        filtered_spend = filtered_spend[filtered_spend["Subdivision Type"].astype(str).isin(subtype_filter)].copy()
+                    if ent_q:
+                        filtered_spend = filtered_spend[filtered_spend["TFL Entity"].astype(str).str.contains(ent_q, case=False, na=False)].copy()
+                    if st.session_state.get("map_overlap_use_coverage_filters", True):
+                        c_types = [str(v) for v in st.session_state.get("map_subdivision_types_filter", []) if str(v).strip()]
+                        if c_types:
+                            filtered_spend = filtered_spend[filtered_spend["Subdivision Type"].astype(str).isin(c_types)].copy()
+                    if st.session_state.get("map_overlap_focus_selected_subdivision", False) and selected_name:
+                        filtered_spend = filtered_spend[
+                            (filtered_spend["Subdivision Type"].astype(str) == selected_type)
+                            & (filtered_spend["Subdivision"].astype(str) == selected_name)
+                        ].copy()
+                        if selected_code:
+                            filtered_spend = filtered_spend[filtered_spend["Code"].astype(str) == selected_code].copy()
+                    if st.session_state.get("map_overlap_focus_selected_clients", False) and selected_client_set:
+                        filtered_spend = filtered_spend[filtered_spend["TFL Entity"].astype(str).isin(selected_client_set)].copy()
+                    if sort_mode == "Highest High":
+                        filtered_spend = filtered_spend.sort_values(["High", "Mid", "Low", "TFL Entity"], ascending=[False, False, False, True])
+                    elif sort_mode == "Highest Mid":
+                        filtered_spend = filtered_spend.sort_values(["Mid", "High", "Low", "TFL Entity"], ascending=[False, False, False, True])
+                    elif sort_mode == "Entity A-Z":
+                        filtered_spend = filtered_spend.sort_values(["TFL Entity", "Subdivision Type", "Subdivision"], ascending=[True, True, True])
+                    else:
+                        filtered_spend = filtered_spend.sort_values(["Subdivision Type", "Subdivision", "TFL Entity"], ascending=[True, True, True])
+                    if not overlap_points.empty:
+                        if filtered_spend.empty:
+                            overlap_points = overlap_points.iloc[0:0].copy()
+                        else:
+                            allowed = {
+                                (str(r["Subdivision Type"]).strip(), str(r["Subdivision"]).strip(), str(r["Code"]).strip())
+                                for _, r in filtered_spend[["Subdivision Type", "Subdivision", "Code"]].drop_duplicates().iterrows()
+                            }
+                            overlap_points = overlap_points[
+                                overlap_points.apply(
+                                    lambda r: (
+                                        str(r.get("subdivision_type", "")).strip(),
+                                        str(r.get("subdivision_name", "")).strip(),
+                                        str(r.get("subdivision_code", "")).strip(),
+                                    ) in allowed,
+                                    axis=1,
+                                )
+                            ].copy()
+                    st.caption(f"Showing {len(filtered_spend):,} of {len(overlap_spend):,} overlap rows.")
+
+                filtered_rows = int(filtered_spend.shape[0]) if not filtered_spend.empty else 0
+                filtered_high_total = float(filtered_spend["High"].sum()) if not filtered_spend.empty else 0.0
+                filtered_low_total = float(filtered_spend["Low"].sum()) if not filtered_spend.empty else 0.0
+                filtered_entities = int(filtered_spend["TFL Entity"].nunique()) if not filtered_spend.empty else 0
+                filtered_subdivisions = int(filtered_spend[["Subdivision Type", "Subdivision", "Code"]].drop_duplicates().shape[0]) if not filtered_spend.empty else 0
+                high_conf_rows = int((filtered_spend["Match Confidence"].astype(str) == "High").sum()) if not filtered_spend.empty else 0
+                high_conf_share = (high_conf_rows / filtered_rows) if filtered_rows else 0.0
+                geocode_score = float(analysis_point["score"]) if analysis_point["score"] is not None else None
+                if geocode_score is None:
+                    evidence_rating = "Moderate (coordinate mode)" if high_conf_share >= 0.60 else ("Tentative (coordinate mode)" if high_conf_share >= 0.35 else "Low (coordinate mode)")
+                elif geocode_score >= 90 and high_conf_share >= 0.55:
+                    evidence_rating = "High"
+                elif geocode_score >= 80 and high_conf_share >= 0.35:
+                    evidence_rating = "Moderate"
+                else:
+                    evidence_rating = "Low"
+                brief_html = "".join(
+                    [
+                        (
+                            '<div class="map-brief-card"><div class="map-brief-label">Evidence rating</div>'
+                            f'<div class="map-brief-value">{html.escape(evidence_rating)}</div>'
+                            f'<div class="map-brief-sub">High-confidence share: {high_conf_share:.1%}</div></div>'
+                        ),
+                        (
+                            '<div class="map-brief-card"><div class="map-brief-label">Overlap rows</div>'
+                            f'<div class="map-brief-value">{filtered_rows:,}</div>'
+                            f'<div class="map-brief-sub">of {len(overlap_spend):,} matched rows</div></div>'
+                        ),
+                        (
+                            '<div class="map-brief-card"><div class="map-brief-label">Unique entities</div>'
+                            f'<div class="map-brief-value">{filtered_entities:,}</div>'
+                            f'<div class="map-brief-sub">{filtered_subdivisions:,} unique subdivisions</div></div>'
+                        ),
+                        (
+                            '<div class="map-brief-card"><div class="map-brief-label">Exposure range</div>'
+                            f'<div class="map-brief-value">{fmt_usd(filtered_low_total)} - {fmt_usd(filtered_high_total)}</div>'
+                            '<div class="map-brief-sub">filtered overlap rows</div></div>'
+                        ),
+                    ]
+                )
+                st.markdown(f'<div class="map-brief-grid">{brief_html}</div>', unsafe_allow_html=True)
+                if not filtered_spend.empty:
+                    conf_counts = filtered_spend["Match Confidence"].value_counts().to_dict()
+                    chip_parts = []
+                    for conf_name, css_name in [("High", "is-high"), ("Medium", "is-medium"), ("Low", "is-low"), ("Unknown", "is-unknown")]:
+                        count = int(conf_counts.get(conf_name, 0))
+                        if count:
+                            chip_parts.append(f'<span class="map-score-chip {css_name}">{conf_name}: {count:,}</span>')
+                    if chip_parts:
+                        st.markdown("".join(chip_parts), unsafe_allow_html=True)
+
+                map_col, sub_col = st.columns([1.7, 1.0], gap="large")
+                with map_col:
+                    render_address_overlap_arcgis_map(
+                        lon=float(analysis_point["lon"]),
+                        lat=float(analysis_point["lat"]),
+                        matched_address=analysis_point["matched"],
+                        overlap_points=overlap_points,
+                        height=460,
+                        basemap=active_map_basemap,
+                    )
+                overlap_display = overlap_sub.rename(columns={"subdivision_type": "Subdivision Type", "subdivision_name": "Subdivision", "subdivision_code": "Code", "source_name": "Map Source", "source_url": "Map Source URL"}) if not overlap_sub.empty else pd.DataFrame(columns=["Subdivision Type", "Subdivision", "Code", "Map Source", "Map Source URL"])
+                with sub_col:
+                    st.markdown('<div class="map-rail-title">Overlapping Subdivisions</div>', unsafe_allow_html=True)
+                    st.dataframe(overlap_display, width="stretch", height=460, hide_index=True)
+                if not overlap_spend.empty:
+                    disp = filtered_spend.copy()
+                    disp["Low"] = disp["Low"].astype(float).apply(fmt_usd)
+                    disp["High"] = disp["High"].astype(float).apply(fmt_usd)
+                    disp["Mid"] = disp["Mid"].astype(float).apply(fmt_usd)
+                    disp = disp.rename(columns={"Lobbyists": "Lobbyists Under Contract", "Mid": "Midpoint"})
+                    st.dataframe(disp[["Subdivision Type", "Subdivision", "Code", "Entity Type", "TFL Entity", "Match Method", "Match Confidence", "Map Source", "Low", "High", "Midpoint", "Lobbyists Under Contract"]], width="stretch", height=390, hide_index=True)
+                    _ = export_dataframe(
+                        filtered_spend,
+                        "address_overlap_entity_rows.csv",
+                        label="Download filtered overlap entity CSV",
+                    )
+                    summary_row = pd.DataFrame(
+                        [
+                            {
+                                "Input": analysis_point["query"],
+                                "Matched Location": analysis_point["matched"],
+                                "Latitude": float(analysis_point["lat"]),
+                                "Longitude": float(analysis_point["lon"]),
+                                "Evidence Rating": evidence_rating,
+                                "High Confidence Share": high_conf_share,
+                                "Subdivision Overlaps": int(overlap_sub.shape[0]),
+                                "Overlap Rows (All)": int(overlap_spend.shape[0]),
+                                "Overlap Rows (Filtered)": int(filtered_rows),
+                                "Unique TFL Entities (Filtered)": int(filtered_entities),
+                                "Combined Low (Filtered)": float(filtered_low_total),
+                                "Combined High (Filtered)": float(filtered_high_total),
+                            }
+                        ]
+                    )
+                    _ = export_dataframe(
+                        summary_row,
+                        "address_overlap_investigation_summary.csv",
+                        label="Download investigation summary CSV",
+                    )
+                    if not filtered_spend.empty:
+                        entity_rank = (
+                            filtered_spend.groupby("TFL Entity", as_index=False)
+                            .agg(
+                                Low=("Low", "sum"),
+                                High=("High", "sum"),
+                                Mid=("Mid", "sum"),
+                                OverlapRows=("TFL Entity", "size"),
+                                Subdivisions=("Subdivision", "nunique"),
+                                HighConfidenceRows=("Match Confidence", lambda s: int((s.astype(str) == "High").sum())),
+                                Lobbyists=("Lobbyists", "max"),
+                            )
+                            .sort_values(["High", "Mid"], ascending=[False, False])
+                            .reset_index(drop=True)
+                        )
+                        entity_rank["HighConfidenceShare"] = entity_rank["HighConfidenceRows"] / entity_rank["OverlapRows"].replace(0, 1)
+                        entity_rank["InvestigationScore"] = (
+                            entity_rank["High"]
+                            * (1 + (entity_rank["HighConfidenceShare"] * 0.45) + (entity_rank["Subdivisions"] * 0.08))
+                        )
+                        entity_rank = entity_rank.sort_values(["InvestigationScore", "High"], ascending=[False, False]).reset_index(drop=True)
+                        entity_rank["Priority"] = "Monitor"
+                        if not entity_rank.empty:
+                            tier1_cut = max(1, int(round(len(entity_rank) * 0.25)))
+                            tier2_cut = max(tier1_cut + 1, int(round(len(entity_rank) * 0.60)))
+                            entity_rank.loc[0 : tier1_cut - 1, "Priority"] = "Priority 1"
+                            entity_rank.loc[tier1_cut : tier2_cut - 1, "Priority"] = "Priority 2"
+
+                        st.markdown(
+                            '<div class="map-lead-banner">Investigative Leads: ranked by matched exposure, confidence mix, and subdivision breadth.</div>',
+                            unsafe_allow_html=True,
+                        )
+                        leads_export = entity_rank.copy()
+                        leads_display = leads_export.copy()
+                        leads_display["Low"] = leads_display["Low"].astype(float).apply(fmt_usd)
+                        leads_display["High"] = leads_display["High"].astype(float).apply(fmt_usd)
+                        leads_display["Mid"] = leads_display["Mid"].astype(float).apply(fmt_usd)
+                        leads_display["HighConfidenceShare"] = (leads_display["HighConfidenceShare"] * 100.0).map(lambda v: f"{v:.1f}%")
+                        leads_display["InvestigationScore"] = pd.to_numeric(leads_display["InvestigationScore"], errors="coerce").fillna(0.0).round(0)
+                        st.dataframe(
+                            leads_display[
+                                [
+                                    "Priority",
+                                    "TFL Entity",
+                                    "Low",
+                                    "High",
+                                    "Mid",
+                                    "OverlapRows",
+                                    "Subdivisions",
+                                    "HighConfidenceShare",
+                                    "Lobbyists",
+                                    "InvestigationScore",
+                                ]
+                            ],
+                            width="stretch",
+                            height=300,
+                            hide_index=True,
+                        )
+                        _ = export_dataframe(
+                            leads_export,
+                            "address_overlap_investigation_leads.csv",
+                            label="Download ranked leads CSV",
+                        )
+
+                        jump_l, jump_r = st.columns([4, 1.2])
+                        with jump_l:
+                            opts = [
+                                str(v).strip()
+                                for v in entity_rank["TFL Entity"].dropna().astype(str).tolist()
+                                if str(v).strip()
+                            ]
+                            open_entity = st.selectbox(
+                                "Open ranked entity in Client Look-Up",
+                                opts,
+                                key="map_overlap_open_client_select",
+                            ) if opts else ""
+                        with jump_r:
+                            open_click = st.button("Open Client", key="map_overlap_open_client_btn", width="stretch")
+                        if open_click and open_entity:
+                            _open_client_lookup(open_entity)
+                else:
+                    st.info("No overlap spending rows were found for this location after matching.")
+
+        with addr_tab_batch:
+            def _parse_batch_addresses(raw_text: str) -> list[str]:
+                seen = set()
+                output = []
+                for raw_line in str(raw_text).splitlines():
+                    address_value = str(raw_line).strip()
+                    if not address_value:
+                        continue
+                    norm_value = address_value.lower()
+                    if norm_value in seen:
+                        continue
+                    seen.add(norm_value)
+                    output.append(address_value)
+                return output
+
+            with st.expander("Batch Address Triage", expanded=True):
+                st.markdown(
+                    '<div class="map-batch-head"><h4>Batch triage scan</h4><div class="meta">Run multiple addresses and rank by triage score.</div></div>',
+                    unsafe_allow_html=True,
+                )
+                st.text_area(
+                    "One address per line",
+                    key="map_overlap_batch_input",
+                    height=150,
+                    placeholder="1100 Congress Ave, Austin, TX 78701\n1500 Marilla St, Dallas, TX 75201",
+                )
+                b1, b2, b3 = st.columns([1.2, 1.1, 1.1], gap="small")
+                with b1:
+                    st.number_input("Max addresses", min_value=1, max_value=20, key="map_overlap_batch_max")
+                with b2:
+                    run_batch = st.button("Run batch triage", key="map_overlap_batch_run_btn", width="stretch")
+                with b3:
+                    clear_batch = st.button("Clear batch results", key="map_overlap_batch_clear_btn", width="stretch")
+
+                if clear_batch:
+                    st.session_state.map_overlap_batch_results = []
+                    st.session_state.map_overlap_batch_status_filter = []
+
+                if run_batch:
+                    if subdivision_matches.empty or tfl_spending_source.empty:
+                        st.warning("Batch triage needs matched subdivisions and taxpayer-funded spending rows.")
+                    else:
+                        parsed_addresses = _parse_batch_addresses(st.session_state.get("map_overlap_batch_input", ""))
+                        if not parsed_addresses:
+                            st.warning("Enter at least one address for batch triage.")
+                        else:
+                            max_rows = int(st.session_state.get("map_overlap_batch_max", 8) or 8)
+                            target_addresses = parsed_addresses[:max_rows]
+                            batch_rows = []
+                            with st.spinner(f"Running triage for {len(target_addresses)} addresses..."):
+                                for rank, address_value in enumerate(target_addresses, start=1):
+                                    geo = geocode_address_arcgis(address_value)
+                                    if not geo:
+                                        batch_rows.append(
+                                            {
+                                                "Rank": rank,
+                                                "Input": address_value,
+                                                "Matched Location": "",
+                                                "Status": "Geocode Failed",
+                                                "Geocode Score": 0.0,
+                                                "City": "",
+                                                "ZIP": "",
+                                                "Subdivision Overlaps": 0,
+                                                "Overlap Rows": 0,
+                                                "Unique TFL Entities": 0,
+                                                "High Confidence Rows": 0,
+                                                "Medium Confidence Rows": 0,
+                                                "Low Confidence Rows": 0,
+                                                "High Confidence Share": 0.0,
+                                                "Combined Low": 0.0,
+                                                "Combined High": 0.0,
+                                                "Triage Score": 0.0,
+                                            }
+                                        )
+                                        continue
+                                    region_abbr = str(geo.get("region_abbr", "")).strip().upper()
+                                    if region_abbr and region_abbr != "TX":
+                                        batch_rows.append(
+                                            {
+                                                "Rank": rank,
+                                                "Input": address_value,
+                                                "Matched Location": str(geo.get("matched_address", "")).strip(),
+                                                "Status": "Outside Texas",
+                                                "Geocode Score": float(geo.get("score", 0.0) or 0.0),
+                                                "City": str(geo.get("city", "")).strip(),
+                                                "ZIP": str(geo.get("postal", "")).strip(),
+                                                "Subdivision Overlaps": 0,
+                                                "Overlap Rows": 0,
+                                                "Unique TFL Entities": 0,
+                                                "High Confidence Rows": 0,
+                                                "Medium Confidence Rows": 0,
+                                                "Low Confidence Rows": 0,
+                                                "High Confidence Share": 0.0,
+                                                "Combined Low": 0.0,
+                                                "Combined High": 0.0,
+                                                "Triage Score": 0.0,
+                                            }
+                                        )
+                                        continue
+                                    lon_val = round(float(geo.get("lon", 0.0) or 0.0), 6)
+                                    lat_val = round(float(geo.get("lat", 0.0) or 0.0), 6)
+                                    overlap_sub_batch = query_texas_subdivisions_for_point(lon_val, lat_val)
+                                    overlap_spend_batch = build_address_overlap_spending_rows(
+                                        overlap_subdivisions=overlap_sub_batch,
+                                        subdivision_matches=subdivision_matches,
+                                        tfl_spending=tfl_spending_source,
+                                    )
+                                    if st.session_state.get("map_overlap_use_coverage_filters", True):
+                                        cov_types = [
+                                            str(v).strip()
+                                            for v in st.session_state.get("map_subdivision_types_filter", [])
+                                            if str(v).strip()
+                                        ]
+                                        if cov_types and not overlap_spend_batch.empty:
+                                            overlap_spend_batch = overlap_spend_batch[
+                                                overlap_spend_batch["Subdivision Type"].astype(str).isin(cov_types)
+                                            ].copy()
+                                    high_rows = int((overlap_spend_batch["Match Confidence"].astype(str) == "High").sum()) if not overlap_spend_batch.empty else 0
+                                    med_rows = int((overlap_spend_batch["Match Confidence"].astype(str) == "Medium").sum()) if not overlap_spend_batch.empty else 0
+                                    low_rows = int((overlap_spend_batch["Match Confidence"].astype(str) == "Low").sum()) if not overlap_spend_batch.empty else 0
+                                    row_count = int(overlap_spend_batch.shape[0]) if not overlap_spend_batch.empty else 0
+                                    high_share = (high_rows / row_count) if row_count else 0.0
+                                    total_high = float(overlap_spend_batch["High"].sum()) if row_count else 0.0
+                                    total_low = float(overlap_spend_batch["Low"].sum()) if row_count else 0.0
+                                    score_factor = float(geo.get("score", 0.0) or 0.0) / 100.0 if row_count else 0.0
+                                    triage_score = (
+                                        total_high
+                                        * (1 + (high_share * 0.50) + (int(overlap_sub_batch.shape[0]) * 0.07))
+                                        * max(0.40, score_factor)
+                                    )
+                                    status_value = "OK" if row_count > 0 else "No Overlap Rows"
+                                    batch_rows.append(
+                                        {
+                                            "Rank": rank,
+                                            "Input": address_value,
+                                            "Matched Location": str(geo.get("matched_address", "")).strip() or address_value,
+                                            "Status": status_value,
+                                            "Geocode Score": float(geo.get("score", 0.0) or 0.0),
+                                            "City": str(geo.get("city", "")).strip(),
+                                            "ZIP": str(geo.get("postal", "")).strip(),
+                                            "Subdivision Overlaps": int(overlap_sub_batch.shape[0]),
+                                            "Overlap Rows": row_count,
+                                            "Unique TFL Entities": int(overlap_spend_batch["TFL Entity"].nunique()) if row_count else 0,
+                                            "High Confidence Rows": high_rows,
+                                            "Medium Confidence Rows": med_rows,
+                                            "Low Confidence Rows": low_rows,
+                                            "High Confidence Share": high_share,
+                                            "Combined Low": total_low,
+                                            "Combined High": total_high,
+                                            "Triage Score": triage_score,
+                                        }
+                                    )
+                            st.session_state.map_overlap_batch_results = batch_rows
+
+                batch_results = st.session_state.get("map_overlap_batch_results", [])
+                if batch_results:
+                    batch_df = pd.DataFrame(batch_results)
+                    status_options = sorted({str(v).strip() for v in batch_df.get("Status", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()})
+                    st.session_state.map_overlap_batch_status_filter = [str(v) for v in st.session_state.get("map_overlap_batch_status_filter", []) if str(v) in status_options] or list(status_options)
+                    bfl1, bfl2 = st.columns([1.4, 1.2], gap="small")
+                    with bfl1:
+                        status_filter = st.multiselect("Status filter", status_options, key="map_overlap_batch_status_filter")
+                    with bfl2:
+                        batch_sort_options = [
+                            "Highest Triage Score",
+                            "Highest High Total",
+                            "Highest Overlap Rows",
+                            "Most Subdivisions",
+                            "Highest Geocode Score",
+                            "Input A-Z",
+                        ]
+                        if st.session_state.get("map_overlap_batch_sort") not in batch_sort_options:
+                            st.session_state.map_overlap_batch_sort = batch_sort_options[0]
+                        batch_sort = st.selectbox(
+                            "Sort",
+                            batch_sort_options,
+                            key="map_overlap_batch_sort",
+                        )
+
+                    filtered_batch = batch_df.copy()
+                    if status_filter:
+                        filtered_batch = filtered_batch[filtered_batch["Status"].astype(str).isin(status_filter)].copy()
+                    if batch_sort == "Highest Triage Score":
+                        filtered_batch = filtered_batch.sort_values(["Triage Score", "Combined High"], ascending=[False, False])
+                    elif batch_sort == "Highest Overlap Rows":
+                        filtered_batch = filtered_batch.sort_values(["Overlap Rows", "Combined High"], ascending=[False, False])
+                    elif batch_sort == "Most Subdivisions":
+                        filtered_batch = filtered_batch.sort_values(["Subdivision Overlaps", "Combined High"], ascending=[False, False])
+                    elif batch_sort == "Highest Geocode Score":
+                        filtered_batch = filtered_batch.sort_values(["Geocode Score", "Combined High"], ascending=[False, False])
+                    elif batch_sort == "Input A-Z":
+                        filtered_batch = filtered_batch.sort_values(["Input"], ascending=[True])
+                    else:
+                        filtered_batch = filtered_batch.sort_values(["Combined High", "Overlap Rows"], ascending=[False, False])
+
+                    st.caption(f"Showing {len(filtered_batch):,} of {len(batch_df):,} batch rows.")
+                    display_batch = filtered_batch.copy()
+                    if not display_batch.empty:
+                        display_batch["Combined Low"] = display_batch["Combined Low"].astype(float).apply(fmt_usd)
+                        display_batch["Combined High"] = display_batch["Combined High"].astype(float).apply(fmt_usd)
+                        display_batch["Geocode Score"] = pd.to_numeric(display_batch["Geocode Score"], errors="coerce").fillna(0.0).round(0)
+                        display_batch["High Confidence Share"] = (
+                            pd.to_numeric(display_batch["High Confidence Share"], errors="coerce").fillna(0.0) * 100.0
+                        ).map(lambda v: f"{v:.1f}%")
+                        display_batch["Triage Score"] = pd.to_numeric(display_batch["Triage Score"], errors="coerce").fillna(0.0).round(0)
+                    st.dataframe(display_batch, width="stretch", height=320, hide_index=True)
+                    _ = export_dataframe(filtered_batch, "address_overlap_batch_triage.csv", label="Download batch triage CSV")
+
+                    if not filtered_batch.empty:
+                        leader = filtered_batch.iloc[0]
+                        st.markdown(
+                            f"""
+<div class="map-batch-rank-shell">
+  <div class="map-flow-kicker">Top Ranked Batch Result</div>
+  <div class="map-flow-title">{html.escape(str(leader.get("Input", "")))}</div>
+  <div class="map-flow-sub">Status: {html.escape(str(leader.get("Status", "")))} | Triage Score: {float(leader.get("Triage Score", 0.0) or 0.0):,.0f} | Combined High: {fmt_usd(float(leader.get("Combined High", 0.0) or 0.0))}</div>
+</div>
+""",
+                            unsafe_allow_html=True,
+                        )
+                        if len(filtered_batch) > 1:
+                            fig_batch = px.scatter(
+                                filtered_batch,
+                                x="Overlap Rows",
+                                y="Combined High",
+                                size="Triage Score",
+                                color="Status",
+                                hover_data={
+                                    "Input": True,
+                                    "Geocode Score": ":.0f",
+                                    "Subdivision Overlaps": True,
+                                    "High Confidence Share": ":.1%",
+                                    "Triage Score": ":.0f",
+                                },
+                                title="Batch triage matrix",
+                            )
+                            fig_batch.update_layout(
+                                height=330,
+                                margin=dict(l=10, r=10, t=48, b=10),
+                                yaxis_tickprefix="$",
+                                yaxis_tickformat=",",
+                            )
+                            st.plotly_chart(fig_batch, width="stretch", config=PLOTLY_CONFIG)
+                        can_promote = str(leader.get("Status", "")).strip() != "Geocode Failed"
+                        if st.button(
+                            "Use top result in Address Investigation",
+                            key="map_batch_promote_top_btn",
+                            width="content",
+                            disabled=not can_promote,
+                        ):
+                            promote_input = str(leader.get("Input", "")).strip()
+                            if promote_input:
+                                st.session_state.map_overlap_input_mode = "Street Address"
+                                st.session_state.map_overlap_address_input = promote_input
+                                st.session_state.map_overlap_address_query = promote_input
+                                st.session_state.map_overlap_query_kind = "address"
+                                st.rerun()
+                else:
+                    st.caption("No batch run results yet.")
+
+        _render_workspace_links(
+            "map_overlap_next",
+            [
+                ("Open Clients", _client_page, "Validate ranked leads at filing level."),
+                ("Open Lobbyists", _lobby_page, "Return to statewide concentration context."),
+                ("Open Legislators", _member_page, "Connect entities to bill and witness activity."),
+            ],
+        )
+
+    st.markdown(
+        """
+<style>
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+[data-testid="stToolbar"] {visibility: hidden;}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+    return
+
+def _page_map_address_rebuild_legacy():
+    _render_page_intro(
+        kicker="Geospatial Strategy",
+        title="Map & Address Command Center",
+        subtitle="From statewide coverage diagnostics to location-level evidence and lead prioritization.",
+        pills=["Coverage diagnostics", "Evidence-weighted overlap", "Watchlist workflow"],
+    )
+    _render_workspace_guide(
+        question="At this location, which taxpayer-funded entities have the strongest overlap signal and what should be investigated first?",
+        steps=[
+            "Set session, scope, and quality thresholds.",
+            "Use Coverage Atlas to anchor a subdivision context.",
+            "Run Address Probe with confidence, method, and distance filters.",
+            "Promote high-signal entities into Watchlist and open in Clients.",
+        ],
+        method_note="Boundary matches are stronger evidence than name-anchored rows. Confidence labels indicate evidence strength, not certainty.",
+    )
+    if not PATH:
+        st.error("Data path not configured. Set DATA_PATH.")
+        st.stop()
+    if not _is_url(PATH) and not os.path.exists(PATH):
+        st.error("Data path not found. Set DATA_PATH or place the parquet file in ./data.")
+        st.stop()
+    with st.spinner("Loading workbook..."):
+        data = load_workbook(PATH)
+    base = data["Lobby_TFL_Client_All"]
+    tfl_sessions = set(base.get("Session", pd.Series(dtype=object)).dropna().astype(str).str.strip().unique().tolist())
+
+    defaults = {
+        "map_scope": "This Session",
+        "map_session": None,
+        "map_basemap_label": next(iter(MAP_BASEMAP_OPTIONS.keys())),
+        "map_geocode_floor": 82,
+        "map_recent_addresses": [],
+        "map_subdivision_types_filter": [],
+        "map_min_match_count": 1,
+        "map_subdivision_sort": "Coverage Signal",
+        "map_subdivision_name_filter": "",
+        "map_subdivision_client_filter": "",
+        "map_subdivision_map_cap": 650,
+        "map_selected_subdivision_context": {},
+        "map_overlap_input_mode": "Street Address",
+        "map_overlap_address_input": "",
+        "map_overlap_address_query": "",
+        "map_overlap_query_lat": None,
+        "map_overlap_query_lon": None,
+        "map_overlap_coord_lat": 31.0,
+        "map_overlap_coord_lon": -99.0,
+        "map_overlap_confidence_filter": [],
+        "map_overlap_method_filter": [],
+        "map_overlap_subdivision_type_filter": [],
+        "map_probe_entity_type_filter": [],
+        "map_overlap_entity_filter": "",
+        "map_probe_min_high": 0.0,
+        "map_distance_cap_miles": 160,
+        "map_overlap_sort": "Highest Signal Score",
+        "map_overlap_focus_selected_subdivision": False,
+        "map_overlap_focus_selected_clients": False,
+        "map_overlap_use_coverage_filters": True,
+        "map_watchlist": [],
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = [] if isinstance(v, list) else ({} if isinstance(v, dict) else v)
+    if st.session_state.get("map_basemap_label") not in MAP_BASEMAP_OPTIONS:
+        st.session_state.map_basemap_label = next(iter(MAP_BASEMAP_OPTIONS.keys()))
+
+    sessions = base.get("Session", pd.Series(dtype=object)).dropna().astype(str).str.strip().unique().tolist()
+    sessions = sorted([s for s in sessions if s and s.lower() not in {"none", "nan", "null"}], key=_session_sort_key)
+    if not sessions:
+        st.error("No sessions found in workbook.")
+        st.stop()
+    default_session = _default_session_from_list(sessions)
+    if str(st.session_state.get("map_session", "")).strip().lower() in {"", "none", "nan", "null"}:
+        st.session_state.map_session = default_session
+
+    def _reset() -> None:
+        for k, v in defaults.items():
+            st.session_state[k] = [] if isinstance(v, list) else ({} if isinstance(v, dict) else v)
+        st.session_state.map_session = default_session
+        st.session_state.map_basemap_label = next(iter(MAP_BASEMAP_OPTIONS.keys()))
+
+    def _open_client(entity_name: str) -> None:
+        val = str(entity_name).strip()
+        if not val:
+            return
+        st.session_state.client_query = val
+        st.session_state.client_query_input = val
+        st.session_state.client_name = ""
+        st.session_state.client_session = st.session_state.map_session
+        st.session_state.client_scope = st.session_state.map_scope
+        st.switch_page(_client_page)
+
+    def _miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        try:
+            d_lat = math.radians(float(lat2) - float(lat1))
+            d_lon = math.radians(float(lon2) - float(lon1))
+            a = math.sin(d_lat / 2) ** 2 + math.cos(math.radians(float(lat1))) * math.cos(math.radians(float(lat2))) * (math.sin(d_lon / 2) ** 2)
+            return 3958.7613 * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
+        except Exception:
+            return float("nan")
+
+    c1, c2, c3, c4, c5 = st.columns([1.55, 1.2, 1.05, 1.0, 0.7], gap="small")
+    with c1:
+        labels = [_session_label(s) for s in sessions]
+        map_labels = dict(zip(labels, sessions))
+        cur = _session_label(st.session_state.map_session)
+        if cur not in labels:
+            cur = _session_label(default_session)
+        picked = st.selectbox("Session", labels, index=labels.index(cur), key="map_session_select")
+        st.session_state.map_session = map_labels.get(picked, default_session)
+    with c2:
+        st.session_state.map_scope = st.radio("Scope", ["This Session", "All Sessions"], index=0 if st.session_state.map_scope == "This Session" else 1, key="map_scope_radio", horizontal=True)
+    with c3:
+        st.selectbox("Map style", list(MAP_BASEMAP_OPTIONS.keys()), key="map_basemap_label")
+    with c4:
+        st.slider("Geocode floor", 60, 99, key="map_geocode_floor")
+    with c5:
+        st.caption("Reset")
+        if st.button("Reset", key="map_reset_filters_btn_rebuild", width="stretch"):
+            _reset()
+            st.rerun()
+
+    @st.cache_data(show_spinner=False, ttl=300, max_entries=4)
+    def _overview(df: pd.DataFrame, session_val: str | None, scope_val: str) -> tuple[pd.DataFrame, dict]:
+        d = df.copy()
+        d["Session"] = d["Session"].astype(str).str.strip()
+        if scope_val == "This Session" and session_val is not None:
+            d = d[d["Session"] == str(session_val)].copy()
+        d = ensure_cols(d, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0, "LobbyShort": ""})
+        d = d[d["Client"].fillna("").astype(str).str.strip() != ""].copy()
+        if d.empty:
+            return pd.DataFrame(), {}
+        g = d.groupby("Client", as_index=False).agg(Low=("Low_num", "sum"), High=("High_num", "sum"), Lobbyists=("LobbyShort", lambda s: s.dropna().astype(str).nunique()), IsTFL=("IsTFL", "max"))
+        return g, {"tfl_clients": int((g["IsTFL"] == 1).sum()), "tfl_low_total": float(g.loc[g["IsTFL"] == 1, "Low"].sum()), "tfl_high_total": float(g.loc[g["IsTFL"] == 1, "High"].sum())}
+
+    sess = _tfl_session_for_filter(st.session_state.map_session, tfl_sessions)
+    active_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.get("map_basemap_label", ""), "gray-vector")
+    all_clients, stats = _overview(base, sess, st.session_state.map_scope)
+    tfl_spend = all_clients[all_clients.get("IsTFL", 0) == 1].copy() if not all_clients.empty else pd.DataFrame()
+    names = tuple(sorted({str(v).strip() for v in tfl_spend.get("Client", pd.Series(dtype=object)).dropna().astype(str).tolist() if str(v).strip()}))
+    subdivision_matches = build_tfl_political_subdivision_matches(names) if names else pd.DataFrame()
+    subdivision_matches = _attach_subdivision_spend_totals(subdivision_matches, all_clients)
+    if not subdivision_matches.empty:
+        subdivision_matches["match_count"] = pd.to_numeric(subdivision_matches.get("match_count", 0), errors="coerce").fillna(0).astype(int)
+        subdivision_matches["low_total"] = pd.to_numeric(subdivision_matches.get("low_total", 0.0), errors="coerce").fillna(0.0)
+        subdivision_matches["high_total"] = pd.to_numeric(subdivision_matches.get("high_total", 0.0), errors="coerce").fillna(0.0)
+
+    matched = set()
+    if not subdivision_matches.empty:
+        for vals in subdivision_matches.get("match_clients", pd.Series(dtype=object)).tolist():
+            if isinstance(vals, list):
+                matched.update({str(v).strip() for v in vals if str(v).strip()})
+    total_tfl = int(stats.get("tfl_clients", 0))
+    matched_rate = (len(matched) / total_tfl) if total_tfl else 0.0
+    high_total = float(pd.to_numeric(subdivision_matches.get("high_total", 0.0), errors="coerce").fillna(0.0).sum()) if not subdivision_matches.empty else 0.0
+    top10_share = 0.0
+    hhi = 0.0
+    if high_total > 0 and not subdivision_matches.empty:
+        hs = pd.to_numeric(subdivision_matches.get("high_total", 0.0), errors="coerce").fillna(0.0)
+        top10_share = float(hs.sort_values(ascending=False).head(10).sum()) / high_total
+        hhi = float(((hs / high_total).pow(2).sum()) * 10000.0)
+    m1, m2, m3, m4 = st.columns(4, gap="small")
+    with m1:
+        st.metric("Mapped TFL Entities", f"{len(matched):,}", delta=f"{matched_rate:.1%} coverage")
+    with m2:
+        st.metric("Unmapped TFL Entities", f"{max(0, total_tfl - len(matched)):,}")
+    with m3:
+        st.metric("Top-10 Concentration", f"{top10_share:.1%}")
+    with m4:
+        st.metric("Coverage HHI", f"{hhi:,.0f}")
+
+    subdivision_color_map = {
+        str(t): _subdivision_color_hex(str(t))
+        for t in sorted({str(v).strip() for v in subdivision_matches.get("subdivision_type", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()})
+    }
+    confidence_color_map = {"High": "#27c48f", "Medium": "#f0ba46", "Low": "#df6b63", "Unknown": "#8ea5bf"}
+    priority_color_map = {"Tier 1": "#f25f5c", "Tier 2": "#f7b267", "Tier 3": "#4d9de0"}
+
+    tab_cov, tab_probe, tab_watch = st.tabs(["Coverage Atlas", "Address Probe", "Watchlist"])
+
+    with tab_cov:
+        if subdivision_matches.empty:
+            st.info("No subdivision matches found for current scope.")
+        else:
+            all_types = sorted({str(v).strip() for v in subdivision_matches.get("subdivision_type", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()})
+            selected_types = [str(v) for v in st.session_state.get("map_subdivision_types_filter", []) if str(v) in all_types] or list(all_types)
+            st.session_state.map_subdivision_types_filter = selected_types
+            max_match = int(max(1, pd.to_numeric(subdivision_matches.get("match_count", 1), errors="coerce").fillna(1).max()))
+            st.session_state.map_min_match_count = min(int(st.session_state.get("map_min_match_count", 1)), max_match)
+            s1, s2, s3, s4 = st.columns([1.3, 1.0, 1.2, 1.0], gap="small")
+            with s1:
+                st.multiselect("Subdivision types", all_types, key="map_subdivision_types_filter")
+            with s2:
+                st.slider("Min matched clients", 1, max_match, key="map_min_match_count")
+                st.number_input("Map point cap", min_value=100, max_value=1200, step=50, key="map_subdivision_map_cap")
+            with s3:
+                sort_opts = ["Coverage Signal", "Highest High Estimate", "Highest Match Count", "Subdivision A-Z"]
+                if st.session_state.get("map_subdivision_sort") not in sort_opts:
+                    st.session_state.map_subdivision_sort = sort_opts[0]
+                st.selectbox("Sort", sort_opts, key="map_subdivision_sort")
+                st.text_input("Subdivision search", key="map_subdivision_name_filter")
+            with s4:
+                st.text_input("Entity contains", key="map_subdivision_client_filter")
+
+            f = subdivision_matches.copy()
+            f = f[f["subdivision_type"].astype(str).isin(st.session_state.map_subdivision_types_filter)].copy()
+            f = f[pd.to_numeric(f.get("match_count", 0), errors="coerce").fillna(0) >= int(st.session_state.get("map_min_match_count", 1))].copy()
+            q_name = str(st.session_state.get("map_subdivision_name_filter", "")).strip().lower()
+            if q_name:
+                f = f[
+                    f["subdivision_name"].astype(str).str.lower().str.contains(q_name, na=False)
+                    | f["subdivision_code"].astype(str).str.lower().str.contains(q_name, na=False)
+                ].copy()
+            q_client = str(st.session_state.get("map_subdivision_client_filter", "")).strip().lower()
+            if q_client:
+                f = f[f["match_clients"].apply(lambda vals: any(q_client in str(v).lower() for v in vals) if isinstance(vals, list) else False)].copy()
+            if st.session_state.get("map_subdivision_sort") == "Highest High Estimate":
+                f = f.sort_values(["high_total", "match_count"], ascending=[False, False])
+            elif st.session_state.get("map_subdivision_sort") == "Highest Match Count":
+                f = f.sort_values(["match_count", "high_total"], ascending=[False, False])
+            elif st.session_state.get("map_subdivision_sort") == "Subdivision A-Z":
+                f = f.sort_values(["subdivision_type", "subdivision_name"], ascending=[True, True])
+            else:
+                f["_signal"] = f["high_total"] * (1 + pd.to_numeric(f["match_count"], errors="coerce").fillna(0).pow(0.35))
+                f = f.sort_values(["_signal", "high_total"], ascending=[False, False]).drop(columns=["_signal"], errors="ignore")
+
+            lcol, rcol = st.columns([1.7, 1.0], gap="large")
+            with lcol:
+                if f.empty:
+                    st.warning("No rows after filters.")
+                else:
+                    render_subdivision_map_legend(f["subdivision_type"].value_counts().to_dict())
+                    cap = max(100, min(1200, int(st.session_state.get("map_subdivision_map_cap", 650) or 650)))
+                    render_tfl_subdivision_arcgis_map(f.head(cap), height=620, basemap=active_basemap)
+            with rcol:
+                labels = []
+                rows = []
+                for row in f.itertuples(index=False):
+                    code = str(getattr(row, "subdivision_code", "")).strip() or "N/A"
+                    labels.append(f"{row.subdivision_type} | {row.subdivision_name} ({code})")
+                    rows.append(row)
+                picks = [""] + labels
+                if st.session_state.get("map_subdivision_pick", "") not in picks:
+                    st.session_state.map_subdivision_pick = ""
+                pick = st.selectbox("Context anchor", picks, key="map_subdivision_pick")
+                if st.button("Set Active Context", key="map_set_context_btn_rebuild", width="stretch", disabled=not bool(pick)) and pick in labels:
+                    row = rows[labels.index(pick)]
+                    clients = sorted({str(v).strip() for v in (getattr(row, "match_clients", []) if isinstance(getattr(row, "match_clients", []), list) else []) if str(v).strip()})
+                    st.session_state.map_selected_subdivision_context = {
+                        "subdivision_type": str(getattr(row, "subdivision_type", "")).strip(),
+                        "subdivision_name": str(getattr(row, "subdivision_name", "")).strip(),
+                        "subdivision_code": str(getattr(row, "subdivision_code", "")).strip(),
+                        "clients": clients,
+                    }
+                    st.rerun()
+                if st.button("Clear Context", key="map_clear_context_btn_rebuild", width="stretch"):
+                    st.session_state.map_selected_subdivision_context = {}
+                    st.rerun()
+                ctx = st.session_state.get("map_selected_subdivision_context", {})
+                if isinstance(ctx, dict) and str(ctx.get("subdivision_name", "")).strip():
+                    st.info(f"Active context: {ctx.get('subdivision_type', '')} | {ctx.get('subdivision_name', '')} ({ctx.get('subdivision_code', '') or 'N/A'})")
+                    st.caption(f"Context clients: {len(ctx.get('clients', [])):,}")
+
+            if not f.empty:
+                cov_chart_l, cov_chart_r = st.columns([1.35, 1.0], gap="large")
+                with cov_chart_l:
+                    top_cov = (
+                        f[["subdivision_name", "subdivision_type", "high_total", "match_count"]]
+                        .sort_values(["high_total", "match_count"], ascending=[False, False])
+                        .head(18)
+                        .copy()
+                    )
+                    fig_cov_bar = px.bar(
+                        top_cov.sort_values("high_total", ascending=True),
+                        x="high_total",
+                        y="subdivision_name",
+                        color="subdivision_type",
+                        orientation="h",
+                        labels={
+                            "high_total": "Matched TFL High",
+                            "subdivision_name": "Subdivision",
+                            "subdivision_type": "Type",
+                        },
+                        title="Top Subdivisions By Matched High Estimate",
+                        color_discrete_map=subdivision_color_map or None,
+                    )
+                    _apply_plotly_layout(fig_cov_bar, showlegend=True, legend_title="Type", height=380, margin_top=40)
+                    fig_cov_bar.update_layout(xaxis_tickprefix="$", xaxis_tickformat=",")
+                    st.plotly_chart(fig_cov_bar, width="stretch", config=PLOTLY_CONFIG)
+                with cov_chart_r:
+                    scatter_cov = f[["subdivision_name", "subdivision_type", "high_total", "match_count"]].copy()
+                    scatter_cov["match_count"] = pd.to_numeric(scatter_cov["match_count"], errors="coerce").fillna(0)
+                    scatter_cov["high_total"] = pd.to_numeric(scatter_cov["high_total"], errors="coerce").fillna(0.0)
+                    fig_cov_scatter = px.scatter(
+                        scatter_cov,
+                        x="match_count",
+                        y="high_total",
+                        size="high_total",
+                        color="subdivision_type",
+                        hover_data={"subdivision_name": True, "match_count": True, "high_total": ":,.0f"},
+                        labels={
+                            "match_count": "Matched Clients",
+                            "high_total": "Matched TFL High",
+                            "subdivision_type": "Type",
+                        },
+                        title="Coverage Pressure Matrix",
+                        color_discrete_map=subdivision_color_map or None,
+                    )
+                    _apply_plotly_layout(fig_cov_scatter, showlegend=False, height=380, margin_top=40)
+                    fig_cov_scatter.update_layout(yaxis_tickprefix="$", yaxis_tickformat=",")
+                    st.plotly_chart(fig_cov_scatter, width="stretch", config=PLOTLY_CONFIG)
+
+                view = f[["subdivision_type", "subdivision_name", "subdivision_code", "match_count", "low_total", "high_total", "match_clients_preview"]].rename(
+                    columns={
+                        "subdivision_type": "Subdivision Type",
+                        "subdivision_name": "Subdivision",
+                        "subdivision_code": "Code",
+                        "match_count": "Matched TFL Client Count",
+                        "low_total": "Matched TFL Low Estimate",
+                        "high_total": "Matched TFL High Estimate",
+                        "match_clients_preview": "Matched TFL Clients",
+                    }
+                )
+                view["Coverage Signal"] = (
+                    pd.to_numeric(view["Matched TFL High Estimate"], errors="coerce").fillna(0.0)
+                    * (1 + pd.to_numeric(view["Matched TFL Client Count"], errors="coerce").fillna(0.0).pow(0.35))
+                )
+                max_signal = float(pd.to_numeric(view["Coverage Signal"], errors="coerce").fillna(0.0).max() or 0.0)
+                view["Signal Bar"] = view["Coverage Signal"].apply(lambda v: _compact_ratio_bar(v, max_signal, width=10))
+                st.markdown('<div class="map-rail-title">Coverage Table: visualized metrics</div>', unsafe_allow_html=True)
+                cov_style = _safe_style(view)
+                if cov_style is not None:
+                    cov_style = cov_style.format(
+                        {
+                            "Matched TFL Low Estimate": lambda v: fmt_usd(float(v or 0.0)),
+                            "Matched TFL High Estimate": lambda v: fmt_usd(float(v or 0.0)),
+                            "Coverage Signal": lambda v: f"{float(v or 0.0):,.0f}",
+                        }
+                    )
+                    cov_style = _apply_numeric_heatmap(
+                        cov_style,
+                        view,
+                        columns=["Matched TFL Client Count"],
+                        rgb_lo=(46, 92, 138),
+                        rgb_hi=(82, 185, 255),
+                    )
+                    cov_style = _apply_numeric_heatmap(
+                        cov_style,
+                        view,
+                        columns=["Matched TFL High Estimate", "Coverage Signal"],
+                        rgb_lo=(120, 82, 24),
+                        rgb_hi=(255, 196, 88),
+                    )
+                    st.dataframe(cov_style, width="stretch", height=300, hide_index=True)
+                else:
+                    disp = view.copy()
+                    disp["Matched TFL Low Estimate"] = disp["Matched TFL Low Estimate"].astype(float).apply(fmt_usd)
+                    disp["Matched TFL High Estimate"] = disp["Matched TFL High Estimate"].astype(float).apply(fmt_usd)
+                    disp["Coverage Signal"] = pd.to_numeric(disp["Coverage Signal"], errors="coerce").fillna(0.0).round(0)
+                    st.dataframe(disp, width="stretch", height=300, hide_index=True)
+                _ = export_dataframe(view, "coverage_atlas_filtered_subdivisions.csv", label="Download coverage atlas CSV")
+                type_roll = (
+                    f.groupby("subdivision_type", as_index=False)
+                    .agg(Subdivisions=("subdivision_name", "nunique"), MatchedHigh=("high_total", "sum"), MatchedClients=("match_count", "sum"))
+                    .sort_values("MatchedHigh", ascending=False)
+                )
+                if not type_roll.empty:
+                    fig_type_roll = px.treemap(
+                        type_roll,
+                        path=["subdivision_type"],
+                        values="MatchedHigh",
+                        color="MatchedClients",
+                        color_continuous_scale=["#1f3650", "#2f6ea5", "#44c1f0"],
+                        title="Subdivision Type Exposure Treemap",
+                    )
+                    _apply_plotly_layout(fig_type_roll, showlegend=False, height=310, margin_top=38)
+                    st.plotly_chart(fig_type_roll, width="stretch", config=PLOTLY_CONFIG)
+
+    with tab_probe:
+        ctx = st.session_state.get("map_selected_subdivision_context", {}) if isinstance(st.session_state.get("map_selected_subdivision_context", {}), dict) else {}
+        selected_type = str(ctx.get("subdivision_type", "")).strip()
+        selected_name = str(ctx.get("subdivision_name", "")).strip()
+        selected_code = str(ctx.get("subdivision_code", "")).strip()
+        selected_clients = {str(v).strip() for v in ctx.get("clients", []) if str(v).strip()}
+        analysis_point = None
+
+        mode = st.radio("Lookup mode", ["Street Address", "Coordinates"], key="map_overlap_input_mode", horizontal=True)
         if mode == "Street Address":
-            a1, a2 = st.columns([5, 1.2])
-            with a1:
-                with st.form("map_overlap_lookup_form", clear_on_submit=False):
-                    st.text_input("Texas address", placeholder="e.g., 1100 Congress Ave, Austin, TX 78701", key="map_overlap_address_input")
-                    go = st.form_submit_button("Find overlap", use_container_width=True)
-            with a2:
-                clear = st.button("Clear", key="map_overlap_clear_btn", width="stretch")
+            q1, q2 = st.columns([5, 1.2], gap="small")
+            with q1:
+                with st.form("map_probe_form_rebuild", clear_on_submit=False):
+                    st.text_input("Texas address", key="map_overlap_address_input", placeholder="1100 Congress Ave, Austin, TX 78701")
+                    go = st.form_submit_button("Run Address Probe", use_container_width=True)
+            with q2:
+                clear = st.button("Clear", key="map_probe_clear_btn_rebuild", width="stretch")
             if go:
                 st.session_state.map_overlap_address_query = st.session_state.map_overlap_address_input.strip()
+                rv = st.session_state.map_overlap_address_query
+                if rv:
+                    recent = [str(v).strip() for v in st.session_state.get("map_recent_addresses", []) if str(v).strip()]
+                    st.session_state.map_recent_addresses = [rv] + [v for v in recent if v.lower() != rv.lower()]
+                    st.session_state.map_recent_addresses = st.session_state.map_recent_addresses[:10]
             if clear:
                 st.session_state.map_overlap_address_input = ""
                 st.session_state.map_overlap_address_query = ""
+            recent_addresses = [str(v).strip() for v in st.session_state.get("map_recent_addresses", []) if str(v).strip()]
+            if recent_addresses:
+                r1, r2 = st.columns([4.5, 1.0], gap="small")
+                options = [""] + recent_addresses
+                if st.session_state.get("map_overlap_recent_pick", "") not in options:
+                    st.session_state.map_overlap_recent_pick = ""
+                with r1:
+                    pick_recent = st.selectbox("Recent lookups", options, key="map_overlap_recent_pick")
+                with r2:
+                    if st.button("Use recent", key="map_probe_recent_btn_rebuild", width="stretch") and pick_recent:
+                        st.session_state.map_overlap_address_query = pick_recent
+                        st.session_state.map_overlap_address_input = pick_recent
+                        st.rerun()
             addr = st.session_state.get("map_overlap_address_query", "").strip()
             if addr:
                 g = geocode_address_arcgis(addr)
                 if g:
-                    analysis_point = {"query": addr, "matched": str(g.get("matched_address", addr)).strip() or addr, "score": float(g.get("score", 0.0)), "lon": float(g.get("lon", 0.0)), "lat": float(g.get("lat", 0.0)), "region": str(g.get("region_abbr", "")).strip().upper(), "city": str(g.get("city", "")).strip(), "postal": str(g.get("postal", "")).strip()}
+                    analysis_point = {
+                        "query": addr,
+                        "matched": str(g.get("matched_address", addr)).strip() or addr,
+                        "score": float(g.get("score", 0.0)),
+                        "lon": float(g.get("lon", 0.0)),
+                        "lat": float(g.get("lat", 0.0)),
+                    }
                 else:
                     st.warning("Could not geocode that address.")
         else:
-            a1, a2, a3 = st.columns([1.2, 1.2, 1.2])
-            with a1:
+            q1, q2, q3 = st.columns([1.2, 1.2, 1.0], gap="small")
+            with q1:
                 st.number_input("Latitude", min_value=24.0, max_value=37.5, step=0.000001, format="%.6f", key="map_overlap_coord_lat")
-            with a2:
+            with q2:
                 st.number_input("Longitude", min_value=-107.5, max_value=-93.0, step=0.000001, format="%.6f", key="map_overlap_coord_lon")
-            with a3:
-                run = st.button("Analyze coordinates", key="map_overlap_coord_run_btn", width="stretch")
-            if run:
-                st.session_state.map_overlap_query_lat = float(st.session_state.get("map_overlap_coord_lat", 31.0))
-                st.session_state.map_overlap_query_lon = float(st.session_state.get("map_overlap_coord_lon", -99.0))
+            with q3:
+                if st.button("Run Coordinate Probe", key="map_probe_coord_btn_rebuild", width="stretch"):
+                    st.session_state.map_overlap_query_lat = float(st.session_state.get("map_overlap_coord_lat", 31.0))
+                    st.session_state.map_overlap_query_lon = float(st.session_state.get("map_overlap_coord_lon", -99.0))
             if st.session_state.get("map_overlap_query_lat") is not None and st.session_state.get("map_overlap_query_lon") is not None:
                 lat = float(st.session_state.get("map_overlap_query_lat", 31.0))
                 lon = float(st.session_state.get("map_overlap_query_lon", -99.0))
-                analysis_point = {"query": f"{lat:.6f}, {lon:.6f}", "matched": f"Coordinates ({lat:.6f}, {lon:.6f})", "score": None, "lon": lon, "lat": lat, "region": "TX", "city": "", "postal": ""}
+                analysis_point = {"query": f"{lat:.6f}, {lon:.6f}", "matched": f"Coordinates ({lat:.6f}, {lon:.6f})", "score": None, "lon": lon, "lat": lat}
 
         if analysis_point is None:
-            st.info("Enter lookup details to view overlap.")
+            st.info("Run a lookup to populate overlap results.")
         else:
-            score_txt = f"{float(analysis_point['score']):.0f}" if analysis_point["score"] is not None else "N/A"
-            st.markdown(f'<div class="callout geo-note"><div class="callout-title">Matched Location</div><div class="callout-body">{html.escape(analysis_point["matched"])} | Score: {score_txt} | City: {html.escape(analysis_point["city"] or "N/A")} | ZIP: {html.escape(analysis_point["postal"] or "N/A")}</div></div>', unsafe_allow_html=True)
-            if analysis_point["score"] is not None and float(analysis_point["score"]) < 80:
-                st.warning("Address match confidence is low.")
+            geo_score = float(analysis_point["score"]) if analysis_point["score"] is not None else None
+            if geo_score is not None and geo_score < float(st.session_state.get("map_geocode_floor", 82)):
+                st.warning(f"Geocode score {geo_score:.0f} is below the configured floor.")
             overlap_sub = query_texas_subdivisions_for_point(round(float(analysis_point["lon"]), 6), round(float(analysis_point["lat"]), 6))
             overlap_points = build_overlap_map_points(overlap_subdivisions=overlap_sub, subdivision_matches=subdivision_matches)
-            overlap_spend = build_address_overlap_spending_rows(overlap_subdivisions=overlap_sub, subdivision_matches=subdivision_matches, tfl_spending=tfl_spending_source)
-            st.session_state.map_overlap_last_row_count = int(overlap_spend.shape[0]) if isinstance(overlap_spend, pd.DataFrame) else 0
-            filtered_spend = overlap_spend.copy()
-            if not overlap_spend.empty:
-                conf = [c for c in ["High", "Medium", "Low", "Unknown"] if c in overlap_spend["Match Confidence"].value_counts().to_dict()]
-                st.session_state.map_overlap_confidence_filter = [str(v) for v in st.session_state.get("map_overlap_confidence_filter", []) if str(v) in conf] or list(conf)
-                f1, f2, f3 = st.columns([1.5, 1.8, 1.2])
+            overlap_spend = build_address_overlap_spending_rows(overlap_subdivisions=overlap_sub, subdivision_matches=subdivision_matches, tfl_spending=tfl_spend)
+            if overlap_spend.empty:
+                st.info("No overlap spending rows found for this location.")
+            else:
+                point_lookup = {
+                    (str(r.subdivision_type).strip(), str(r.subdivision_name).strip(), str(r.subdivision_code).strip()): (float(r.lat), float(r.lon))
+                    for r in overlap_points.itertuples(index=False)
+                } if not overlap_points.empty else {}
+                filtered = overlap_spend.copy()
+                filtered["Low"] = pd.to_numeric(filtered.get("Low", 0.0), errors="coerce").fillna(0.0)
+                filtered["High"] = pd.to_numeric(filtered.get("High", 0.0), errors="coerce").fillna(0.0)
+                filtered["Mid"] = pd.to_numeric(filtered.get("Mid", 0.0), errors="coerce").fillna(0.0)
+                filtered["Distance Miles"] = filtered.apply(
+                    lambda r: _miles(
+                        float(analysis_point["lat"]),
+                        float(analysis_point["lon"]),
+                        point_lookup.get((str(r.get("Subdivision Type", "")).strip(), str(r.get("Subdivision", "")).strip(), str(r.get("Code", "")).strip()), (float("nan"), float("nan")))[0],
+                        point_lookup.get((str(r.get("Subdivision Type", "")).strip(), str(r.get("Subdivision", "")).strip(), str(r.get("Code", "")).strip()), (float("nan"), float("nan")))[1],
+                    ),
+                    axis=1,
+                )
+                filtered["RowSignal"] = filtered["High"] * filtered["Match Confidence"].map(
+                    lambda c: 1.0 if str(c) == "High" else (0.72 if str(c) == "Medium" else (0.42 if str(c) == "Low" else 0.24))
+                ).fillna(0.24)
+                filtered["RowSignal"] = filtered["RowSignal"] * filtered["Distance Miles"].apply(
+                    lambda d: 1.0 if pd.isna(d) else max(0.65, 1.15 - (min(float(d), 320.0) / 320.0))
+                )
+
+                conf_options = [c for c in ["High", "Medium", "Low", "Unknown"] if c in filtered["Match Confidence"].value_counts().to_dict()]
+                method_options = sorted({str(v).strip() for v in filtered.get("Match Method", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()})
+                subtype_options = sorted({str(v).strip() for v in filtered.get("Subdivision Type", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()})
+                entity_type_options = sorted({str(v).strip() for v in filtered.get("Entity Type", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()})
+                st.session_state.map_overlap_confidence_filter = [str(v) for v in st.session_state.get("map_overlap_confidence_filter", []) if str(v) in conf_options] or list(conf_options)
+                st.session_state.map_overlap_method_filter = [str(v) for v in st.session_state.get("map_overlap_method_filter", []) if str(v) in method_options] or list(method_options)
+                st.session_state.map_overlap_subdivision_type_filter = [str(v) for v in st.session_state.get("map_overlap_subdivision_type_filter", []) if str(v) in subtype_options] or list(subtype_options)
+                st.session_state.map_probe_entity_type_filter = [str(v) for v in st.session_state.get("map_probe_entity_type_filter", []) if str(v) in entity_type_options] or list(entity_type_options)
+
+                f1, f2, f3, f4 = st.columns([1.2, 1.2, 1.2, 1.0], gap="small")
                 with f1:
-                    overlap_conf = st.multiselect("Confidence", conf, key="map_overlap_confidence_filter")
+                    st.multiselect("Confidence", conf_options, key="map_overlap_confidence_filter")
                 with f2:
-                    ent_q = st.text_input("Entity filter", key="map_overlap_entity_filter", placeholder="Filter TFL entity name").strip()
+                    st.multiselect("Match method", method_options, key="map_overlap_method_filter")
                 with f3:
-                    sort_mode = st.selectbox("Sort", ["Highest High", "Highest Mid", "Entity A-Z", "Subdivision A-Z"], key="map_overlap_sort")
-                t1, t2, t3 = st.columns([1.4, 1.7, 1.7])
-                with t1:
-                    st.checkbox("Use coverage types", key="map_overlap_use_coverage_filters")
-                with t2:
-                    st.checkbox("Focus selected subdivision", key="map_overlap_focus_selected_subdivision", disabled=not bool(selected_name))
-                with t3:
-                    st.checkbox("Focus selected clients", key="map_overlap_focus_selected_clients", disabled=not bool(selected_client_set))
-                if overlap_conf:
-                    filtered_spend = filtered_spend[filtered_spend["Match Confidence"].astype(str).isin(overlap_conf)].copy()
+                    st.multiselect("Subdivision type", subtype_options, key="map_overlap_subdivision_type_filter")
+                with f4:
+                    sort_opts = ["Highest Signal Score", "Highest High", "Highest Mid", "Closest", "Entity A-Z", "Subdivision A-Z"]
+                    if st.session_state.get("map_overlap_sort") not in sort_opts:
+                        st.session_state.map_overlap_sort = sort_opts[0]
+                    st.selectbox("Sort", sort_opts, key="map_overlap_sort")
+
+                g1, g2, g3, g4 = st.columns([1.3, 1.2, 1.0, 1.0], gap="small")
+                with g1:
+                    st.text_input("Entity filter", key="map_overlap_entity_filter")
+                with g2:
+                    st.multiselect("Entity type", entity_type_options, key="map_probe_entity_type_filter")
+                with g3:
+                    st.number_input("Min high ($)", min_value=0.0, step=5000.0, key="map_probe_min_high")
+                with g4:
+                    st.slider("Distance cap (mi)", min_value=10, max_value=300, key="map_distance_cap_miles")
+
+                h1, h2, h3 = st.columns([1.0, 1.0, 1.0], gap="small")
+                with h1:
+                    st.checkbox("Use coverage type filters", key="map_overlap_use_coverage_filters")
+                with h2:
+                    st.checkbox("Focus active context", key="map_overlap_focus_selected_subdivision", disabled=not bool(selected_name))
+                with h3:
+                    st.checkbox("Focus context clients", key="map_overlap_focus_selected_clients", disabled=not bool(selected_clients))
+
+                conf_filter = [str(v) for v in st.session_state.get("map_overlap_confidence_filter", []) if str(v).strip()]
+                method_filter = [str(v) for v in st.session_state.get("map_overlap_method_filter", []) if str(v).strip()]
+                subtype_filter = [str(v) for v in st.session_state.get("map_overlap_subdivision_type_filter", []) if str(v).strip()]
+                entity_type_filter = [str(v) for v in st.session_state.get("map_probe_entity_type_filter", []) if str(v).strip()]
+                if conf_filter:
+                    filtered = filtered[filtered["Match Confidence"].astype(str).isin(conf_filter)].copy()
+                if method_filter:
+                    filtered = filtered[filtered["Match Method"].astype(str).isin(method_filter)].copy()
+                if subtype_filter:
+                    filtered = filtered[filtered["Subdivision Type"].astype(str).isin(subtype_filter)].copy()
+                if entity_type_filter:
+                    filtered = filtered[filtered["Entity Type"].astype(str).isin(entity_type_filter)].copy()
+                ent_q = str(st.session_state.get("map_overlap_entity_filter", "")).strip()
                 if ent_q:
-                    filtered_spend = filtered_spend[filtered_spend["TFL Entity"].astype(str).str.contains(ent_q, case=False, na=False)].copy()
+                    filtered = filtered[filtered["TFL Entity"].astype(str).str.contains(ent_q, case=False, na=False)].copy()
+                min_high = float(st.session_state.get("map_probe_min_high", 0.0) or 0.0)
+                if min_high > 0:
+                    filtered = filtered[filtered["High"] >= min_high].copy()
                 if st.session_state.get("map_overlap_use_coverage_filters", True):
-                    c_types = [str(v) for v in st.session_state.get("map_subdivision_types_filter", []) if str(v).strip()]
+                    c_types = [str(v).strip() for v in st.session_state.get("map_subdivision_types_filter", []) if str(v).strip()]
                     if c_types:
-                        filtered_spend = filtered_spend[filtered_spend["Subdivision Type"].astype(str).isin(c_types)].copy()
+                        filtered = filtered[filtered["Subdivision Type"].astype(str).isin(c_types)].copy()
                 if st.session_state.get("map_overlap_focus_selected_subdivision", False) and selected_name:
-                    filtered_spend = filtered_spend[(filtered_spend["Subdivision Type"].astype(str) == selected_type) & (filtered_spend["Subdivision"].astype(str) == selected_name)].copy()
+                    filtered = filtered[(filtered["Subdivision Type"].astype(str) == selected_type) & (filtered["Subdivision"].astype(str) == selected_name)].copy()
                     if selected_code:
-                        filtered_spend = filtered_spend[filtered_spend["Code"].astype(str) == selected_code].copy()
-                if st.session_state.get("map_overlap_focus_selected_clients", False) and selected_client_set:
-                    filtered_spend = filtered_spend[filtered_spend["TFL Entity"].astype(str).isin(selected_client_set)].copy()
+                        filtered = filtered[filtered["Code"].astype(str) == selected_code].copy()
+                if st.session_state.get("map_overlap_focus_selected_clients", False) and selected_clients:
+                    filtered = filtered[filtered["TFL Entity"].astype(str).isin(selected_clients)].copy()
+                dist_cap = float(st.session_state.get("map_distance_cap_miles", 160) or 160)
+                filtered = filtered[
+                    filtered["Distance Miles"].isna()
+                    | (pd.to_numeric(filtered["Distance Miles"], errors="coerce").fillna(dist_cap + 1) <= dist_cap)
+                ].copy()
+
+                sort_mode = str(st.session_state.get("map_overlap_sort", "Highest Signal Score"))
                 if sort_mode == "Highest High":
-                    filtered_spend = filtered_spend.sort_values(["High", "Mid", "Low", "TFL Entity"], ascending=[False, False, False, True])
+                    filtered = filtered.sort_values(["High", "RowSignal"], ascending=[False, False])
                 elif sort_mode == "Highest Mid":
-                    filtered_spend = filtered_spend.sort_values(["Mid", "High", "Low", "TFL Entity"], ascending=[False, False, False, True])
+                    filtered = filtered.sort_values(["Mid", "High"], ascending=[False, False])
+                elif sort_mode == "Closest":
+                    filtered = filtered.sort_values(["Distance Miles", "RowSignal"], ascending=[True, False], na_position="last")
                 elif sort_mode == "Entity A-Z":
-                    filtered_spend = filtered_spend.sort_values(["TFL Entity", "Subdivision Type", "Subdivision"], ascending=[True, True, True])
+                    filtered = filtered.sort_values(["TFL Entity", "Subdivision"], ascending=[True, True])
+                elif sort_mode == "Subdivision A-Z":
+                    filtered = filtered.sort_values(["Subdivision Type", "Subdivision", "TFL Entity"], ascending=[True, True, True])
                 else:
-                    filtered_spend = filtered_spend.sort_values(["Subdivision Type", "Subdivision", "TFL Entity"], ascending=[True, True, True])
-                if not overlap_points.empty:
-                    if filtered_spend.empty:
-                        overlap_points = overlap_points.iloc[0:0].copy()
+                    filtered = filtered.sort_values(["RowSignal", "High"], ascending=[False, False])
+
+                high_rows = int((filtered["Match Confidence"].astype(str) == "High").sum()) if not filtered.empty else 0
+                high_share = (high_rows / len(filtered)) if len(filtered) else 0.0
+                evidence = "Strong" if geo_score is not None and geo_score >= 90 and high_share >= 0.5 else ("Moderate" if high_share >= 0.3 else "Low")
+                p1, p2, p3, p4 = st.columns(4, gap="small")
+                with p1:
+                    st.metric("Evidence Rating", evidence)
+                with p2:
+                    st.metric("Filtered Rows", f"{len(filtered):,}", delta=f"of {len(overlap_spend):,}")
+                with p3:
+                    st.metric("Unique Entities", f"{filtered['TFL Entity'].nunique():,}" if not filtered.empty else "0")
+                with p4:
+                    st.metric("Filtered High", fmt_usd(float(filtered["High"].sum()) if not filtered.empty else 0.0), delta=f"High confidence {high_share:.1%}")
+
+                probe_chart_l, probe_chart_r = st.columns([1.15, 1.15], gap="large")
+                with probe_chart_l:
+                    conf_roll = (
+                        filtered["Match Confidence"]
+                        .astype(str)
+                        .value_counts(dropna=False)
+                        .rename_axis("Confidence")
+                        .reset_index(name="Rows")
+                    )
+                    fig_conf = px.pie(
+                        conf_roll,
+                        values="Rows",
+                        names="Confidence",
+                        title="Confidence Composition",
+                        color="Confidence",
+                        color_discrete_map=confidence_color_map,
+                    )
+                    _apply_plotly_layout(fig_conf, showlegend=True, legend_title="Confidence", height=320, margin_top=38)
+                    st.plotly_chart(fig_conf, width="stretch", config=PLOTLY_CONFIG)
+                with probe_chart_r:
+                    method_roll = (
+                        filtered.groupby("Match Method", as_index=False)
+                        .agg(Rows=("Match Method", "size"), HighTotal=("High", "sum"))
+                        .sort_values(["Rows", "HighTotal"], ascending=[False, False])
+                    )
+                    fig_method = px.bar(
+                        method_roll,
+                        x="Match Method",
+                        y="Rows",
+                        color="HighTotal",
+                        color_continuous_scale=["#2b3f57", "#4393c9", "#53d8c9"],
+                        labels={"Rows": "Rows", "Match Method": "Method", "HighTotal": "Matched High"},
+                        title="Method Mix (Rows + Exposure Weight)",
+                    )
+                    _apply_plotly_layout(fig_method, showlegend=False, height=320, margin_top=38)
+                    fig_method.update_xaxes(tickangle=-22)
+                    st.plotly_chart(fig_method, width="stretch", config=PLOTLY_CONFIG)
+
+                mc, sc = st.columns([1.7, 1.0], gap="large")
+                with mc:
+                    render_address_overlap_arcgis_map(lon=float(analysis_point["lon"]), lat=float(analysis_point["lat"]), matched_address=analysis_point["matched"], overlap_points=overlap_points, height=460, basemap=active_basemap)
+                with sc:
+                    ov = overlap_sub.rename(columns={"subdivision_type": "Subdivision Type", "subdivision_name": "Subdivision", "subdivision_code": "Code", "source_name": "Map Source", "source_url": "Map Source URL"}) if not overlap_sub.empty else pd.DataFrame(columns=["Subdivision Type", "Subdivision", "Code", "Map Source", "Map Source URL"])
+                    st.dataframe(ov, width="stretch", height=460, hide_index=True)
+                if not filtered.empty:
+                    probe_view = filtered[
+                        [
+                            "Subdivision Type",
+                            "Subdivision",
+                            "Code",
+                            "Entity Type",
+                            "TFL Entity",
+                            "Match Method",
+                            "Match Confidence",
+                            "Distance Miles",
+                            "Low",
+                            "High",
+                            "Mid",
+                            "RowSignal",
+                            "Lobbyists",
+                        ]
+                    ].rename(columns={"Mid": "Midpoint", "Lobbyists": "Lobbyists Under Contract"}).copy()
+                    max_probe_signal = float(pd.to_numeric(probe_view["RowSignal"], errors="coerce").fillna(0.0).max() or 0.0)
+                    probe_view["Signal Bar"] = probe_view["RowSignal"].apply(lambda v: _compact_ratio_bar(v, max_probe_signal, width=10))
+                    st.markdown('<div class="map-rail-title">Probe Rows: confidence and signal-highlighted</div>', unsafe_allow_html=True)
+                    probe_style = _safe_style(probe_view)
+                    if probe_style is not None:
+                        probe_style = probe_style.format(
+                            {
+                                "Distance Miles": lambda v: "" if pd.isna(v) else f"{float(v):.2f}",
+                                "Low": lambda v: fmt_usd(float(v or 0.0)),
+                                "High": lambda v: fmt_usd(float(v or 0.0)),
+                                "Midpoint": lambda v: fmt_usd(float(v or 0.0)),
+                                "RowSignal": lambda v: f"{float(v or 0.0):,.0f}",
+                            }
+                        )
+                        probe_style = _apply_numeric_heatmap(
+                            probe_style,
+                            probe_view,
+                            columns=["High", "RowSignal"],
+                            rgb_lo=(118, 44, 44),
+                            rgb_hi=(255, 149, 120),
+                        )
+                        probe_style = _apply_numeric_heatmap(
+                            probe_style,
+                            probe_view,
+                            columns=["Distance Miles"],
+                            rgb_lo=(44, 74, 104),
+                            rgb_hi=(105, 189, 255),
+                        )
+                        probe_style = probe_style.applymap(
+                            lambda v: f"background-color: {confidence_color_map.get(str(v), '#8ea5bf')}33; font-weight: 600;",
+                            subset=["Match Confidence"],
+                        )
+                        st.dataframe(probe_style, width="stretch", height=320, hide_index=True)
                     else:
-                        allowed = {(str(r["Subdivision Type"]).strip(), str(r["Subdivision"]).strip(), str(r["Code"]).strip()) for _, r in filtered_spend[["Subdivision Type", "Subdivision", "Code"]].drop_duplicates().iterrows()}
-                        overlap_points = overlap_points[overlap_points.apply(lambda r: (str(r.get("subdivision_type", "")).strip(), str(r.get("subdivision_name", "")).strip(), str(r.get("subdivision_code", "")).strip()) in allowed, axis=1)].copy()
-                st.caption(f"Showing {len(filtered_spend):,} of {len(overlap_spend):,} overlap rows.")
+                        fallback = probe_view.copy()
+                        fallback["Distance Miles"] = pd.to_numeric(fallback["Distance Miles"], errors="coerce").round(2)
+                        fallback["Low"] = pd.to_numeric(fallback["Low"], errors="coerce").fillna(0.0).apply(fmt_usd)
+                        fallback["High"] = pd.to_numeric(fallback["High"], errors="coerce").fillna(0.0).apply(fmt_usd)
+                        fallback["Midpoint"] = pd.to_numeric(fallback["Midpoint"], errors="coerce").fillna(0.0).apply(fmt_usd)
+                        fallback["RowSignal"] = pd.to_numeric(fallback["RowSignal"], errors="coerce").fillna(0.0).round(0)
+                        st.dataframe(fallback, width="stretch", height=320, hide_index=True)
+                    _ = export_dataframe(filtered, "address_probe_filtered_rows.csv", label="Download filtered probe CSV")
+                    leads = (
+                        filtered.groupby("TFL Entity", as_index=False)
+                        .agg(
+                            High=("High", "sum"),
+                            Low=("Low", "sum"),
+                            Mid=("Mid", "sum"),
+                            OverlapRows=("TFL Entity", "size"),
+                            Subdivisions=("Subdivision", "nunique"),
+                            HighRows=("Match Confidence", lambda s: int((s.astype(str) == "High").sum())),
+                            RowSignal=("RowSignal", "sum"),
+                        )
+                        .sort_values(["RowSignal", "High"], ascending=[False, False])
+                        .reset_index(drop=True)
+                    )
+                    leads["HighShare"] = leads["HighRows"] / leads["OverlapRows"].replace(0, 1)
+                    leads["Priority"] = "Tier 3"
+                    if not leads.empty:
+                        q75 = float(leads["RowSignal"].quantile(0.75))
+                        q45 = float(leads["RowSignal"].quantile(0.45))
+                        leads.loc[leads["RowSignal"] >= q75, "Priority"] = "Tier 1"
+                        leads.loc[(leads["RowSignal"] < q75) & (leads["RowSignal"] >= q45), "Priority"] = "Tier 2"
+                    lead_view = leads[
+                        [
+                            "Priority",
+                            "TFL Entity",
+                            "Low",
+                            "High",
+                            "Mid",
+                            "OverlapRows",
+                            "Subdivisions",
+                            "HighShare",
+                            "RowSignal",
+                        ]
+                    ].rename(columns={"HighShare": "High Confidence Share", "RowSignal": "Signal Score", "Mid": "Midpoint"}).copy()
+                    max_lead_signal = float(pd.to_numeric(lead_view["Signal Score"], errors="coerce").fillna(0.0).max() or 0.0)
+                    lead_view["Signal Bar"] = lead_view["Signal Score"].apply(lambda v: _compact_ratio_bar(v, max_lead_signal, width=10))
+                    st.markdown('<div class="map-rail-title">Leadboard: tiered and color-scaled</div>', unsafe_allow_html=True)
+                    lead_style = _safe_style(lead_view)
+                    if lead_style is not None:
+                        lead_style = lead_style.format(
+                            {
+                                "Low": lambda v: fmt_usd(float(v or 0.0)),
+                                "High": lambda v: fmt_usd(float(v or 0.0)),
+                                "Midpoint": lambda v: fmt_usd(float(v or 0.0)),
+                                "High Confidence Share": lambda v: f"{float(v or 0.0) * 100.0:.1f}%",
+                                "Signal Score": lambda v: f"{float(v or 0.0):,.0f}",
+                            }
+                        )
+                        lead_style = _apply_numeric_heatmap(
+                            lead_style,
+                            lead_view,
+                            columns=["High", "Signal Score"],
+                            rgb_lo=(118, 44, 44),
+                            rgb_hi=(255, 149, 120),
+                        )
+                        lead_style = _apply_numeric_heatmap(
+                            lead_style,
+                            lead_view,
+                            columns=["OverlapRows", "Subdivisions"],
+                            rgb_lo=(44, 74, 104),
+                            rgb_hi=(105, 189, 255),
+                        )
+                        lead_style = lead_style.applymap(_priority_cell_style, subset=["Priority"])
+                        st.dataframe(lead_style, width="stretch", height=250, hide_index=True)
+                    else:
+                        fallback = lead_view.copy()
+                        fallback["Low"] = pd.to_numeric(fallback["Low"], errors="coerce").fillna(0.0).apply(fmt_usd)
+                        fallback["High"] = pd.to_numeric(fallback["High"], errors="coerce").fillna(0.0).apply(fmt_usd)
+                        fallback["Midpoint"] = pd.to_numeric(fallback["Midpoint"], errors="coerce").fillna(0.0).apply(fmt_usd)
+                        fallback["High Confidence Share"] = (pd.to_numeric(fallback["High Confidence Share"], errors="coerce").fillna(0.0) * 100.0).map(lambda v: f"{v:.1f}%")
+                        fallback["Signal Score"] = pd.to_numeric(fallback["Signal Score"], errors="coerce").fillna(0.0).round(0)
+                        st.dataframe(fallback, width="stretch", height=250, hide_index=True)
+                    lead_chart_l, lead_chart_r = st.columns([1.3, 1.0], gap="large")
+                    with lead_chart_l:
+                        scatter_leads = leads.copy()
+                        scatter_leads["Priority"] = scatter_leads["Priority"].astype(str)
+                        fig_leads = px.scatter(
+                            scatter_leads,
+                            x="OverlapRows",
+                            y="High",
+                            size="RowSignal",
+                            color="Priority",
+                            hover_data={
+                                "TFL Entity": True,
+                                "Subdivisions": True,
+                                "HighRows": True,
+                                "HighShare": ":.1%",
+                                "RowSignal": ":,.0f",
+                            },
+                            title="Lead Signal Matrix",
+                            color_discrete_map=priority_color_map,
+                            labels={"OverlapRows": "Overlap Rows", "High": "Matched TFL High"},
+                        )
+                        _apply_plotly_layout(fig_leads, showlegend=True, legend_title="Priority", height=320, margin_top=38)
+                        fig_leads.update_layout(yaxis_tickprefix="$", yaxis_tickformat=",")
+                        st.plotly_chart(fig_leads, width="stretch", config=PLOTLY_CONFIG)
+                    with lead_chart_r:
+                        priority_roll = (
+                            leads.groupby("Priority", as_index=False)
+                            .agg(Entities=("TFL Entity", "nunique"), TotalHigh=("High", "sum"), TotalSignal=("RowSignal", "sum"))
+                        )
+                        fig_priority = px.bar(
+                            priority_roll,
+                            x="Priority",
+                            y="Entities",
+                            color="Priority",
+                            text="Entities",
+                            title="Priority Tier Distribution",
+                            color_discrete_map=priority_color_map,
+                        )
+                        _apply_plotly_layout(fig_priority, showlegend=False, height=320, margin_top=38)
+                        fig_priority.update_traces(textposition="outside")
+                        st.plotly_chart(fig_priority, width="stretch", config=PLOTLY_CONFIG)
+                    _ = export_dataframe(leads, "address_probe_ranked_leads.csv", label="Download ranked leads CSV")
+                    add_opts = [str(v).strip() for v in leads["TFL Entity"].dropna().astype(str).tolist() if str(v).strip()]
+                    w1, w2 = st.columns([3.2, 1.1], gap="small")
+                    with w1:
+                        add_pick = st.multiselect("Add lead(s) to watchlist", add_opts, key="map_watch_add_from_probe")
+                    with w2:
+                        add_btn = st.button("Add to Watchlist", key="map_watch_add_btn_rebuild", width="stretch")
+                    if add_btn and add_pick:
+                        watch = st.session_state.get("map_watchlist", [])
+                        existing = {str(r.get("TFL Entity", "")).strip().lower() for r in watch if isinstance(r, dict)}
+                        stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        for entity in add_pick:
+                            if str(entity).strip().lower() in existing:
+                                continue
+                            rec = leads[leads["TFL Entity"].astype(str) == str(entity)].head(1)
+                            if rec.empty:
+                                continue
+                            row = rec.iloc[0]
+                            watch.append(
+                                {
+                                    "Added": stamp,
+                                    "TFL Entity": str(entity).strip(),
+                                    "Priority": str(row.get("Priority", "")),
+                                    "Signal Score": float(row.get("RowSignal", 0.0) or 0.0),
+                                    "High": float(row.get("High", 0.0) or 0.0),
+                                    "Source Query": str(analysis_point.get("query", "")),
+                                }
+                            )
+                            existing.add(str(entity).strip().lower())
+                        st.session_state.map_watchlist = watch
+                        st.success(f"Watchlist now tracks {len(watch):,} entities.")
+                    o1, o2 = st.columns([4, 1.2], gap="small")
+                    with o1:
+                        open_entity = st.selectbox("Open ranked entity in Client Look-Up", add_opts, key="map_overlap_open_client_select") if add_opts else ""
+                    with o2:
+                        if st.button("Open Client", key="map_open_client_from_probe_btn_rebuild", width="stretch") and open_entity:
+                            _open_client(open_entity)
 
-            render_address_overlap_arcgis_map(lon=float(analysis_point["lon"]), lat=float(analysis_point["lat"]), matched_address=analysis_point["matched"], overlap_points=overlap_points, height=430, basemap=active_map_basemap)
-            overlap_display = overlap_sub.rename(columns={"subdivision_type": "Subdivision Type", "subdivision_name": "Subdivision", "subdivision_code": "Code", "source_name": "Map Source", "source_url": "Map Source URL"}) if not overlap_sub.empty else pd.DataFrame(columns=["Subdivision Type", "Subdivision", "Code", "Map Source", "Map Source URL"])
-            st.dataframe(overlap_display, width="stretch", height=220, hide_index=True)
-            if not overlap_spend.empty:
-                disp = filtered_spend.copy()
-                disp["Low"] = disp["Low"].astype(float).apply(fmt_usd)
-                disp["High"] = disp["High"].astype(float).apply(fmt_usd)
-                disp["Mid"] = disp["Mid"].astype(float).apply(fmt_usd)
-                disp = disp.rename(columns={"Lobbyists": "Lobbyists Under Contract", "Mid": "Midpoint"})
-                st.dataframe(disp[["Subdivision Type", "Subdivision", "Code", "Entity Type", "TFL Entity", "Match Method", "Match Confidence", "Map Source", "Low", "High", "Midpoint", "Lobbyists Under Contract"]], width="stretch", height=390, hide_index=True)
-                _ = export_dataframe(filtered_spend, "address_overlap_tfl_entity_spending.csv", label="Download filtered overlap entity spending CSV")
-                summary_row = pd.DataFrame([{"Input": analysis_point["query"], "Matched Location": analysis_point["matched"], "Latitude": float(analysis_point["lat"]), "Longitude": float(analysis_point["lon"]), "Subdivision Overlaps": int(overlap_sub.shape[0]), "Overlap Rows (All)": int(overlap_spend.shape[0]), "Overlap Rows (Filtered)": int(filtered_spend.shape[0]), "Unique TFL Entities (Filtered)": int(filtered_spend["TFL Entity"].nunique()), "Combined Low (Filtered)": float(filtered_spend["Low"].sum()), "Combined High (Filtered)": float(filtered_spend["High"].sum())}])
-                _ = export_dataframe(summary_row, "address_overlap_executive_summary.csv", label="Download overlap executive summary CSV")
-                if not filtered_spend.empty:
-                    jump_l, jump_r = st.columns([4, 1.2])
-                    with jump_l:
-                        opts = sorted({str(v).strip() for v in filtered_spend["TFL Entity"].dropna().astype(str).tolist() if str(v).strip()})
-                        open_entity = st.selectbox("Open matched entity in Client Look-Up", opts, key="map_overlap_open_client_select") if opts else ""
-                    with jump_r:
-                        open_click = st.button("Open Client", key="map_overlap_open_client_btn", width="stretch")
-                    if open_click and open_entity:
-                        _open_client_lookup(open_entity)
-            _render_workspace_links(
-                "map_overlap_next",
-                [
-                    ("Open Clients", _client_page, "Investigate a matched entity profile in detail."),
-                    ("Open Lobbyists", _lobby_page, "Return to statewide lobbyist-level context."),
-                    ("Open Legislators", _member_page, "Connect overlap entities to bill and witness activity."),
-                ],
-            )
+    with tab_watch:
+        watch = st.session_state.get("map_watchlist", [])
+        if not isinstance(watch, list) or not watch:
+            st.info("Watchlist is empty. Add entities from Address Probe.")
+        else:
+            wd = pd.DataFrame(watch).sort_values(["Priority", "Signal Score"], ascending=[True, False]).reset_index(drop=True)
+            vw = wd.copy()
+            if "Signal Score" in vw.columns:
+                vw["Signal Score"] = pd.to_numeric(vw["Signal Score"], errors="coerce").fillna(0.0)
+                max_watch_signal = float(vw["Signal Score"].max() or 0.0)
+                vw["Signal Bar"] = vw["Signal Score"].apply(lambda v: _compact_ratio_bar(v, max_watch_signal, width=10))
+            st.markdown('<div class="map-rail-title">Watchlist Table: priority-highlighted</div>', unsafe_allow_html=True)
+            watch_style = _safe_style(vw)
+            if watch_style is not None:
+                formatters = {"Signal Score": lambda v: f"{float(v or 0.0):,.0f}"}
+                if "High" in vw.columns:
+                    formatters["High"] = lambda v: fmt_usd(float(v or 0.0))
+                watch_style = watch_style.format(formatters)
+                if "High" in vw.columns and "Signal Score" in vw.columns:
+                    watch_style = _apply_numeric_heatmap(
+                        watch_style,
+                        vw,
+                        columns=["High", "Signal Score"],
+                        rgb_lo=(118, 44, 44),
+                        rgb_hi=(255, 149, 120),
+                    )
+                elif "Signal Score" in vw.columns:
+                    watch_style = _apply_numeric_heatmap(
+                        watch_style,
+                        vw,
+                        columns=["Signal Score"],
+                        rgb_lo=(118, 44, 44),
+                        rgb_hi=(255, 149, 120),
+                    )
+                watch_style = watch_style.applymap(_priority_cell_style, subset=["Priority"])
+                st.dataframe(watch_style, width="stretch", height=320, hide_index=True)
+            else:
+                fallback = vw.copy()
+                if "High" in fallback.columns:
+                    fallback["High"] = pd.to_numeric(fallback["High"], errors="coerce").fillna(0.0).apply(fmt_usd)
+                if "Signal Score" in fallback.columns:
+                    fallback["Signal Score"] = pd.to_numeric(fallback["Signal Score"], errors="coerce").fillna(0.0).round(0)
+                st.dataframe(fallback, width="stretch", height=320, hide_index=True)
+            _ = export_dataframe(wd, "map_watchlist.csv", label="Download watchlist CSV")
+            if not wd.empty:
+                watch_chart_l, watch_chart_r = st.columns([1.3, 1.0], gap="large")
+                with watch_chart_l:
+                    wplot = wd.copy()
+                    wplot["Signal Score"] = pd.to_numeric(wplot.get("Signal Score", 0.0), errors="coerce").fillna(0.0)
+                    wplot = wplot.sort_values(["Signal Score"], ascending=[True]).tail(16)
+                    fig_watch_bar = px.bar(
+                        wplot,
+                        x="Signal Score",
+                        y="TFL Entity",
+                        color="Priority",
+                        orientation="h",
+                        labels={"Signal Score": "Signal Score", "TFL Entity": "Entity"},
+                        title="Watchlist Signal Scores",
+                        color_discrete_map=priority_color_map,
+                    )
+                    _apply_plotly_layout(fig_watch_bar, showlegend=True, legend_title="Priority", height=340, margin_top=38)
+                    st.plotly_chart(fig_watch_bar, width="stretch", config=PLOTLY_CONFIG)
+                with watch_chart_r:
+                    wmix = (
+                        wd.groupby("Priority", as_index=False)
+                        .agg(Entities=("TFL Entity", "nunique"), TotalHigh=("High", "sum"), TotalSignal=("Signal Score", "sum"))
+                    )
+                    fig_watch_mix = px.pie(
+                        wmix,
+                        values="Entities",
+                        names="Priority",
+                        title="Watchlist Priority Mix",
+                        color="Priority",
+                        color_discrete_map=priority_color_map,
+                    )
+                    _apply_plotly_layout(fig_watch_mix, showlegend=True, legend_title="Priority", height=340, margin_top=38)
+                    st.plotly_chart(fig_watch_mix, width="stretch", config=PLOTLY_CONFIG)
+            a1, a2, a3 = st.columns([3.0, 1.2, 1.2], gap="small")
+            with a1:
+                open_pick = st.selectbox(
+                    "Open watchlist entity in Client Look-Up",
+                    [str(v).strip() for v in wd.get("TFL Entity", pd.Series(dtype=object)).dropna().astype(str).tolist() if str(v).strip()],
+                    key="map_watch_open_entity",
+                )
+            with a2:
+                if st.button("Open Client", key="map_watch_open_btn_rebuild", width="stretch") and open_pick:
+                    _open_client(open_pick)
+            with a3:
+                if st.button("Clear Watchlist", key="map_watch_clear_btn_rebuild", width="stretch"):
+                    st.session_state.map_watchlist = []
+                    st.rerun()
 
+    _render_workspace_links(
+        "map_rebuild_next",
+        [
+            ("Open Clients", _client_page, "Validate ranked leads at filing level."),
+            ("Open Lobbyists", _lobby_page, "Return to statewide concentration context."),
+            ("Open Legislators", _member_page, "Connect entities to bill and witness activity."),
+        ],
+    )
     st.markdown(
         """
 <style>
@@ -5938,11 +8071,465 @@ footer {visibility: hidden;}
         unsafe_allow_html=True,
     )
 
+def _page_map_address_rebuild():
+    _render_page_intro(
+        kicker="Geospatial Investigation Studio",
+        title="Map & Address Intelligence",
+        subtitle="Coverage diagnostics, address-level overlap evidence, and ranked investigative leads.",
+        pills=["Coverage parity", "Evidence ranking", "Case queue"],
+    )
+    _render_workspace_guide(
+        question="At this location, which taxpayer-funded entities have the strongest overlap signal and should move first into case review?",
+        steps=[
+            "Set scope and thresholds.",
+            "Anchor context in Coverage Intelligence.",
+            "Run Address Lab and apply evidence filters.",
+            "Promote high-signal entities to Case Queue.",
+        ],
+        method_note="Boundary overlap is stronger than name-anchored overlap.",
+    )
+    if not PATH:
+        st.error("Data path not configured. Set DATA_PATH.")
+        st.stop()
+    if not _is_url(PATH) and not os.path.exists(PATH):
+        st.error("Data path not found. Set DATA_PATH or place the parquet file in ./data.")
+        st.stop()
+
+    with st.spinner("Loading workbook..."):
+        data = load_workbook(PATH)
+    base = data["Lobby_TFL_Client_All"]
+    tfl_sessions = set(base.get("Session", pd.Series(dtype=object)).dropna().astype(str).str.strip().unique().tolist())
+
+    defaults = {
+        "map_scope": "This Session",
+        "map_session": None,
+        "map_basemap_label": next(iter(MAP_BASEMAP_OPTIONS.keys())),
+        "map_geocode_floor": 82,
+        "map_subdivision_types_filter": [],
+        "map_min_match_count": 1,
+        "map_subdivision_map_cap": 650,
+        "map_selected_subdivision_context": {},
+        "map_overlap_input_mode": "Street Address",
+        "map_overlap_address_input": "",
+        "map_overlap_address_query": "",
+        "map_overlap_query_lat": None,
+        "map_overlap_query_lon": None,
+        "map_overlap_coord_lat": 31.0,
+        "map_overlap_coord_lon": -99.0,
+        "map_overlap_confidence_filter": [],
+        "map_overlap_entity_filter": "",
+        "map_probe_min_high": 0.0,
+        "map_distance_cap_miles": 160,
+        "map_watchlist": [],
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = [] if isinstance(v, list) else ({} if isinstance(v, dict) else v)
+    if st.session_state.get("map_basemap_label") not in MAP_BASEMAP_OPTIONS:
+        st.session_state.map_basemap_label = next(iter(MAP_BASEMAP_OPTIONS.keys()))
+
+    sessions = base.get("Session", pd.Series(dtype=object)).dropna().astype(str).str.strip().unique().tolist()
+    sessions = sorted([s for s in sessions if s and s.lower() not in {"none", "nan", "null"}], key=_session_sort_key)
+    if not sessions:
+        st.error("No sessions found in workbook.")
+        st.stop()
+    default_session = _default_session_from_list(sessions)
+    if str(st.session_state.get("map_session", "")).strip().lower() in {"", "none", "nan", "null"}:
+        st.session_state.map_session = default_session
+
+    def _open_client(entity_name: str) -> None:
+        val = str(entity_name).strip()
+        if not val:
+            return
+        st.session_state.client_query = val
+        st.session_state.client_query_input = val
+        st.session_state.client_name = ""
+        st.session_state.client_session = st.session_state.map_session
+        st.session_state.client_scope = st.session_state.map_scope
+        st.switch_page(_client_page)
+
+    def _miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        try:
+            d_lat = math.radians(float(lat2) - float(lat1))
+            d_lon = math.radians(float(lon2) - float(lon1))
+            a = math.sin(d_lat / 2) ** 2 + math.cos(math.radians(float(lat1))) * math.cos(math.radians(float(lat2))) * (math.sin(d_lon / 2) ** 2)
+            return 3958.7613 * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
+        except Exception:
+            return float("nan")
+
+    c1, c2, c3, c4 = st.columns([1.6, 1.2, 1.1, 1.1], gap="small")
+    with c1:
+        labels = [_session_label(s) for s in sessions]
+        label_map = dict(zip(labels, sessions))
+        cur = _session_label(st.session_state.map_session)
+        if cur not in labels:
+            cur = _session_label(default_session)
+        picked = st.selectbox("Session", labels, index=labels.index(cur), key="map_session_select_v2")
+        st.session_state.map_session = label_map.get(picked, default_session)
+    with c2:
+        st.session_state.map_scope = st.radio("Scope", ["This Session", "All Sessions"], index=0 if st.session_state.map_scope == "This Session" else 1, key="map_scope_radio_v2", horizontal=True)
+    with c3:
+        st.selectbox("Map style", list(MAP_BASEMAP_OPTIONS.keys()), key="map_basemap_label")
+    with c4:
+        st.slider("Geocode floor", 60, 99, key="map_geocode_floor")
+
+    s1, s2 = st.columns([1.2, 1.2], gap="small")
+    with s1:
+        st.number_input("Min entity high", min_value=0.0, step=25000.0, key="map_probe_min_high")
+    with s2:
+        st.slider("Distance cap (mi)", 10, 300, key="map_distance_cap_miles")
+
+    d = base.copy()
+    d["Session"] = d["Session"].astype(str).str.strip()
+    sess = _tfl_session_for_filter(st.session_state.map_session, tfl_sessions)
+    if st.session_state.map_scope == "This Session" and sess is not None:
+        d = d[d["Session"] == str(sess)].copy()
+    d = ensure_cols(d, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0, "LobbyShort": ""})
+    d = d[d["Client"].fillna("").astype(str).str.strip() != ""].copy()
+    totals = d.groupby("Client", as_index=False).agg(
+        Low=("Low_num", "sum"),
+        High=("High_num", "sum"),
+        Lobbyists=("LobbyShort", lambda s: s.dropna().astype(str).nunique()),
+        IsTFL=("IsTFL", "max"),
+    ) if not d.empty else pd.DataFrame(columns=["Client", "Low", "High", "Lobbyists", "IsTFL"])
+    tfl_spend = totals[totals.get("IsTFL", 0) == 1].copy() if not totals.empty else pd.DataFrame()
+    if not tfl_spend.empty:
+        tfl_spend["Client"] = tfl_spend["Client"].fillna("").astype(str).str.strip()
+        tfl_spend = tfl_spend[tfl_spend["Client"] != ""].copy()
+        tfl_spend["Low"] = pd.to_numeric(tfl_spend["Low"], errors="coerce").fillna(0.0)
+        tfl_spend["High"] = pd.to_numeric(tfl_spend["High"], errors="coerce").fillna(0.0)
+        tfl_spend["Entity Type"] = tfl_spend["Client"].map(classify_requested_entity_type)
+
+    names = tuple(sorted({str(v).strip() for v in tfl_spend.get("Client", pd.Series(dtype=object)).dropna().astype(str).tolist() if str(v).strip()}))
+    subdivision_matches = build_tfl_political_subdivision_matches(names) if names else pd.DataFrame()
+    subdivision_matches = _attach_subdivision_spend_totals(subdivision_matches, totals)
+    if not subdivision_matches.empty:
+        subdivision_matches["match_count"] = pd.to_numeric(subdivision_matches.get("match_count", 0), errors="coerce").fillna(0).astype(int)
+        subdivision_matches["high_total"] = pd.to_numeric(subdivision_matches.get("high_total", 0.0), errors="coerce").fillna(0.0)
+
+    matched_clients = set()
+    if not subdivision_matches.empty:
+        for vals in subdivision_matches.get("match_clients", pd.Series(dtype=object)).tolist():
+            if isinstance(vals, list):
+                matched_clients.update({str(v).strip() for v in vals if str(v).strip()})
+    total_tfl = int(tfl_spend["Client"].astype(str).nunique()) if not tfl_spend.empty else 0
+    mapped_high = float(pd.to_numeric(tfl_spend[tfl_spend["Client"].astype(str).isin(matched_clients)]["High"], errors="coerce").fillna(0.0).sum()) if not tfl_spend.empty and matched_clients else 0.0
+    total_high = float(pd.to_numeric(tfl_spend.get("High", 0.0), errors="coerce").fillna(0.0).sum()) if not tfl_spend.empty else 0.0
+    m1, m2, m3 = st.columns(3, gap="small")
+    with m1:
+        st.metric("Mapped Entities", f"{len(matched_clients):,}", delta=f"{(len(matched_clients) / total_tfl) if total_tfl else 0.0:.1%} coverage")
+    with m2:
+        st.metric("Coverage by Spend", f"{(mapped_high / total_high) if total_high else 0.0:.1%}")
+    with m3:
+        st.metric("Unmapped Entities", f"{max(0, total_tfl - len(matched_clients)):,}")
+
+    tab_cov, tab_lab, tab_watch = st.tabs(["Coverage Intelligence", "Address Lab", "Case Queue"])
+
+    with tab_cov:
+        st.caption("Filter mapped subdivisions, inspect concentration, and set context for Address Lab.")
+        if subdivision_matches.empty:
+            st.info("No subdivision matches found for current scope.")
+        else:
+            all_types = sorted({str(v).strip() for v in subdivision_matches.get("subdivision_type", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()})
+            selected_types = [str(v) for v in st.session_state.get("map_subdivision_types_filter", []) if str(v) in all_types] or list(all_types)
+            st.session_state.map_subdivision_types_filter = selected_types
+            max_match = int(max(1, pd.to_numeric(subdivision_matches.get("match_count", 1), errors="coerce").fillna(1).max()))
+            st.session_state.map_min_match_count = min(max(1, int(st.session_state.get("map_min_match_count", 1))), max_match)
+            ctype, cmin, ccap = st.columns([1.8, 1.0, 1.0], gap="small")
+            with ctype:
+                st.multiselect("Subdivision types", all_types, key="map_subdivision_types_filter")
+            with cmin:
+                st.slider("Min matched entities", 1, max_match, key="map_min_match_count")
+            with ccap:
+                st.number_input("Map point cap", min_value=100, max_value=1400, step=50, key="map_subdivision_map_cap")
+
+            filtered_cov = subdivision_matches.copy()
+            filtered_cov = filtered_cov[filtered_cov["subdivision_type"].astype(str).isin(st.session_state.map_subdivision_types_filter)].copy()
+            filtered_cov = filtered_cov[pd.to_numeric(filtered_cov["match_count"], errors="coerce").fillna(0) >= int(st.session_state.get("map_min_match_count", 1))].copy()
+            filtered_cov["_signal"] = filtered_cov["high_total"] * (
+                1 + pd.to_numeric(filtered_cov["match_count"], errors="coerce").fillna(0).map(lambda x: math.log1p(max(float(x), 0.0)))
+            )
+            filtered_cov = filtered_cov.sort_values(["_signal", "high_total"], ascending=[False, False]).drop(columns=["_signal"], errors="ignore")
+
+            left, right = st.columns([1.65, 1.0], gap="large")
+            with left:
+                if filtered_cov.empty:
+                    st.warning("No subdivisions remain after filters.")
+                else:
+                    render_subdivision_map_legend(filtered_cov["subdivision_type"].value_counts().to_dict())
+                    cap = max(100, min(1400, int(st.session_state.get("map_subdivision_map_cap", 650) or 650)))
+                    active_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.get("map_basemap_label", ""), "gray-vector")
+                    render_tfl_subdivision_arcgis_map(filtered_cov.head(cap), height=620, basemap=active_basemap)
+            with right:
+                labels, rows = [], []
+                for row in filtered_cov.itertuples(index=False):
+                    code = str(getattr(row, "subdivision_code", "")).strip() or "N/A"
+                    labels.append(f"{row.subdivision_type} | {row.subdivision_name} ({code})")
+                    rows.append(row)
+                options = [""] + labels
+                if st.session_state.get("map_subdivision_pick", "") not in options:
+                    st.session_state.map_subdivision_pick = ""
+                pick = st.selectbox("Context anchor", options, key="map_subdivision_pick")
+                if st.button("Set Active Context", key="map_set_context_btn_v2", width="stretch", disabled=not bool(pick)) and pick in labels:
+                    row = rows[labels.index(pick)]
+                    clients = sorted({str(v).strip() for v in (getattr(row, "match_clients", []) if isinstance(getattr(row, "match_clients", []), list) else []) if str(v).strip()})
+                    st.session_state.map_selected_subdivision_context = {
+                        "subdivision_type": str(getattr(row, "subdivision_type", "")).strip(),
+                        "subdivision_name": str(getattr(row, "subdivision_name", "")).strip(),
+                        "subdivision_code": str(getattr(row, "subdivision_code", "")).strip(),
+                        "clients": clients,
+                    }
+                    st.rerun()
+                if st.button("Clear Context", key="map_clear_context_btn_v2", width="stretch"):
+                    st.session_state.map_selected_subdivision_context = {}
+                    st.rerun()
+                ctx = st.session_state.get("map_selected_subdivision_context", {})
+                if isinstance(ctx, dict) and str(ctx.get("subdivision_name", "")).strip():
+                    st.markdown(
+                        f"<div class='mapx-ctx'><strong>{html.escape(str(ctx.get('subdivision_type', '')), quote=True)}</strong><br>{html.escape(str(ctx.get('subdivision_name', '')), quote=True)} ({html.escape(str(ctx.get('subdivision_code', '') or 'N/A'), quote=True)})</div>",
+                        unsafe_allow_html=True,
+                    )
+                cov_view = filtered_cov[["subdivision_type", "subdivision_name", "subdivision_code", "match_count", "high_total"]].rename(
+                    columns={"subdivision_type": "Type", "subdivision_name": "Subdivision", "subdivision_code": "Code", "match_count": "Matched Entities", "high_total": "Matched High"}
+                )
+                st.dataframe(cov_view, width="stretch", height=320, hide_index=True)
+                _ = export_dataframe(cov_view, "coverage_intelligence_rows.csv", label="Download coverage CSV")
+    with tab_lab:
+        st.caption("Run an address or coordinate probe, filter by evidence quality, and rank investigative leads.")
+        ctx = st.session_state.get("map_selected_subdivision_context", {}) if isinstance(st.session_state.get("map_selected_subdivision_context", {}), dict) else {}
+        selected_type = str(ctx.get("subdivision_type", "")).strip()
+        selected_name = str(ctx.get("subdivision_name", "")).strip()
+        selected_clients = [str(v).strip() for v in ctx.get("clients", []) if str(v).strip()] if isinstance(ctx.get("clients", []), list) else []
+        if selected_name:
+            st.markdown(f"<div class='mapx-ctx'>Active context: <strong>{html.escape(selected_type, quote=True)}</strong> | {html.escape(selected_name, quote=True)}</div>", unsafe_allow_html=True)
+
+        if st.session_state.get("map_overlap_input_mode") not in {"Street Address", "Coordinates"}:
+            st.session_state.map_overlap_input_mode = "Street Address"
+        mode = st.radio("Lookup mode", ["Street Address", "Coordinates"], key="map_overlap_input_mode", horizontal=True)
+        analysis_point = None
+
+        if mode == "Street Address":
+            with st.form("map_addr_form_v2"):
+                st.text_input("Street address", key="map_overlap_address_input", placeholder="e.g., 1100 Congress Ave, Austin, TX")
+                run_addr = st.form_submit_button("Run Address Analysis")
+            if run_addr:
+                q = str(st.session_state.get("map_overlap_address_input", "")).strip()
+                st.session_state.map_overlap_address_query = q
+                if q:
+                    recent = [q] + [str(v).strip() for v in st.session_state.get("map_recent_addresses", []) if str(v).strip() and str(v).strip().lower() != q.lower()]
+                    st.session_state.map_recent_addresses = recent[:8]
+            recent_options = [str(v).strip() for v in st.session_state.get("map_recent_addresses", []) if str(v).strip()]
+            if recent_options:
+                recent_pick = st.selectbox("Recent queries", [""] + recent_options, key="map_overlap_recent_pick_v2")
+                if st.button("Use Recent", key="map_use_recent_btn_v2") and recent_pick:
+                    st.session_state.map_overlap_address_query = recent_pick
+            active_query = str(st.session_state.get("map_overlap_address_query", "")).strip()
+            if active_query:
+                geo = geocode_address_arcgis(active_query)
+                if geo:
+                    analysis_point = {
+                        "query": active_query,
+                        "matched_address": str(geo.get("matched_address", active_query)).strip(),
+                        "lat": float(geo.get("lat", 0.0)),
+                        "lon": float(geo.get("lon", 0.0)),
+                        "score": float(geo.get("score", 0.0)),
+                    }
+                    if analysis_point["score"] < float(st.session_state.get("map_geocode_floor", 82)):
+                        st.warning(f"Geocode score {analysis_point['score']:.1f} is below floor {int(st.session_state.get('map_geocode_floor', 82))}.")
+                else:
+                    st.warning("Address could not be geocoded.")
+        else:
+            with st.form("map_coord_form_v2"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.number_input("Latitude", min_value=25.0, max_value=37.0, step=0.0001, format="%.6f", key="map_overlap_coord_lat")
+                with c2:
+                    st.number_input("Longitude", min_value=-107.0, max_value=-93.0, step=0.0001, format="%.6f", key="map_overlap_coord_lon")
+                run_coord = st.form_submit_button("Run Coordinate Analysis")
+            if run_coord:
+                st.session_state.map_overlap_query_lat = float(st.session_state.get("map_overlap_coord_lat", 31.0))
+                st.session_state.map_overlap_query_lon = float(st.session_state.get("map_overlap_coord_lon", -99.0))
+            if st.session_state.get("map_overlap_query_lat") is not None and st.session_state.get("map_overlap_query_lon") is not None:
+                lat_q = float(st.session_state.get("map_overlap_query_lat"))
+                lon_q = float(st.session_state.get("map_overlap_query_lon"))
+                analysis_point = {"query": f"{lat_q:.6f}, {lon_q:.6f}", "matched_address": f"Coordinates: {lat_q:.6f}, {lon_q:.6f}", "lat": lat_q, "lon": lon_q, "score": None}
+
+        if analysis_point is None:
+            st.info("Run an address or coordinate query to generate overlap evidence.")
+        else:
+            overlap_sub = query_texas_subdivisions_for_point(round(float(analysis_point["lon"]), 6), round(float(analysis_point["lat"]), 6))
+            overlap_points = build_overlap_map_points(overlap_subdivisions=overlap_sub, subdivision_matches=subdivision_matches)
+            overlap_spend = build_address_overlap_spending_rows(overlap_subdivisions=overlap_sub, subdivision_matches=subdivision_matches, tfl_spending=tfl_spend)
+            if overlap_spend.empty:
+                active_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.get("map_basemap_label", ""), "gray-vector")
+                render_address_overlap_arcgis_map(float(analysis_point["lon"]), float(analysis_point["lat"]), str(analysis_point.get("matched_address", analysis_point.get("query", ""))), overlap_points, height=520, basemap=active_basemap)
+                st.info("No matched entities for this query.")
+            else:
+                rows = overlap_spend.copy()
+                rows["Low"] = pd.to_numeric(rows["Low"], errors="coerce").fillna(0.0)
+                rows["High"] = pd.to_numeric(rows["High"], errors="coerce").fillna(0.0)
+                rows["Mid"] = pd.to_numeric(rows["Mid"], errors="coerce").fillna(0.0)
+                rows["Entity Type"] = rows.get("Entity Type", "").fillna("").astype(str).str.strip()
+                rows.loc[rows["Entity Type"] == "", "Entity Type"] = rows.loc[rows["Entity Type"] == "", "TFL Entity"].map(classify_requested_entity_type)
+                dist_lookup = {}
+                if isinstance(overlap_points, pd.DataFrame) and not overlap_points.empty:
+                    for p in overlap_points.itertuples(index=False):
+                        key = (str(getattr(p, "subdivision_type", "")).strip(), str(getattr(p, "subdivision_name", "")).strip(), str(getattr(p, "subdivision_code", "")).strip())
+                        dist_lookup[key] = _miles(float(analysis_point["lat"]), float(analysis_point["lon"]), float(getattr(p, "lat", 0.0)), float(getattr(p, "lon", 0.0)))
+                rows["Distance Miles"] = rows.apply(lambda r: dist_lookup.get((str(r.get("Subdivision Type", "")).strip(), str(r.get("Subdivision", "")).strip(), str(r.get("Code", "")).strip()), float("nan")), axis=1)
+                rows["Row Signal"] = rows["High"] * rows["Match Confidence"].map({"High": 1.0, "Medium": 0.72, "Low": 0.46, "Unknown": 0.28}).fillna(0.25)
+                rows["Row Signal"] = rows["Row Signal"] * rows["Distance Miles"].apply(lambda d: 0.5 if pd.isna(d) else 1.0 / (1.0 + (max(float(d), 0.0) / 75.0)))
+
+                conf_opts = [c for c in ["High", "Medium", "Low", "Unknown"] if c in rows["Match Confidence"].astype(str).value_counts().to_dict()]
+                method_opts = sorted({str(v).strip() for v in rows["Match Method"].dropna().astype(str).tolist() if str(v).strip()})
+                st.session_state.map_overlap_confidence_filter = [str(v) for v in st.session_state.get("map_overlap_confidence_filter", []) if str(v) in conf_opts] or list(conf_opts)
+                st.session_state.map_overlap_method_filter = [str(v) for v in st.session_state.get("map_overlap_method_filter", []) if str(v) in method_opts] or list(method_opts)
+                with st.expander("Evidence filters", expanded=True):
+                    e1, e2 = st.columns([1.3, 1.3], gap="small")
+                    with e1:
+                        st.multiselect("Confidence", conf_opts, key="map_overlap_confidence_filter")
+                        st.multiselect("Method", method_opts, key="map_overlap_method_filter")
+                    with e2:
+                        st.text_input("Entity contains", key="map_overlap_entity_filter")
+                        st.checkbox("Focus active subdivision", key="map_overlap_focus_selected_subdivision", disabled=not bool(selected_name))
+                        st.checkbox("Focus active context entities", key="map_overlap_focus_selected_clients", disabled=not bool(selected_clients))
+
+                filtered = rows.copy()
+                filtered = filtered[filtered["Match Confidence"].astype(str).isin(st.session_state.get("map_overlap_confidence_filter", []))].copy()
+                filtered = filtered[filtered["Match Method"].astype(str).isin(st.session_state.get("map_overlap_method_filter", []))].copy()
+                q_entity = str(st.session_state.get("map_overlap_entity_filter", "")).strip().lower()
+                if q_entity:
+                    filtered = filtered[filtered["TFL Entity"].astype(str).str.lower().str.contains(q_entity, na=False)].copy()
+                min_high = float(st.session_state.get("map_probe_min_high", 0.0) or 0.0)
+                if min_high > 0:
+                    filtered = filtered[filtered["High"] >= min_high].copy()
+                dist_cap = float(st.session_state.get("map_distance_cap_miles", 160) or 160)
+                filtered = filtered[filtered["Distance Miles"].isna() | (pd.to_numeric(filtered["Distance Miles"], errors="coerce").fillna(dist_cap + 1) <= dist_cap)].copy()
+                if st.session_state.get("map_overlap_focus_selected_subdivision", False) and selected_name:
+                    filtered = filtered[(filtered["Subdivision Type"].astype(str) == selected_type) & (filtered["Subdivision"].astype(str) == selected_name)].copy()
+                if st.session_state.get("map_overlap_focus_selected_clients", False) and selected_clients:
+                    focus_set = {v.lower() for v in selected_clients}
+                    filtered = filtered[filtered["TFL Entity"].astype(str).str.lower().isin(focus_set)].copy()
+                filtered = filtered.sort_values(["Row Signal", "High"], ascending=[False, False])
+
+                st.metric("Filtered overlap rows", f"{len(filtered):,}")
+                active_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.get("map_basemap_label", ""), "gray-vector")
+                render_address_overlap_arcgis_map(float(analysis_point["lon"]), float(analysis_point["lat"]), str(analysis_point.get("matched_address", analysis_point.get("query", ""))), overlap_points, height=540, basemap=active_basemap)
+                probe_view = filtered[["Subdivision Type", "Subdivision", "Entity Type", "TFL Entity", "Match Method", "Match Confidence", "Low", "High", "Mid", "Distance Miles", "Row Signal"]].rename(columns={"Mid": "Midpoint"})
+                st.dataframe(probe_view, width="stretch", height=300, hide_index=True)
+                _ = export_dataframe(filtered, "address_lab_filtered_rows.csv", label="Download filtered overlap CSV")
+
+                leads = (
+                    filtered.groupby("TFL Entity", as_index=False)
+                    .agg(EntityType=("Entity Type", lambda s: next((str(v).strip() for v in s if str(v).strip()), "")), High=("High", "sum"), Low=("Low", "sum"), Midpoint=("Mid", "sum"), OverlapRows=("TFL Entity", "size"), HighRows=("Match Confidence", lambda s: int((s.astype(str) == "High").sum())), SignalScore=("Row Signal", "sum"))
+                )
+                if not leads.empty:
+                    leads["HighShare"] = leads["HighRows"] / leads["OverlapRows"].replace(0, 1)
+                    max_signal = float(leads["SignalScore"].max() or 0.0)
+                    leads["LeadScore"] = ((leads["SignalScore"] / max_signal * 100.0) if max_signal > 0 else 0.0) * 0.75 + leads["HighShare"] * 100.0 * 0.25
+                    leads["Priority"] = leads["LeadScore"].map(lambda v: "Tier 1" if float(v) >= 78 else ("Tier 2" if float(v) >= 56 else "Tier 3"))
+                    leads = leads.sort_values(["LeadScore", "SignalScore", "High"], ascending=[False, False, False])
+                    st.dataframe(leads[["Priority", "TFL Entity", "EntityType", "Low", "High", "Midpoint", "LeadScore", "SignalScore", "HighShare", "OverlapRows"]].rename(columns={"EntityType": "Entity Type", "LeadScore": "Lead Score", "SignalScore": "Signal Score", "HighShare": "High Confidence Share"}), width="stretch", height=250, hide_index=True)
+                    _ = export_dataframe(leads, "address_lab_ranked_leads.csv", label="Download ranked leads CSV")
+                    add_opts = [str(v).strip() for v in leads["TFL Entity"].dropna().astype(str).tolist() if str(v).strip()]
+                    add_col, btn_col = st.columns([3.0, 1.0], gap="small")
+                    with add_col:
+                        add_pick = st.multiselect("Promote lead(s) to Case Queue", add_opts, key="map_watch_add_from_probe_v2")
+                    with btn_col:
+                        add_btn = st.button("Add To Queue", key="map_watch_add_btn_v2", width="stretch")
+                    if add_btn and add_pick:
+                        watch = st.session_state.get("map_watchlist", [])
+                        existing = {str(r.get("TFL Entity", "")).strip().lower() for r in watch if isinstance(r, dict)}
+                        stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        for entity in add_pick:
+                            k = str(entity).strip().lower()
+                            if not k or k in existing:
+                                continue
+                            row = leads[leads["TFL Entity"].astype(str) == str(entity)].head(1)
+                            if row.empty:
+                                continue
+                            rec = row.iloc[0]
+                            watch.append(
+                                {
+                                    "Added": stamp,
+                                    "TFL Entity": str(entity).strip(),
+                                    "Priority": str(rec.get("Priority", "Tier 3")),
+                                    "Lead Score": float(rec.get("LeadScore", 0.0) or 0.0),
+                                    "Signal Score": float(rec.get("SignalScore", 0.0) or 0.0),
+                                    "High": float(rec.get("High", 0.0) or 0.0),
+                                    "High Confidence Share": float(rec.get("HighShare", 0.0) or 0.0),
+                                    "Overlap Rows": int(rec.get("OverlapRows", 0) or 0),
+                                    "Source Query": str(analysis_point.get("query", "")),
+                                }
+                            )
+                            existing.add(k)
+                        st.session_state.map_watchlist = watch
+                        st.success(f"Case Queue now includes {len(watch):,} entities.")
+                    open_entity = st.selectbox("Open lead in Client Look-Up", add_opts, key="map_open_client_pick_v2") if add_opts else ""
+                    if st.button("Open Client", key="map_open_client_from_probe_btn_v2", width="stretch") and open_entity:
+                        _open_client(open_entity)
+    with tab_watch:
+        watch = st.session_state.get("map_watchlist", [])
+        if not isinstance(watch, list) or not watch:
+            st.info("Case Queue is empty. Add entities from Address Lab.")
+        else:
+            wd = pd.DataFrame(watch).copy()
+            if "Priority" not in wd.columns:
+                wd["Priority"] = "Tier 3"
+            if "Lead Score" not in wd.columns:
+                wd["Lead Score"] = pd.to_numeric(wd.get("Signal Score", 0.0), errors="coerce").fillna(0.0)
+            if "Signal Score" not in wd.columns:
+                wd["Signal Score"] = pd.to_numeric(wd.get("Lead Score", 0.0), errors="coerce").fillna(0.0)
+            if "High" not in wd.columns:
+                wd["High"] = 0.0
+            if "High Confidence Share" not in wd.columns:
+                wd["High Confidence Share"] = 0.0
+            if "Overlap Rows" not in wd.columns:
+                wd["Overlap Rows"] = 0
+            if "Source Query" not in wd.columns:
+                wd["Source Query"] = ""
+            wd["Lead Score"] = pd.to_numeric(wd["Lead Score"], errors="coerce").fillna(0.0)
+            wd["Signal Score"] = pd.to_numeric(wd["Signal Score"], errors="coerce").fillna(0.0)
+            wd["High"] = pd.to_numeric(wd["High"], errors="coerce").fillna(0.0)
+            wd["High Confidence Share"] = pd.to_numeric(wd["High Confidence Share"], errors="coerce").fillna(0.0)
+            wd = wd.sort_values(["Lead Score", "Signal Score", "High"], ascending=[False, False, False]).reset_index(drop=True)
+
+            w1, w2, w3 = st.columns(3, gap="small")
+            with w1:
+                st.metric("Queued Entities", f"{wd['TFL Entity'].astype(str).nunique():,}")
+            with w2:
+                st.metric("Tier 1 Count", f"{int((wd['Priority'].astype(str) == 'Tier 1').sum()):,}")
+            with w3:
+                st.metric("Total High", fmt_usd(float(wd["High"].sum())))
+
+            st.dataframe(wd, width="stretch", height=340, hide_index=True)
+            _ = export_dataframe(wd, "case_queue.csv", label="Download case queue CSV")
+
+            open_opts = [str(v).strip() for v in wd.get("TFL Entity", pd.Series(dtype=object)).dropna().astype(str).tolist() if str(v).strip()]
+            open_pick = st.selectbox("Open queued entity in Client Look-Up", open_opts, key="map_watch_open_entity_v2") if open_opts else ""
+            b1, b2 = st.columns(2, gap="small")
+            with b1:
+                if st.button("Open Client", key="map_watch_open_btn_v2", width="stretch") and open_pick:
+                    _open_client(open_pick)
+            with b2:
+                if st.button("Clear Queue", key="map_watch_clear_btn_v2", width="stretch"):
+                    st.session_state.map_watchlist = []
+                    st.rerun()
+
+    _render_workspace_links(
+        "map_rebuild_next_v2",
+        [
+            ("Open Clients", _client_page, "Validate ranked entities at filing level."),
+            ("Open Lobbyists", _lobby_page, "Reconnect findings to statewide concentration."),
+            ("Open Legislators", _member_page, "Attach overlap findings to bill and witness context."),
+        ],
+    )
+
 # Lobby content renders in the main body below; this stub keeps navigation wiring intact.
 _about_page = st.Page(_page_about, title="Start Here", url_path="about", default=True)
 _lobby_page = st.Page(lambda: None, title="Lobbyists", url_path="lobbyists")
 _client_page = st.Page(_page_client_lookup, title="Clients", url_path="clients")
-_map_page = st.Page(_page_map_address, title="Map & Address", url_path="map-address")
+_map_page = st.Page(_page_map_address_rebuild, title="Map & Address", url_path="map-address")
 _member_page = st.Page(_page_member_lookup, title="Legislators", url_path="legislators")
 _solutions_page = st.Page(_page_solutions, title="Policy Context", url_path="solutions")
 _tap_page = st.Page(_page_turn_off_tap, title="Media Briefings", url_path="multimedia")
@@ -12973,6 +15560,87 @@ def _apply_plotly_layout(
         tickfont=dict(color="rgba(223,234,247,0.78)"),
     )
     return fig
+
+def _compact_ratio_bar(value: float, max_value: float, width: int = 10) -> str:
+    try:
+        v = float(value)
+        max_v = float(max_value)
+    except Exception:
+        return "-" * max(1, int(width))
+    if max_v <= 0:
+        return "-" * max(1, int(width))
+    span = max(1, int(width))
+    ratio = max(0.0, min(1.0, v / max_v))
+    filled = int(round(ratio * span))
+    return ("#" * filled) + ("-" * max(0, span - filled))
+
+def _priority_cell_style(value: str) -> str:
+    label = str(value).strip()
+    if label == "Tier 1":
+        return "background-color: rgba(242,95,92,0.20); font-weight: 700;"
+    if label == "Tier 2":
+        return "background-color: rgba(247,178,103,0.20); font-weight: 600;"
+    if label == "Tier 3":
+        return "background-color: rgba(77,157,224,0.20);"
+    return ""
+
+def _safe_style(df: pd.DataFrame):
+    try:
+        return df.style
+    except Exception:
+        return None
+
+def _numeric_heatmap_style_fn(
+    series: pd.Series,
+    *,
+    rgb_lo: tuple[int, int, int],
+    rgb_hi: tuple[int, int, int],
+    alpha_lo: float = 0.06,
+    alpha_hi: float = 0.34,
+):
+    numeric = pd.to_numeric(series, errors="coerce")
+    if numeric.notna().any():
+        min_v = float(numeric.min())
+        max_v = float(numeric.max())
+    else:
+        min_v = 0.0
+        max_v = 0.0
+    span = max(1e-9, max_v - min_v)
+
+    def _style_one(value) -> str:
+        try:
+            v = float(value)
+        except Exception:
+            return ""
+        ratio = (v - min_v) / span if span > 0 else 0.0
+        ratio = max(0.0, min(1.0, ratio))
+        r = int(round(rgb_lo[0] + (rgb_hi[0] - rgb_lo[0]) * ratio))
+        g = int(round(rgb_lo[1] + (rgb_hi[1] - rgb_lo[1]) * ratio))
+        b = int(round(rgb_lo[2] + (rgb_hi[2] - rgb_lo[2]) * ratio))
+        a = alpha_lo + (alpha_hi - alpha_lo) * ratio
+        return f"background-color: rgba({r},{g},{b},{a:.3f});"
+
+    return _style_one
+
+def _apply_numeric_heatmap(
+    styler,
+    df: pd.DataFrame,
+    *,
+    columns: list[str],
+    rgb_lo: tuple[int, int, int],
+    rgb_hi: tuple[int, int, int],
+):
+    out = styler
+    for col in columns:
+        if col not in df.columns:
+            continue
+        fn = _numeric_heatmap_style_fn(
+            df[col],
+            rgb_lo=rgb_lo,
+            rgb_hi=rgb_hi,
+        )
+        out = out.applymap(fn, subset=[col])
+    return out
 
 @st.cache_data(show_spinner=False, ttl=300, max_entries=8)
 def bill_position_from_flags(df: pd.DataFrame) -> pd.DataFrame:
