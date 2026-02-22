@@ -1,4 +1,4 @@
-import os
+﻿import os
 import re
 import difflib
 import html
@@ -28,6 +28,8 @@ ARCGIS_GEOCODER_URL = "https://geocode.arcgis.com/arcgis/rest/services/World/Geo
 TCEQ_WATER_DISTRICTS_LAYER_URL = "https://services2.arcgis.com/LYMgRMwHfrWWEg3s/arcgis/rest/services/TCEQ_Water_Districts/FeatureServer/0"
 TCEQ_GROUNDWATER_DISTRICTS_LAYER_URL = "https://services2.arcgis.com/LYMgRMwHfrWWEg3s/arcgis/rest/services/TCEQ_Groundwater_Conservation_Districts/FeatureServer/0"
 TEXAS_RMA_LAYER_URL = "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/Texas_Regional_Mobility_Authority_Boundaries/FeatureServer/0"
+TEXAS_HOUSE_DISTRICTS_LAYER_URL = "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/Texas_State_House_Districts/FeatureServer/0"
+TEXAS_SENATE_DISTRICTS_LAYER_URL = "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/Texas_State_Senate_Districts/FeatureServer/0"
 TEXAS_JUNIOR_COLLEGE_LAYER_URL = "https://services1.arcgis.com/hVMNhMnY75fwfIFy/arcgis/rest/services/JuniorCollege_ServiceAreas/FeatureServer/0"
 TEXAS_NAVIGATION_DISTRICT_LAYER_URL = "https://services1.arcgis.com/YWG34dhJxrbxQWdF/arcgis/rest/services/Navigation_Districts2/FeatureServer/29"
 NCTCOG_TRANSIT_PROVIDERS_LAYER_URL = "https://geospatial.nctcog.org/map/rest/services/Transportation/DFWMaps_Transit/MapServer/10"
@@ -1784,31 +1786,43 @@ div[data-testid="stPlotlyChart"]{
 
 .map-legend{
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
-    gap: 8px;
-    margin: 0.45rem 0 0.7rem 0;
+    grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+    gap: 6px;
+    margin: 0.4rem 0 0.65rem 0;
 }
 .map-legend-item{
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    border: 1px solid rgba(158, 180, 203, 0.30);
+    border: 1px solid rgba(158, 180, 203, 0.26);
     border-radius: 10px;
-    padding: 6px 8px;
-    background: rgba(15, 27, 41, 0.82);
-    font-size: 0.84rem;
+    padding: 5px 9px;
+    background: rgba(15, 27, 41, 0.78);
+    font-size: 0.82rem;
+    transition: background 0.18s ease, border-color 0.18s ease;
+}
+.map-legend-item:hover{
+    background: rgba(25, 42, 62, 0.88);
+    border-color: rgba(158, 180, 203, 0.44);
 }
 .map-legend-left{
     display: flex;
     align-items: center;
     gap: 7px;
+    min-width: 0;
+}
+.map-legend-left span{
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .map-legend-chip{
     width: 11px;
     height: 11px;
     border-radius: 50%;
     border: 1px solid rgba(255,255,255,0.26);
+    flex-shrink: 0;
 }
 .map-toolbar-note{
     color: var(--muted);
@@ -1818,22 +1832,29 @@ div[data-testid="stPlotlyChart"]{
 .map-tab-banner{
     position: relative;
     overflow: hidden;
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 18px;
-    padding: 14px 15px 12px 15px;
-    margin: 0.2rem 0 0.65rem 0;
-    background: linear-gradient(130deg, rgba(30,144,255,0.18), rgba(0,224,184,0.10), rgba(10,22,34,0.90));
-    box-shadow: 0 16px 28px rgba(0,0,0,0.26);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 16px;
+    padding: 13px 16px 11px 16px;
+    margin: 0.15rem 0 0.6rem 0;
+    background: linear-gradient(135deg, rgba(30,144,255,0.16), rgba(0,224,184,0.08), rgba(10,22,34,0.92));
+    box-shadow: 0 12px 24px rgba(0,0,0,0.22);
+}
+.map-tab-banner::before{
+    content: "";
+    position: absolute;
+    top: 0; left: 0; width: 4px; height: 100%;
+    background: linear-gradient(180deg, rgba(30,144,255,0.80), rgba(0,224,184,0.65));
+    border-radius: 16px 0 0 16px;
 }
 .map-tab-banner::after{
     content: "";
     position: absolute;
     inset: 0;
     background-image:
-        linear-gradient(transparent 19px, rgba(255,255,255,0.03) 20px),
-        linear-gradient(90deg, transparent 19px, rgba(255,255,255,0.03) 20px);
+        linear-gradient(transparent 19px, rgba(255,255,255,0.025) 20px),
+        linear-gradient(90deg, transparent 19px, rgba(255,255,255,0.025) 20px);
     background-size: 24px 24px;
-    opacity: 0.16;
+    opacity: 0.14;
     pointer-events: none;
 }
 .map-tab-banner > *{
@@ -1841,14 +1862,16 @@ div[data-testid="stPlotlyChart"]{
     z-index: 1;
 }
 .map-tab-title{
-    font-size: 1.12rem;
+    font-size: 1.08rem;
     font-weight: 700;
     margin: 0;
+    letter-spacing: -0.01em;
 }
 .map-tab-sub{
     color: var(--muted);
-    margin-top: 0.25rem;
-    line-height: 1.45;
+    margin-top: 0.2rem;
+    line-height: 1.42;
+    font-size: 0.86rem;
 }
 .map-tab-pill-row{
     margin-top: 0.52rem;
@@ -1896,27 +1919,39 @@ div[data-testid="stPlotlyChart"]{
 }
 .map-context-grid{
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
-    margin-top: 0.45rem;
+    margin-top: 0.4rem;
 }
 .map-context-card{
     border: 1px solid rgba(255,255,255,0.12);
     border-radius: 12px;
-    padding: 8px 10px;
+    padding: 8px 10px 8px 12px;
     background: rgba(7,22,39,0.54);
+    position: relative;
+    overflow: hidden;
+}
+.map-context-card::before{
+    content: "";
+    position: absolute;
+    top: 0; left: 0; width: 3px; height: 100%;
+    background: linear-gradient(180deg, rgba(30,144,255,0.65), rgba(0,224,184,0.50));
+    border-radius: 12px 0 0 12px;
 }
 .map-context-label{
     text-transform: uppercase;
     letter-spacing: 0.14em;
-    font-size: 0.62rem;
+    font-size: 0.58rem;
     color: var(--muted);
 }
 .map-context-value{
     margin-top: 2px;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     font-weight: 600;
     color: rgba(242,248,252,0.96);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .map-stage-shell{
     border: 1px solid rgba(255,255,255,0.10);
@@ -1976,39 +2011,56 @@ div[data-testid="stPlotlyChart"]{
     margin-top: 4px;
 }
 .map-batch-rank-shell{
-    border: 1px solid rgba(255,255,255,0.10);
+    position: relative;
+    border: 1px solid rgba(0,224,184,0.22);
     border-radius: 14px;
-    padding: 9px 10px 8px 10px;
-    background: rgba(11,22,34,0.78);
+    padding: 10px 12px 9px 14px;
+    background: linear-gradient(135deg, rgba(0,224,184,0.06) 0%, rgba(11,22,34,0.82) 40%);
+    overflow: hidden;
+}
+.map-batch-rank-shell::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+    background:linear-gradient(180deg, rgba(0,224,184,0.65), rgba(30,144,255,0.40));
+    border-radius:14px 0 0 14px;
 }
 .map-flow-grid{
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    gap: 12px;
     margin: 0.5rem 0 0.65rem 0;
 }
 .map-flow-card{
-    border: 1px solid rgba(167, 188, 211, 0.30);
-    border-radius: 13px;
-    background: linear-gradient(180deg, rgba(30, 48, 68, 0.62), rgba(14, 26, 40, 0.88));
-    padding: 10px 11px 9px 11px;
+    position: relative;
+    border: 1px solid rgba(167, 188, 211, 0.22);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(30, 48, 68, 0.58), rgba(14, 26, 40, 0.90));
+    padding: 11px 13px 10px 13px;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+    overflow: hidden;
+}
+.map-flow-card:hover{
+    border-color: rgba(30,144,255,0.35);
+    box-shadow: 0 4px 16px rgba(30,144,255,0.08);
+    transform: translateY(-1px);
 }
 .map-flow-kicker{
     text-transform: uppercase;
     letter-spacing: 0.14em;
-    font-size: 0.62rem;
+    font-size: 0.60rem;
     color: var(--muted);
     margin-bottom: 4px;
+    display: flex;
+    align-items: center;
 }
 .map-flow-title{
-    font-size: 0.95rem;
+    font-size: 0.96rem;
     font-weight: 700;
     color: rgba(242,248,252,0.96);
 }
 .map-flow-sub{
     margin-top: 2px;
-    color: rgba(193, 209, 227, 0.84);
-    font-size: 0.82rem;
+    color: rgba(193, 209, 227, 0.80);
+    font-size: 0.80rem;
     line-height: 1.38;
 }
 .map-rail-title{
@@ -2096,48 +2148,89 @@ div[data-testid="stPlotlyChart"]{
     align-items: baseline;
     justify-content: space-between;
     gap: 8px;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.3rem;
 }
 .map-batch-head h4{
     margin: 0;
-    font-size: 0.98rem;
+    font-size: 0.96rem;
+    letter-spacing: -0.01em;
 }
 .map-batch-head .meta{
     color: var(--muted);
     font-size: 0.8rem;
 }
+/* batch status color indicators */
+.map-batch-status-ok{
+    display: inline-flex; align-items: center;
+    padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600;
+    background: rgba(22, 103, 80, 0.30); color: #42d2a2;
+    border: 1px solid rgba(66, 210, 162, 0.35);
+}
+.map-batch-status-fail{
+    display: inline-flex; align-items: center;
+    padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600;
+    background: rgba(109, 48, 57, 0.28); color: #ce7a7a;
+    border: 1px solid rgba(206, 122, 122, 0.35);
+}
+.map-batch-status-warn{
+    display: inline-flex; align-items: center;
+    padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600;
+    background: rgba(102, 80, 32, 0.28); color: #e3c06c;
+    border: 1px solid rgba(227, 192, 108, 0.35);
+}
 .map-mission-shell{
-    border: 1px solid rgba(171, 192, 214, 0.34);
+    border: 1px solid rgba(171, 192, 214, 0.32);
     border-radius: 14px;
-    padding: 10px 12px;
-    margin: 0.45rem 0 0.55rem 0;
+    padding: 10px 14px 10px 14px;
+    margin: 0.4rem 0 0.5rem 0;
     background:
-        linear-gradient(135deg, rgba(116, 147, 178, 0.18), rgba(19, 33, 48, 0.88) 62%),
+        linear-gradient(135deg, rgba(116, 147, 178, 0.16), rgba(19, 33, 48, 0.90) 62%),
         linear-gradient(180deg, rgba(24, 39, 57, 0.92), rgba(14, 25, 39, 0.90));
-    box-shadow: 0 14px 26px rgba(2, 9, 16, 0.35);
+    box-shadow: 0 12px 22px rgba(2, 9, 16, 0.30);
+    position: relative;
+    overflow: hidden;
+}
+.map-mission-shell::before{
+    content: "";
+    position: absolute;
+    top: 0; left: 0; width: 4px; height: 100%;
+    background: linear-gradient(180deg, rgba(255, 200, 55, 0.80), rgba(255, 140, 40, 0.60));
+    border-radius: 14px 0 0 14px;
 }
 .map-mission-title{
     text-transform: uppercase;
     letter-spacing: 0.14em;
-    font-size: 0.66rem;
+    font-size: 0.62rem;
     color: rgba(194, 212, 230, 0.90);
-    margin-bottom: 4px;
+    margin-bottom: 3px;
     font-weight: 700;
 }
 .map-mission-sub{
     color: rgba(211, 225, 239, 0.92);
-    font-size: 0.86rem;
+    font-size: 0.85rem;
     line-height: 1.42;
 }
+/* evidence rating color coding */
+.map-evidence-high{ color: #42d2a2; }
+.map-evidence-moderate{ color: #e3c06c; }
+.map-evidence-low{ color: #ce7a7a; }
+.map-evidence-unknown{ color: rgba(173,192,214,0.82); }
 .map-overview-shell{
-    border: 1px solid rgba(170, 191, 214, 0.34);
+    position: relative;
+    border: 1px solid rgba(170, 191, 214, 0.28);
     border-radius: 14px;
-    padding: 11px 12px;
+    padding: 12px 14px;
     margin: 0.25rem 0 0.65rem 0;
     background:
-        linear-gradient(145deg, rgba(116, 147, 178, 0.16), rgba(18, 31, 45, 0.90) 62%),
+        linear-gradient(145deg, rgba(116, 147, 178, 0.14), rgba(18, 31, 45, 0.92) 62%),
         linear-gradient(180deg, rgba(24, 39, 57, 0.92), rgba(14, 25, 39, 0.90));
     box-shadow: 0 14px 26px rgba(2, 9, 16, 0.32);
+    overflow: hidden;
+}
+.map-overview-shell::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+    background:linear-gradient(180deg, rgba(30,144,255,0.55), rgba(0,224,184,0.35));
+    border-radius:3px 0 0 3px;
 }
 .map-overview-title{
     text-transform: uppercase;
@@ -2148,8 +2241,8 @@ div[data-testid="stPlotlyChart"]{
     font-weight: 700;
 }
 .map-overview-sub{
-    color: rgba(214, 227, 240, 0.90);
-    font-size: 0.84rem;
+    color: rgba(214, 227, 240, 0.86);
+    font-size: 0.82rem;
     line-height: 1.4;
     margin-bottom: 0.45rem;
 }
@@ -2159,83 +2252,123 @@ div[data-testid="stPlotlyChart"]{
     gap: 8px;
 }
 .map-overview-card{
-    border: 1px solid rgba(167, 188, 210, 0.28);
+    position: relative;
+    border: 1px solid rgba(167, 188, 210, 0.22);
     border-radius: 11px;
-    padding: 8px 9px;
+    padding: 8px 10px;
     background: rgba(11, 23, 36, 0.82);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.map-overview-card:hover{
+    border-color: rgba(30,144,255,0.35);
+    box-shadow: 0 2px 8px rgba(30,144,255,0.08);
 }
 .map-overview-label{
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    font-size: 0.58rem;
-    color: rgba(188, 206, 224, 0.82);
+    font-size: 0.56rem;
+    color: rgba(188, 206, 224, 0.80);
 }
 .map-overview-value{
     margin-top: 3px;
     font-size: 1rem;
     font-weight: 700;
     color: var(--text);
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
 }
 .map-overview-subtext{
     margin-top: 2px;
-    color: rgba(181, 199, 218, 0.78);
-    font-size: 0.73rem;
+    color: rgba(181, 199, 218, 0.72);
+    font-size: 0.72rem;
     line-height: 1.32;
 }
 .map-overview-foot{
     margin-top: 0.48rem;
-    color: rgba(201, 216, 233, 0.88);
-    font-size: 0.78rem;
+    color: rgba(201, 216, 233, 0.85);
+    font-size: 0.76rem;
     line-height: 1.35;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(255,193,7,0.06);
+    border: 1px solid rgba(255,193,7,0.15);
 }
 .map-signal-grid{
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 8px;
-    margin: 0.4rem 0 0.65rem 0;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin: 0.5rem 0 0.75rem 0;
 }
 .map-signal{
-    border: 1px solid rgba(166, 188, 211, 0.30);
-    border-radius: 12px;
-    padding: 8px 10px;
-    background: rgba(13, 24, 37, 0.86);
+    position: relative;
+    border: 1px solid rgba(166, 188, 211, 0.22);
+    border-radius: 14px;
+    padding: 10px 12px 10px 12px;
+    background: linear-gradient(135deg, rgba(13,24,37,0.92) 0%, rgba(18,30,45,0.88) 100%);
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+    overflow: hidden;
+}
+.map-signal:hover{
+    border-color: rgba(30,144,255,0.40);
+    box-shadow: 0 2px 12px rgba(30,144,255,0.10);
+    transform: translateY(-1px);
+}
+.map-signal-icon{
+    font-size: 1.05rem;
+    margin-bottom: 2px;
+    line-height: 1;
 }
 .map-signal-label{
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    font-size: 0.6rem;
-    color: rgba(191, 208, 226, 0.86);
+    font-size: 0.58rem;
+    color: rgba(191, 208, 226, 0.82);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .map-signal-value{
     margin-top: 3px;
-    font-size: 1.03rem;
+    font-size: 1.06rem;
     font-weight: 700;
     line-height: 1.22;
     color: var(--text);
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
 }
 .map-signal-sub{
     margin-top: 2px;
-    font-size: 0.75rem;
-    color: rgba(184, 202, 221, 0.79);
+    font-size: 0.72rem;
+    color: rgba(184, 202, 221, 0.72);
     line-height: 1.34;
 }
 .map-brief-grid{
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
     margin: 0.35rem 0 0.55rem 0;
 }
 .map-brief-card{
-    border: 1px solid rgba(164, 186, 209, 0.30);
+    position: relative;
+    border: 1px solid rgba(164, 186, 209, 0.22);
     border-radius: 12px;
-    padding: 8px 10px;
-    background: linear-gradient(180deg, rgba(28, 45, 65, 0.60), rgba(15, 27, 41, 0.86));
+    padding: 9px 11px;
+    background: linear-gradient(180deg, rgba(28, 45, 65, 0.55), rgba(15, 27, 41, 0.88));
+    transition: border-color 0.2s, box-shadow 0.2s;
+    overflow: hidden;
+}
+.map-brief-card:hover{
+    border-color: rgba(30,144,255,0.35);
+    box-shadow: 0 2px 10px rgba(30,144,255,0.08);
 }
 .map-brief-label{
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    font-size: 0.6rem;
-    color: rgba(190, 208, 226, 0.86);
+    font-size: 0.58rem;
+    color: rgba(190, 208, 226, 0.80);
 }
 .map-brief-value{
     margin-top: 3px;
@@ -2245,18 +2378,27 @@ div[data-testid="stPlotlyChart"]{
 }
 .map-brief-sub{
     margin-top: 2px;
-    font-size: 0.74rem;
-    color: rgba(183, 201, 220, 0.79);
+    font-size: 0.72rem;
+    color: rgba(183, 201, 220, 0.72);
     line-height: 1.33;
 }
 .map-lead-banner{
     border: 1px solid rgba(169, 191, 214, 0.32);
     border-radius: 11px;
-    padding: 8px 10px;
+    padding: 8px 12px 8px 14px;
     margin: 0.3rem 0 0.45rem 0;
     background: rgba(14, 27, 42, 0.88);
     font-size: 0.84rem;
     color: rgba(213, 226, 240, 0.92);
+    position: relative;
+    overflow: hidden;
+}
+.map-lead-banner::before{
+    content: "";
+    position: absolute;
+    top: 0; left: 0; width: 3px; height: 100%;
+    background: linear-gradient(180deg, rgba(66,210,162,0.75), rgba(30,144,255,0.60));
+    border-radius: 11px 0 0 11px;
 }
 
 [data-testid="stTextInput"] input,
@@ -2282,10 +2424,16 @@ button[kind="secondary"]{
     border-radius: 10px;
     border-color: rgba(160, 182, 205, 0.26);
     background: linear-gradient(180deg, rgba(28, 44, 63, 0.72), rgba(14, 26, 40, 0.88));
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+.stTabs [data-baseweb="tab"]:hover{
+    border-color: rgba(160, 182, 205, 0.45);
+    background: linear-gradient(180deg, rgba(38, 56, 78, 0.78), rgba(18, 30, 45, 0.90));
 }
 .stTabs [aria-selected="true"]{
     border-color: rgba(143, 174, 205, 0.75) !important;
     background: linear-gradient(180deg, rgba(58, 86, 115, 0.62), rgba(19, 33, 49, 0.92)) !important;
+    box-shadow: 0 4px 12px rgba(30, 144, 255, 0.12) !important;
 }
 
 div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]){
@@ -2346,6 +2494,157 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input{
 """,
     unsafe_allow_html=True,
 )
+
+# =========================================================
+# GLOBAL UX ENHANCEMENTS
+# =========================================================
+st.markdown(
+    """
+<style>
+/* ── Data-table improvements ── */
+[data-testid="stDataFrame"] table tbody tr:nth-child(even) td{
+    background: rgba(255,255,255,0.025);
+}
+[data-testid="stDataFrame"] table tbody tr:hover td{
+    background: rgba(30,144,255,0.08) !important;
+    transition: background 120ms ease;
+}
+[data-testid="stDataFrame"] table thead th{
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: rgba(15,27,42,0.97) !important;
+    backdrop-filter: blur(6px);
+    border-bottom: 2px solid rgba(160,185,210,0.22);
+}
+
+/* ── Smooth scroll behavior ── */
+html{ scroll-behavior: smooth; }
+
+/* ── Back-to-top floating button ── */
+#tfl-back-to-top{
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
+    z-index: 999;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: 1px solid rgba(160,185,210,0.35);
+    background: rgba(11,20,31,0.92);
+    color: rgba(220,235,250,0.90);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease, box-shadow 0.2s ease;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.28);
+    backdrop-filter: blur(6px);
+}
+#tfl-back-to-top.visible{
+    opacity: 1;
+    pointer-events: auto;
+}
+#tfl-back-to-top:hover{
+    border-color: rgba(134,167,198,0.65);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.35);
+    transform: translateY(-2px);
+}
+
+/* ── Focus / keyboard accessibility ── */
+button:focus-visible,
+[data-testid="stSelectbox"] div[role="combobox"]:focus-visible,
+[data-testid="stTextInput"] input:focus-visible{
+    outline: 2px solid rgba(134,167,198,0.7);
+    outline-offset: 2px;
+}
+
+/* ── Spinner quality of life ── */
+[data-testid="stSpinner"] > div{
+    animation: tfl-spinner-fade 0.35s ease both;
+}
+@keyframes tfl-spinner-fade{
+    from{ opacity:0; transform:translateY(4px); }
+    to{ opacity:1; transform:translateY(0); }
+}
+
+/* ── Toast notification ── */
+.tfl-toast{
+    position: fixed;
+    bottom: 80px;
+    right: 28px;
+    z-index: 998;
+    padding: 10px 18px;
+    border-radius: 12px;
+    border: 1px solid rgba(160,185,210,0.30);
+    background: rgba(11,20,31,0.94);
+    color: rgba(220,235,250,0.92);
+    font-size: 0.88rem;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.30);
+    backdrop-filter: blur(6px);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.tfl-toast.show{
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+/* ── Print-friendly ── */
+@media print{
+    .custom-nav,
+    #tfl-back-to-top,
+    .tfl-toast,
+    [data-testid="stSidebar"],
+    [data-testid="stToolbar"],
+    button[kind="primary"],
+    button[kind="secondary"],
+    [data-testid="stSpinner"]{ display: none !important; }
+
+    html, body, [data-testid="stAppViewContainer"]{
+        background: white !important;
+        color: #1a1a1a !important;
+    }
+    .block-container{ padding-top: 0 !important; max-width: 100% !important; }
+    h1, h2, h3{ color: #1a1a1a !important; }
+    p, li, span, div{ color: #1a1a1a !important; }
+    .card, div[data-testid="stPlotlyChart"]{
+        box-shadow: none !important;
+        border: 1px solid #ccc !important;
+        background: white !important;
+    }
+    [data-testid="stDataFrame"]{ border-color: #ccc !important; }
+    .kpi-title, .section-caption, .callout-title{ color: #555 !important; }
+}
+</style>
+
+<!-- Back-to-top button -->
+<button id="tfl-back-to-top" onclick="window.scrollTo({top:0, behavior:'smooth'})" title="Back to top">&#9650;</button>
+<script>
+(function(){
+  const btn = document.getElementById('tfl-back-to-top');
+  if (!btn) return;
+  const container = window.parent.document.querySelector('[data-testid="stAppViewContainer"]') || window;
+  const target = container.querySelector && container.querySelector('.main') || window;
+  const checkScroll = () => {
+    const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    btn.classList.toggle('visible', scrollY > 400);
+  };
+  window.addEventListener('scroll', checkScroll, {passive:true});
+  checkScroll();
+})();
+</script>
+""",
+    unsafe_allow_html=True,
+)
+
 
 def _page_about():
     _render_page_intro(
@@ -4419,26 +4718,26 @@ footer {visibility: hidden;}
 
 def _page_map_address():
     _render_page_intro(
-        kicker="Geospatial Investigations",
+        kicker="Geospatial Command Center",
         title="Map & Address Intelligence",
         subtitle=(
-            "Build a jurisdiction baseline, investigate a specific Texas location, and prioritize taxpayer-funded entities for deeper filing-level review."
+            "Build a statewide coverage atlas, run address-level forensics, and queue high-signal entities for filing-level investigation."
         ),
         pills=[
-            "Mission-aligned investigation flow",
-            "Confidence-weighted overlap analysis",
-            "Batch triage for field leads",
+            "Coverage Atlas",
+            "Address Forensics",
+            "Case Docket workflow",
         ],
     )
     _render_workspace_guide(
         question=(
-            "At this location or jurisdiction, which taxpayer-funded entities show the strongest overlap signal and what should be investigated first?"
+            "At this location or jurisdiction, which taxpayer-funded entities show the strongest and most defensible overlap signal?"
         ),
         steps=[
-            "Set session, scope, and map style in the control deck.",
-            "Use Coverage Intelligence to establish context and pick a subdivision anchor.",
-            "Run Address Investigation, apply confidence/method filters, and review ranked leads.",
-            "Use Batch Triage to compare addresses and queue follow-up in Clients.",
+            "Set session, scope, and quality thresholds in the command deck.",
+            "Use Coverage Atlas to establish context and select a subdivision anchor.",
+            "Run Address Forensics, apply confidence/method filters, and review ranked leads.",
+            "Use Case Docket and batch triage to queue follow-up in Clients.",
         ],
         method_note=(
             "Spatial boundary matches are stronger evidence than name-anchored fallback matching. Treat low-confidence rows as leads, not conclusions."
@@ -4556,7 +4855,7 @@ def _page_map_address():
         st.switch_page(_client_page)
 
     st.markdown('<div id="filter-bar-marker"></div>', unsafe_allow_html=True)
-    fl1, fl2, fl3 = st.columns([2.0, 1.2, 0.8], gap="small")
+    fl1, fl2, fl3, fl4 = st.columns([2.0, 1.1, 1.0, 0.7], gap="small")
     with fl1:
         label_to_session = {}
         session_labels = []
@@ -4585,9 +4884,12 @@ def _page_map_address():
             help="Use selected session only or all sessions for compensation totals and matched entities.",
         )
     with fl3:
-        st.markdown('<div class="map-inline-note">Workspace reset</div>', unsafe_allow_html=True)
+        st.selectbox("Map style", list(MAP_BASEMAP_OPTIONS.keys()), key="map_basemap_label",
+                     help="Choose the base map layer for all maps on this page.")
+    with fl4:
+        st.markdown('<div class="map-inline-note">Workspace</div>', unsafe_allow_html=True)
         reset_clicked = st.button(
-            "Reset",
+            "Reset All",
             key="map_reset_filters_btn",
             help="Reset session, scope, coverage filters, and address lookup fields.",
             width="stretch",
@@ -4599,6 +4901,7 @@ def _page_map_address():
     active_parts = [
         f"Session: {_session_label(st.session_state.map_session)}",
         f"Scope: {st.session_state.map_scope}",
+        f"Map: {st.session_state.get('map_basemap_label', 'Gray Canvas')}",
     ]
     active_ctx = st.session_state.get("map_selected_subdivision_context", {})
     if isinstance(active_ctx, dict) and str(active_ctx.get("subdivision_name", "")).strip():
@@ -4608,15 +4911,14 @@ def _page_map_address():
         )
     chips_html = "".join([f'<span class="chip">{html.escape(c)}</span>' for c in active_parts])
     st.markdown(
-        f'<div class="filter-summary"><span class="filter-summary-label">Active filters</span>{chips_html}</div>',
+        f'<div class="filter-summary"><span class="filter-summary-label">Active workspace</span>{chips_html}</div>',
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<div class="map-mission-shell"><div class="map-mission-title">Investigation Focus</div><div class="map-mission-sub">Move from statewide geographic exposure to location-level leads. Prioritize stronger spatial matches before citing totals publicly.</div></div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="app-note"><strong>Interpretation:</strong> Overlap combines boundary intersection with name-based fallback matching. Confidence labels are evidence strength, not certainty.</div>',
+        '<div class="map-mission-shell"><div class="map-mission-title">Investigation Focus</div>'
+        '<div class="map-mission-sub">Move from statewide geographic exposure to location-level leads. '
+        'Prioritize <strong>spatial boundary</strong> matches (highest confidence) before citing totals publicly. '
+        'Name-anchored matches are leads requiring verification.</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -4741,41 +5043,64 @@ def _page_map_address():
         """
 <div class="map-flow-grid">
   <div class="map-flow-card">
-    <div class="map-flow-kicker">Track A</div>
-    <div class="map-flow-title">Coverage Intelligence</div>
+    <div class="map-flow-kicker">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;background:rgba(30,144,255,0.28);border:1px solid rgba(30,144,255,0.50);font-size:0.55rem;font-weight:700;margin-right:5px;color:rgba(220,235,250,0.95);">1</span>
+      Track A
+    </div>
+    <div class="map-flow-title">Coverage Atlas</div>
     <div class="map-flow-sub">Set subdivision filters, inspect statewide patterning, and anchor one context for downstream investigation.</div>
   </div>
   <div class="map-flow-card">
-    <div class="map-flow-kicker">Track B</div>
-    <div class="map-flow-title">Address Investigation</div>
-    <div class="map-flow-sub">Run one address, apply confidence filters, and rank investigative entity leads.</div>
+    <div class="map-flow-kicker">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;background:rgba(0,224,184,0.24);border:1px solid rgba(0,224,184,0.50);font-size:0.55rem;font-weight:700;margin-right:5px;color:rgba(220,250,240,0.95);">2</span>
+      Track B
+    </div>
+    <div class="map-flow-title">Address Forensics</div>
+    <div class="map-flow-sub">Run one address or batch of addresses, apply confidence filters, and rank investigative entity leads.</div>
   </div>
 </div>
 """,
         unsafe_allow_html=True,
     )
 
+    # -- colour-coded rate badge helper --
+    def _rate_badge(rate: float) -> str:
+        if rate >= 0.75:
+            return "map-evidence-high"
+        elif rate >= 0.40:
+            return "map-evidence-moderate"
+        else:
+            return "map-evidence-low"
+
     signal_html = "".join(
         [
             (
-                '<div class="map-signal"><div class="map-signal-label">Taxpayer-funded range</div>'
-                f'<div class="map-signal-value">{fmt_usd(all_stats.get("tfl_low_total", 0.0))} - {fmt_usd(all_stats.get("tfl_high_total", 0.0))}</div>'
+                '<div class="map-signal">'
+                '<div class="map-signal-icon" title="Spending range" style="color:rgba(30,144,255,0.9);">&#x24;</div>'
+                '<div class="map-signal-label">Taxpayer-funded range</div>'
+                f'<div class="map-signal-value">{fmt_usd(all_stats.get("tfl_low_total", 0.0))} &ndash; {fmt_usd(all_stats.get("tfl_high_total", 0.0))}</div>'
                 f'<div class="map-signal-sub">{total_tfl_clients:,} entities in scope</div></div>'
             ),
             (
-                '<div class="map-signal"><div class="map-signal-label">Mapped entities</div>'
-                f'<div class="map-signal-value">{matched_client_count:,}</div>'
+                '<div class="map-signal">'
+                '<div class="map-signal-icon" title="Mapped entity coverage" style="color:rgba(0,224,184,0.9);">&#x2691;</div>'
+                '<div class="map-signal-label">Mapped entities</div>'
+                f'<div class="map-signal-value">{matched_client_count:,} <span class="{_rate_badge(matched_rate)}" style="font-size:0.65rem;padding:1px 6px;border-radius:8px;">{matched_rate:.0%}</span></div>'
                 f'<div class="map-signal-sub">{matched_rate:.1%} of taxpayer-funded entities</div></div>'
             ),
             (
-                '<div class="map-signal"><div class="map-signal-label">Matched subdivisions</div>'
+                '<div class="map-signal">'
+                '<div class="map-signal-icon" title="Subdivisions" style="color:rgba(255,193,7,0.9);">&#x25A3;</div>'
+                '<div class="map-signal-label">Matched subdivisions</div>'
                 f'<div class="map-signal-value">{len(subdivision_matches):,}</div>'
-                f'<div class="map-signal-sub">{core_subdivision_rows:,} core / {subdivision_other_count:,} other</div></div>'
+                f'<div class="map-signal-sub">{core_subdivision_rows:,} core &middot; {subdivision_other_count:,} other</div></div>'
             ),
             (
-                '<div class="map-signal"><div class="map-signal-label">Concentration pressure</div>'
+                '<div class="map-signal">'
+                '<div class="map-signal-icon" title="Concentration" style="color:rgba(255,87,87,0.9);">&#x25B2;</div>'
+                '<div class="map-signal-label">Concentration&ensp;(top 10)</div>'
                 f'<div class="map-signal-value">{top10_share:.1%}</div>'
-                f'<div class="map-signal-sub">top 10 subdivisions share of matched high totals ({total_clients:,} total clients)</div></div>'
+                f'<div class="map-signal-sub">share of matched high totals &middot; {total_clients:,} total clients</div></div>'
             ),
         ]
     )
@@ -4797,30 +5122,32 @@ def _page_map_address():
             .copy()
         )
 
-    overview_left, overview_right = st.columns([1.45, 1.0], gap="large")
+    overview_left, overview_right = st.columns([1.5, 1.0], gap="large")
     with overview_left:
+        cov_badge_class = _rate_badge(matched_rate)
+        core_badge_class = _rate_badge(core_share)
         st.markdown(
             f"""
 <div class="map-overview-shell">
   <div class="map-overview-title">Page Overview</div>
   <div class="map-overview-sub">
-    This workspace is built for triage, not final attribution. Use it to prioritize where to audit filings next.
+    Built for triage &mdash; not final attribution. Prioritize where to audit filings next.
   </div>
   <div class="map-overview-grid">
     <div class="map-overview-card">
       <div class="map-overview-label">Coverage Diagnostics</div>
-      <div class="map-overview-value">{matched_rate:.1%}</div>
-      <div class="map-overview-subtext">Mapped taxpayer-funded entities ({matched_client_count:,} of {total_tfl_clients:,})</div>
+      <div class="map-overview-value">{matched_rate:.1%} <span class="{cov_badge_class}" style="font-size:0.58rem;padding:1px 6px;border-radius:8px;vertical-align:middle;">coverage</span></div>
+      <div class="map-overview-subtext">Mapped {matched_client_count:,} of {total_tfl_clients:,} taxpayer-funded entities</div>
     </div>
     <div class="map-overview-card">
       <div class="map-overview-label">Core Boundary Share</div>
-      <div class="map-overview-value">{core_share:.1%}</div>
+      <div class="map-overview-value">{core_share:.1%} <span class="{core_badge_class}" style="font-size:0.58rem;padding:1px 6px;border-radius:8px;vertical-align:middle;">core</span></div>
       <div class="map-overview-subtext">School district, county, city rows in matched subdivision records</div>
     </div>
     <div class="map-overview-card">
       <div class="map-overview-label">Average Match Depth</div>
       <div class="map-overview-value">{avg_match_depth:,.1f}</div>
-      <div class="map-overview-subtext">Average taxpayer-funded entities per matched subdivision row</div>
+      <div class="map-overview-subtext">Avg taxpayer-funded entities per matched subdivision row</div>
     </div>
     <div class="map-overview-card">
       <div class="map-overview-label">Median Subdivision High</div>
@@ -4829,7 +5156,7 @@ def _page_map_address():
     </div>
   </div>
   <div class="map-overview-foot">
-    Unmapped taxpayer-funded entities: <strong>{unmatched_tfl_clients:,}</strong>. Review coverage gaps before using area-level conclusions.
+    <span style="color:rgba(255,193,7,0.85);">&#x26A0;</span>&ensp;Unmapped taxpayer-funded entities: <strong>{unmatched_tfl_clients:,}</strong>. Review coverage gaps before using area-level conclusions.
   </div>
 </div>
 """,
@@ -4841,22 +5168,16 @@ def _page_map_address():
             entity_mix_display["Low"] = entity_mix_display["Low"].astype(float).apply(fmt_usd)
             entity_mix_display["High"] = entity_mix_display["High"].astype(float).apply(fmt_usd)
             st.markdown('<div class="map-rail-title">Top Entity Types In Scope</div>', unsafe_allow_html=True)
-            st.dataframe(entity_mix_display, width="stretch", height=292, hide_index=True)
+            st.dataframe(entity_mix_display, width="stretch", height=310, hide_index=True)
+        else:
+            st.info("No taxpayer-funded entity data available for the selected session and scope.")
 
-    tab_cov, tab_addr = st.tabs(["Coverage Intelligence", "Address Investigation"])
+    tab_cov, tab_addr = st.tabs(["Coverage Atlas", "Address Forensics"])
 
     with tab_cov:
         st.markdown(
-            """
-<div class="map-stage-shell">
-  <div class="map-stage-title">Coverage Intelligence</div>
-  <div class="map-stage-sub">Establish statewide context before running location-level overlap.</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<div class="map-tab-banner"><div class="map-tab-title">Coverage Workspace</div><div class="map-tab-sub">Filter by subdivision type, match depth, and entity name, then set a context anchor for Address Investigation.</div></div>',
+            '<div class="map-tab-banner"><div class="map-tab-title">Coverage Atlas</div>'
+            '<div class="map-tab-sub">Establish statewide context, filter subdivision types and match depth, then anchor a context for Address Forensics.</div></div>',
             unsafe_allow_html=True,
         )
         if subdivision_matches.empty:
@@ -4895,14 +5216,23 @@ def _page_map_address():
                         key="map_subdivision_client_filter",
                         placeholder="Filter matched client names",
                     ).strip().lower()
-                    st.selectbox("Map style", list(MAP_BASEMAP_OPTIONS.keys()), key="map_basemap_label")
                     st.markdown(
-                        '<div class="map-inline-note">Coverage filters can flow into Address Investigation when "Use coverage types" is enabled.</div>',
+                        '<div class="map-inline-note">Coverage filters flow into Address Forensics when &ldquo;Use coverage types&rdquo; is enabled.</div>',
                         unsafe_allow_html=True,
                     )
                 with cov_r:
+                    type_counts_html = "".join(
+                        f'<div class="map-context-card"><div class="map-context-label">{html.escape(t)}</div>'
+                        f'<div class="map-context-value">{c:,}</div></div>'
+                        for t, c in sorted(subdivision_type_counts.items(), key=lambda x: -x[1])
+                    ) if subdivision_type_counts else '<div class="map-inline-note">No subdivision types available.</div>'
                     st.markdown(
-                        '<div class="map-inline-note">Use Map &amp; Table subtab to review rendered outputs and CSV export after filter changes.</div>',
+                        f'<div class="map-rail-title">Subdivision Breakdown</div>'
+                        f'<div class="map-context-grid">{type_counts_html}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(
+                        '<div class="map-inline-note" style="margin-top:8px;">Use the <strong>Map &amp; Table</strong> area below to review rendered outputs and CSV export after changing filters.</div>',
                         unsafe_allow_html=True,
                     )
             active_map_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.map_basemap_label, "gray-vector")
@@ -4980,7 +5310,7 @@ def _page_map_address():
                             "Subdivision drill-down",
                             pick_options,
                             key="map_subdivision_pick",
-                            help="Choose a subdivision context before running Address Investigation.",
+                            help="Choose a subdivision context before running Address Forensics.",
                         )
                         if pick and pick in labels:
                             row = rows[labels.index(pick)]
@@ -5077,9 +5407,9 @@ def _page_map_address():
                     display_view = view.copy()
                     display_view["Matched TFL Low Estimate"] = display_view["Matched TFL Low Estimate"].astype(float).apply(fmt_usd)
                     display_view["Matched TFL High Estimate"] = display_view["Matched TFL High Estimate"].astype(float).apply(fmt_usd)
-                    st.dataframe(display_view, width="stretch", height=330, hide_index=True)
-                    _ = export_dataframe(view, "subdivision_coverage_map.csv", label="Download coverage CSV")
-                    chart_col, summary_col = st.columns([1.45, 1.0], gap="large")
+                    st.dataframe(display_view, width="stretch", height=340, hide_index=True)
+                    _ = export_dataframe(view, "subdivision_coverage_map.csv", label="Export coverage CSV")
+                    chart_col, summary_col = st.columns([1.5, 1.0], gap="large")
                     with chart_col:
                         top_chart = (
                             f[["subdivision_name", "subdivision_type", "high_total"]]
@@ -5099,17 +5429,24 @@ def _page_map_address():
                                     "subdivision_name": "Subdivision",
                                     "subdivision_type": "Type",
                                 },
-                                title="Top Subdivisions by Matched High Estimate",
+                                title="Top 15 Subdivisions by Matched High Estimate",
+                                color_discrete_sequence=px.colors.qualitative.Set2,
                             )
                             fig_cov.update_layout(
-                                height=390,
+                                height=400,
                                 margin=dict(l=10, r=10, t=52, b=10),
                                 legend_title_text="Type",
                                 xaxis_tickprefix="$",
                                 xaxis_tickformat=",",
+                                plot_bgcolor="rgba(0,0,0,0)",
+                                paper_bgcolor="rgba(0,0,0,0)",
+                                font=dict(color="rgba(220,230,240,0.88)"),
                             )
                             st.plotly_chart(fig_cov, width="stretch", config=PLOTLY_CONFIG)
+                        else:
+                            st.info("Chart will appear when filtered results include high estimates.")
                     with summary_col:
+                        st.markdown('<div class="map-rail-title">Type Roll-up</div>', unsafe_allow_html=True)
                         type_rollup = (
                             f.groupby("subdivision_type", as_index=False)
                             .agg(
@@ -5122,8 +5459,8 @@ def _page_map_address():
                         if not type_rollup.empty:
                             type_display = type_rollup.copy()
                             type_display["HighTotal"] = type_display["HighTotal"].astype(float).apply(fmt_usd)
-                            type_display = type_display.rename(columns={"subdivision_type": "Subdivision Type", "HighTotal": "Matched High"})
-                            st.dataframe(type_display, width="stretch", height=390, hide_index=True)
+                            type_display = type_display.rename(columns={"subdivision_type": "Type", "HighTotal": "Matched High"})
+                            st.dataframe(type_display, width="stretch", height=400, hide_index=True)
             all_tfl_name_set = {
                 str(v).strip()
                 for v in tfl_spending_source.get("Client", pd.Series(dtype=object)).dropna().astype(str).tolist()
@@ -5131,41 +5468,36 @@ def _page_map_address():
             }
             unmatched_clients = sorted(all_tfl_name_set - matched_subdivision_clients)
             if unmatched_clients:
-                with st.expander("Coverage Gaps: entities with no subdivision match", expanded=False):
+                with st.expander(f"Coverage Gaps \u2014 {len(unmatched_clients):,} entities with no subdivision match", expanded=False):
+                    st.markdown(
+                        f'<div class="map-inline-note" style="margin-bottom:6px;"><span style="color:rgba(255,193,7,0.85);">&#x26A0;</span>&ensp;'
+                        f'<strong>{len(unmatched_clients):,}</strong> taxpayer-funded entities are outside current subdivision matches. '
+                        f'These may require manual review or alternative data sources.</div>',
+                        unsafe_allow_html=True,
+                    )
                     unmatched_view = (
                         tfl_spending_source[tfl_spending_source["Client"].astype(str).isin(unmatched_clients)][
                             ["Client", "Low", "High", "Lobbyists"]
                         ]
                         .sort_values("High", ascending=False)
-                        .head(120)
+                        .head(150)
                         .copy()
                     )
                     if not unmatched_view.empty:
                         unmatched_display = unmatched_view.copy()
                         unmatched_display["Low"] = unmatched_display["Low"].astype(float).apply(fmt_usd)
                         unmatched_display["High"] = unmatched_display["High"].astype(float).apply(fmt_usd)
-                        st.caption(
-                            f"{len(unmatched_clients):,} taxpayer-funded entities are outside current subdivision matches."
-                        )
-                        st.dataframe(unmatched_display, width="stretch", height=280, hide_index=True)
+                        st.dataframe(unmatched_display, width="stretch", height=300, hide_index=True)
                         _ = export_dataframe(
                             unmatched_view,
                             "coverage_gaps_unmatched_entities.csv",
-                            label="Download unmatched coverage entities CSV",
+                            label="Export unmatched entities CSV",
                         )
 
     with tab_addr:
         st.markdown(
-            """
-<div class="map-stage-shell">
-  <div class="map-stage-title">Address Investigation</div>
-  <div class="map-stage-sub">Resolve one location, apply confidence-aware filters, and produce export-ready investigative leads.</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<div class="map-tab-banner"><div class="map-tab-title">Address Workspace</div><div class="map-tab-sub">Use the selected coverage context to tighten overlap filtering and prioritize follow-up in Clients.</div></div>',
+            '<div class="map-tab-banner"><div class="map-tab-title">Address Forensics</div>'
+            '<div class="map-tab-sub">Resolve a location, apply confidence-aware filters, and produce export-ready investigative leads.</div></div>',
             unsafe_allow_html=True,
         )
         active_map_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.get("map_basemap_label", ""), "gray-vector")
@@ -5222,7 +5554,7 @@ def _page_map_address():
                 )
             else:
                 st.markdown(
-                    '<div class="app-note"><strong>No subdivision context selected.</strong> You can still run Address Investigation; use Coverage drill-down to set context-aware focus filters.</div>',
+                    '<div class="app-note"><strong>No subdivision context selected.</strong> You can still run Address Forensics; use Coverage drill-down to set context-aware focus filters.</div>',
                     unsafe_allow_html=True,
                 )
             if st.session_state.get("map_overlap_input_mode") not in {"Street Address", "Coordinates"}:
@@ -5438,17 +5770,19 @@ def _page_map_address():
                     evidence_rating = "Moderate"
                 else:
                     evidence_rating = "Low"
+                # -- evidence rating badge --
+                er_class = "map-evidence-high" if "High" in evidence_rating else ("map-evidence-moderate" if "Moderate" in evidence_rating else "map-evidence-low")
                 brief_html = "".join(
                     [
                         (
                             '<div class="map-brief-card"><div class="map-brief-label">Evidence rating</div>'
-                            f'<div class="map-brief-value">{html.escape(evidence_rating)}</div>'
+                            f'<div class="map-brief-value"><span class="{er_class}" style="padding:2px 8px;border-radius:10px;">{html.escape(evidence_rating)}</span></div>'
                             f'<div class="map-brief-sub">High-confidence share: {high_conf_share:.1%}</div></div>'
                         ),
                         (
                             '<div class="map-brief-card"><div class="map-brief-label">Overlap rows</div>'
                             f'<div class="map-brief-value">{filtered_rows:,}</div>'
-                            f'<div class="map-brief-sub">of {len(overlap_spend):,} matched rows</div></div>'
+                            f'<div class="map-brief-sub">of {len(overlap_spend):,} total matched</div></div>'
                         ),
                         (
                             '<div class="map-brief-card"><div class="map-brief-label">Unique entities</div>'
@@ -5457,7 +5791,7 @@ def _page_map_address():
                         ),
                         (
                             '<div class="map-brief-card"><div class="map-brief-label">Exposure range</div>'
-                            f'<div class="map-brief-value">{fmt_usd(filtered_low_total)} - {fmt_usd(filtered_high_total)}</div>'
+                            f'<div class="map-brief-value">{fmt_usd(filtered_low_total)} &ndash; {fmt_usd(filtered_high_total)}</div>'
                             '<div class="map-brief-sub">filtered overlap rows</div></div>'
                         ),
                     ]
@@ -5473,20 +5807,20 @@ def _page_map_address():
                     if chip_parts:
                         st.markdown("".join(chip_parts), unsafe_allow_html=True)
 
-                map_col, sub_col = st.columns([1.7, 1.0], gap="large")
+                map_col, sub_col = st.columns([1.8, 1.0], gap="large")
                 with map_col:
                     render_address_overlap_arcgis_map(
                         lon=float(analysis_point["lon"]),
                         lat=float(analysis_point["lat"]),
                         matched_address=analysis_point["matched"],
                         overlap_points=overlap_points,
-                        height=460,
+                        height=480,
                         basemap=active_map_basemap,
                     )
                 overlap_display = overlap_sub.rename(columns={"subdivision_type": "Subdivision Type", "subdivision_name": "Subdivision", "subdivision_code": "Code", "source_name": "Map Source", "source_url": "Map Source URL"}) if not overlap_sub.empty else pd.DataFrame(columns=["Subdivision Type", "Subdivision", "Code", "Map Source", "Map Source URL"])
                 with sub_col:
                     st.markdown('<div class="map-rail-title">Overlapping Subdivisions</div>', unsafe_allow_html=True)
-                    st.dataframe(overlap_display, width="stretch", height=460, hide_index=True)
+                    st.dataframe(overlap_display, width="stretch", height=480, hide_index=True)
                 if not overlap_spend.empty:
                     disp = filtered_spend.copy()
                     disp["Low"] = disp["Low"].astype(float).apply(fmt_usd)
@@ -5551,7 +5885,7 @@ def _page_map_address():
                             entity_rank.loc[tier1_cut : tier2_cut - 1, "Priority"] = "Priority 2"
 
                         st.markdown(
-                            '<div class="map-lead-banner">Investigative Leads: ranked by matched exposure, confidence mix, and subdivision breadth.</div>',
+                            '<div class="map-lead-banner">Investigative Leads &mdash; ranked by matched exposure, confidence mix, and subdivision breadth.</div>',
                             unsafe_allow_html=True,
                         )
                         leads_export = entity_rank.copy()
@@ -5577,13 +5911,13 @@ def _page_map_address():
                                 ]
                             ],
                             width="stretch",
-                            height=300,
+                            height=340,
                             hide_index=True,
                         )
                         _ = export_dataframe(
                             leads_export,
                             "address_overlap_investigation_leads.csv",
-                            label="Download ranked leads CSV",
+                            label="Export ranked leads CSV",
                         )
 
                         jump_l, jump_r = st.columns([4, 1.2])
@@ -5622,14 +5956,15 @@ def _page_map_address():
 
             with st.expander("Batch Address Triage", expanded=True):
                 st.markdown(
-                    '<div class="map-batch-head"><h4>Batch triage scan</h4><div class="meta">Run multiple addresses and rank by triage score.</div></div>',
+                    '<div class="map-batch-head"><h4>Batch Triage Scan</h4>'
+                    '<div class="meta">Paste multiple Texas addresses (one per line) to run geocoding and overlap analysis in bulk. Results are ranked by triage score.</div></div>',
                     unsafe_allow_html=True,
                 )
                 st.text_area(
                     "One address per line",
                     key="map_overlap_batch_input",
-                    height=150,
-                    placeholder="1100 Congress Ave, Austin, TX 78701\n1500 Marilla St, Dallas, TX 75201",
+                    height=140,
+                    placeholder="1100 Congress Ave, Austin, TX 78701\n1500 Marilla St, Dallas, TX 75201\n300 W. 15th St, Austin, TX 78701",
                 )
                 b1, b2, b3 = st.columns([1.2, 1.1, 1.1], gap="small")
                 with b1:
@@ -5800,7 +6135,7 @@ def _page_map_address():
                     else:
                         filtered_batch = filtered_batch.sort_values(["Combined High", "Overlap Rows"], ascending=[False, False])
 
-                    st.caption(f"Showing {len(filtered_batch):,} of {len(batch_df):,} batch rows.")
+                    st.caption(f"Batch results: {len(filtered_batch):,} of {len(batch_df):,} addresses.")
                     display_batch = filtered_batch.copy()
                     if not display_batch.empty:
                         display_batch["Combined Low"] = display_batch["Combined Low"].astype(float).apply(fmt_usd)
@@ -5810,8 +6145,8 @@ def _page_map_address():
                             pd.to_numeric(display_batch["High Confidence Share"], errors="coerce").fillna(0.0) * 100.0
                         ).map(lambda v: f"{v:.1f}%")
                         display_batch["Triage Score"] = pd.to_numeric(display_batch["Triage Score"], errors="coerce").fillna(0.0).round(0)
-                    st.dataframe(display_batch, width="stretch", height=320, hide_index=True)
-                    _ = export_dataframe(filtered_batch, "address_overlap_batch_triage.csv", label="Download batch triage CSV")
+                    st.dataframe(display_batch, width="stretch", height=340, hide_index=True)
+                    _ = export_dataframe(filtered_batch, "address_overlap_batch_triage.csv", label="Export batch triage CSV")
 
                     if not filtered_batch.empty:
                         leader = filtered_batch.iloc[0]
@@ -5839,18 +6174,22 @@ def _page_map_address():
                                     "High Confidence Share": ":.1%",
                                     "Triage Score": ":.0f",
                                 },
-                                title="Batch triage matrix",
+                                title="Batch Triage Matrix",
+                                color_discrete_sequence=px.colors.qualitative.Set2,
                             )
                             fig_batch.update_layout(
-                                height=330,
+                                height=350,
                                 margin=dict(l=10, r=10, t=48, b=10),
                                 yaxis_tickprefix="$",
                                 yaxis_tickformat=",",
+                                plot_bgcolor="rgba(0,0,0,0)",
+                                paper_bgcolor="rgba(0,0,0,0)",
+                                font=dict(color="rgba(220,230,240,0.88)"),
                             )
                             st.plotly_chart(fig_batch, width="stretch", config=PLOTLY_CONFIG)
                         can_promote = str(leader.get("Status", "")).strip() != "Geocode Failed"
                         if st.button(
-                            "Use top result in Address Investigation",
+                            "Use top result in Address Forensics",
                             key="map_batch_promote_top_btn",
                             width="content",
                             disabled=not can_promote,
@@ -8071,7 +8410,2644 @@ footer {visibility: hidden;}
         unsafe_allow_html=True,
     )
 
+def _page_map_address_full_pass():
+    """Map & Address — v5 ground-up redesign."""
+
+    # ── page header ──────────────────────────────────────────────────
+    _render_page_intro(
+        kicker="Geospatial Intelligence Hub",
+        title="Map & Address",
+        subtitle=(
+            "Coverage atlas, address-level overlap forensics, and an "
+            "investigative case docket for taxpayer-funded entities."
+        ),
+        pills=["Coverage Atlas", "Address Forensics", "Case Docket"],
+    )
+    _render_workspace_guide(
+        question=(
+            "At this location, which taxpayer-funded entities show the "
+            "strongest overlap signal and should advance to case review?"
+        ),
+        steps=[
+            "Configure scope and quality thresholds.",
+            "Explore the Coverage Atlas to anchor a subdivision context.",
+            "Run Address Forensics for location-level evidence.",
+            "Promote high-signal leads into the Case Docket.",
+        ],
+        method_note=(
+            "Boundary overlap (spatial containment) is the strongest match "
+            "method. Name-anchored fallback carries lower weight."
+        ),
+    )
+
+    # ── v5 CSS design tokens ─────────────────────────────────────────
+    st.markdown(
+        """
+<style>
+/* ── mp5 shell ─────────────────────────────────────────── */
+.mp5-glass{
+  border:1px solid rgba(130,219,248,.22);
+  border-radius:20px;
+  padding:18px 20px 14px 20px;
+  background:
+    radial-gradient(960px 260px at 6% 0%,rgba(0,224,184,.12),transparent 66%),
+    radial-gradient(840px 280px at 94% 8%,rgba(30,144,255,.14),transparent 60%),
+    linear-gradient(138deg,rgba(7,26,41,.95),rgba(7,19,32,.93));
+  box-shadow:0 16px 36px rgba(0,0,0,.28);
+}
+.mp5-glass-inner{
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:16px;
+  padding:14px 16px;
+  background:
+    linear-gradient(115deg,rgba(14,45,68,.86),rgba(9,26,41,.86)),
+    radial-gradient(460px 180px at 88% 8%,rgba(245,166,68,.12),transparent 70%);
+}
+.mp5-kicker{
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  font-size:.68rem;
+  font-weight:700;
+  color:rgba(203,245,255,.88);
+  margin-bottom:2px;
+}
+.mp5-title{
+  font-size:1.08rem;
+  font-weight:700;
+  color:rgba(247,252,255,.97);
+  margin-top:2px;
+}
+.mp5-sub{
+  color:rgba(206,229,242,.82);
+  font-size:.86rem;
+  margin-top:4px;
+  line-height:1.45;
+}
+/* ── metric grid ───────────────────────────────────────── */
+.mp5-metrics{
+  display:grid;
+  gap:10px;
+  grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+  margin-top:12px;
+}
+.mp5-card{
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.12);
+  padding:11px 13px 9px 13px;
+  background:rgba(255,255,255,.038);
+  transition:border-color .18s,box-shadow .18s;
+}
+.mp5-card:hover{
+  border-color:rgba(130,219,248,.38);
+  box-shadow:0 0 14px rgba(130,219,248,.10);
+}
+.mp5-card-lbl{
+  text-transform:uppercase;
+  letter-spacing:.09em;
+  font-size:.67rem;
+  font-weight:600;
+  color:rgba(180,216,235,.80);
+}
+.mp5-card-val{
+  margin-top:3px;
+  font-size:1.28rem;
+  font-weight:800;
+  color:rgba(247,253,255,.98);
+  letter-spacing:-.01em;
+}
+.mp5-card-sub{
+  margin-top:2px;
+  font-size:.76rem;
+  color:rgba(195,220,236,.78);
+  line-height:1.35;
+}
+/* ── context anchor ────────────────────────────────────── */
+.mp5-anchor{
+  border:1px solid rgba(255,255,255,.13);
+  border-left:3px solid rgba(0,224,184,.82);
+  border-radius:12px;
+  padding:10px 13px;
+  background:rgba(0,224,184,.045);
+  margin-top:6px;
+}
+.mp5-anchor-empty{
+  border:1px dashed rgba(255,255,255,.16);
+  border-radius:12px;
+  padding:10px 13px;
+  background:rgba(255,255,255,.02);
+  color:rgba(180,210,230,.70);
+  font-size:.84rem;
+  margin-top:6px;
+}
+/* ── badges ────────────────────────────────────────────── */
+.mp5-badge{
+  display:inline-block;
+  padding:3px 10px;
+  border-radius:999px;
+  font-size:.72rem;
+  font-weight:700;
+  letter-spacing:.02em;
+}
+.mp5-badge-high{
+  border:1px solid rgba(143,235,197,.52);
+  background:rgba(73,211,155,.14);
+  color:rgba(220,255,240,.96);
+}
+.mp5-badge-mid{
+  border:1px solid rgba(251,204,122,.52);
+  background:rgba(255,190,76,.13);
+  color:rgba(255,240,204,.96);
+}
+.mp5-badge-low{
+  border:1px solid rgba(247,146,149,.52);
+  background:rgba(247,85,97,.13);
+  color:rgba(255,220,223,.96);
+}
+/* ── tier badges ───────────────────────────────────────── */
+.mp5-tier1{color:#6ee7b7;font-weight:700;}
+.mp5-tier2{color:#fcd34d;font-weight:700;}
+.mp5-tier3{color:#fca5a5;font-weight:700;}
+/* ── section divider ───────────────────────────────────── */
+.mp5-divider{
+  border:0;
+  border-top:1px solid rgba(255,255,255,.08);
+  margin:18px 0 14px 0;
+}
+/* ── narrative callout ─────────────────────────────────── */
+.mp5-narrative{
+  border-left:3px solid rgba(100,180,255,.55);
+  padding:8px 12px;
+  background:rgba(100,180,255,.06);
+  border-radius:0 10px 10px 0;
+  font-size:.84rem;
+  color:rgba(210,232,248,.90);
+  line-height:1.5;
+  margin:8px 0;
+}
+/* ── plotly chart container ────────────────────────────── */
+.mp5-chart-wrap{
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:14px;
+  padding:8px;
+  background:rgba(0,0,0,.12);
+  margin-top:8px;
+}
+
+/* ══ v6 ENHANCED DESIGN TOKENS ═══════════════════════════ */
+
+/* ── animated gradient border cards ────────────────────── */
+.mp5-card{
+  position:relative;
+  overflow:hidden;
+  transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease;
+}
+.mp5-card::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:14px;
+  background:linear-gradient(135deg,rgba(0,224,184,.06),transparent 40%,rgba(30,144,255,.06));
+  opacity:0;
+  transition:opacity .22s ease;
+  pointer-events:none;
+}
+.mp5-card:hover{
+  transform:translateY(-2px);
+  border-color:rgba(130,219,248,.42);
+  box-shadow:0 8px 24px rgba(0,224,184,.08),0 0 14px rgba(130,219,248,.10);
+}
+.mp5-card:hover::after{ opacity:1; }
+
+/* ── progress / health bar ─────────────────────────────── */
+.mp5-health{
+  margin:12px 0 8px 0;
+}
+.mp5-health-label{
+  display:flex;
+  justify-content:space-between;
+  font-size:.72rem;
+  color:rgba(195,220,236,.80);
+  margin-bottom:4px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  font-weight:600;
+}
+.mp5-health-track{
+  height:10px;
+  border-radius:999px;
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.08);
+  overflow:hidden;
+  position:relative;
+}
+.mp5-health-fill{
+  height:100%;
+  border-radius:999px;
+  transition:width .6s ease;
+  position:relative;
+}
+.mp5-health-fill.is-strong{
+  background:linear-gradient(90deg,#10b981,#6ee7b7);
+}
+.mp5-health-fill.is-moderate{
+  background:linear-gradient(90deg,#f59e0b,#fcd34d);
+}
+.mp5-health-fill.is-weak{
+  background:linear-gradient(90deg,#ef4444,#fca5a5);
+}
+
+/* ── quick preset buttons ──────────────────────────────── */
+.mp5-preset-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin:8px 0 4px 0;
+}
+.mp5-preset-btn{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:5px 12px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.16);
+  background:rgba(255,255,255,.04);
+  color:rgba(220,238,252,.92);
+  font-size:.73rem;
+  font-weight:600;
+  cursor:pointer;
+  transition:all .18s ease;
+  text-decoration:none;
+}
+.mp5-preset-btn:hover{
+  border-color:rgba(130,219,248,.5);
+  background:rgba(130,219,248,.12);
+  box-shadow:0 0 10px rgba(130,219,248,.12);
+}
+.mp5-preset-btn.is-active{
+  border-color:rgba(0,224,184,.6);
+  background:rgba(0,224,184,.14);
+  color:#6ee7b7;
+}
+
+/* ── evidence quality meter ────────────────────────────── */
+.mp5-meter{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:10px 14px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.03);
+  margin:8px 0;
+}
+.mp5-meter-gauge{
+  position:relative;
+  width:56px;
+  height:56px;
+  flex:0 0 56px;
+}
+.mp5-meter-gauge svg{
+  width:100%;
+  height:100%;
+  transform:rotate(-90deg);
+}
+.mp5-meter-gauge .track{
+  fill:none;
+  stroke:rgba(255,255,255,.08);
+  stroke-width:5;
+}
+.mp5-meter-gauge .fill{
+  fill:none;
+  stroke-width:5;
+  stroke-linecap:round;
+  transition:stroke-dashoffset .8s ease;
+}
+.mp5-meter-body{
+  flex:1;
+}
+.mp5-meter-title{
+  font-size:.86rem;
+  font-weight:700;
+  color:rgba(247,252,255,.96);
+}
+.mp5-meter-sub{
+  font-size:.76rem;
+  color:rgba(195,220,236,.78);
+  margin-top:2px;
+  line-height:1.38;
+}
+
+/* ── status tags for case docket ───────────────────────── */
+.mp5-status{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:3px 10px;
+  border-radius:999px;
+  font-size:.68rem;
+  font-weight:700;
+  letter-spacing:.03em;
+}
+.mp5-status-new{
+  border:1px solid rgba(130,219,248,.45);
+  background:rgba(130,219,248,.12);
+  color:rgba(180,240,255,.96);
+}
+.mp5-status-investigating{
+  border:1px solid rgba(251,204,122,.45);
+  background:rgba(255,190,76,.11);
+  color:rgba(255,240,204,.96);
+}
+.mp5-status-resolved{
+  border:1px solid rgba(143,235,197,.45);
+  background:rgba(73,211,155,.12);
+  color:rgba(220,255,240,.96);
+}
+
+/* ── section hero banner ───────────────────────────────── */
+.mp5-section-hero{
+  position:relative;
+  overflow:hidden;
+  border:1px solid rgba(130,219,248,.22);
+  border-radius:16px;
+  padding:14px 18px 12px 18px;
+  margin-bottom:12px;
+  background:
+    linear-gradient(135deg,rgba(0,224,184,.08),transparent 45%,rgba(30,144,255,.10)),
+    linear-gradient(180deg,rgba(14,30,48,.96),rgba(9,22,36,.92));
+}
+.mp5-section-hero::before{
+  content:"";
+  position:absolute;
+  top:-20px;right:-20px;
+  width:160px;height:160px;
+  background:radial-gradient(circle,rgba(30,144,255,.2),transparent 70%);
+  pointer-events:none;
+}
+.mp5-section-hero > *{ position:relative; z-index:1; }
+.mp5-section-num{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:26px;height:26px;
+  border-radius:8px;
+  background:rgba(0,224,184,.16);
+  border:1px solid rgba(0,224,184,.35);
+  color:#6ee7b7;
+  font-size:.74rem;
+  font-weight:800;
+  margin-bottom:6px;
+}
+
+/* ── gap alert card ────────────────────────────────────── */
+.mp5-gap-alert{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(247,146,149,.3);
+  background:rgba(247,85,97,.06);
+  margin-top:8px;
+}
+.mp5-gap-icon{
+  flex:0 0 auto;
+  width:28px;height:28px;
+  border-radius:8px;
+  background:rgba(247,85,97,.14);
+  border:1px solid rgba(247,146,149,.3);
+  display:flex;align-items:center;justify-content:center;
+  color:#fca5a5;
+  font-size:.86rem;
+  font-weight:800;
+}
+.mp5-gap-body{
+  flex:1;
+}
+.mp5-gap-title{
+  font-size:.82rem;
+  font-weight:700;
+  color:rgba(255,220,223,.96);
+}
+.mp5-gap-sub{
+  font-size:.74rem;
+  color:rgba(247,186,189,.80);
+  line-height:1.38;
+  margin-top:2px;
+}
+
+/* ── info/action strip ─────────────────────────────────── */
+.mp5-action-strip{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+  padding:8px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(255,255,255,.025);
+  margin:8px 0;
+}
+.mp5-action-label{
+  font-size:.72rem;
+  text-transform:uppercase;
+  letter-spacing:.1em;
+  font-weight:600;
+  color:rgba(180,216,235,.72);
+}
+
+/* ── summary snapshot card ─────────────────────────────── */
+.mp5-snapshot{
+  border:1px solid rgba(130,219,248,.24);
+  border-radius:16px;
+  padding:14px 16px;
+  background:
+    linear-gradient(145deg,rgba(14,45,68,.80),rgba(9,22,36,.90)),
+    radial-gradient(380px 160px at 85% 10%,rgba(0,224,184,.10),transparent 65%);
+  margin:10px 0;
+}
+.mp5-snapshot-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:8px;
+}
+.mp5-snapshot-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:8px;
+}
+.mp5-snapshot-item{
+  padding:6px 8px;
+  border-radius:10px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.08);
+}
+.mp5-snapshot-item-lbl{
+  font-size:.6rem;
+  text-transform:uppercase;
+  letter-spacing:.1em;
+  font-weight:600;
+  color:rgba(180,216,235,.74);
+}
+.mp5-snapshot-item-val{
+  font-size:.94rem;
+  font-weight:700;
+  color:rgba(247,253,255,.96);
+  margin-top:1px;
+}
+
+/* ── responsive refinements ────────────────────────────── */
+@media (max-width:768px){
+  .mp5-metrics{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .mp5-preset-row{ gap:4px; }
+  .mp5-preset-btn{ font-size:.66rem; padding:4px 8px; }
+  .mp5-meter{ flex-direction:column; text-align:center; }
+  .mp5-snapshot-grid{ grid-template-columns:1fr 1fr; }
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+
+    # ── data gate ────────────────────────────────────────────────────
+    if not PATH:
+        st.error("Data path not configured. Set DATA_PATH.")
+        st.stop()
+    if not _is_url(PATH) and not os.path.exists(PATH):
+        st.error("Data path not found.")
+        st.stop()
+
+    with st.spinner("Loading workbook…"):
+        data = load_workbook(PATH)
+    base = data["Lobby_TFL_Client_All"]
+    tfl_sessions = set(
+        base.get("Session", pd.Series(dtype=object))
+        .dropna().astype(str).str.strip().unique().tolist()
+    )
+
+    # ── session-state defaults ───────────────────────────────────────
+    defaults = {
+        "map_scope": "This Session",
+        "map_session": None,
+        "map_basemap_label": next(iter(MAP_BASEMAP_OPTIONS.keys())),
+        "map_geocode_floor": 82,
+        "map_probe_min_high": 0.0,
+        "map_distance_cap_miles": 160,
+        "map_subdivision_types_filter": [],
+        "map_min_match_count": 1,
+        "map_subdivision_map_cap": 700,
+        "map_subdivision_name_filter": "",
+        "map_subdivision_sort_v4": "Highest Signal",
+        "map_subdivision_pick_v4": "",
+        "map_selected_subdivision_context": {},
+        "map_overlap_input_mode": "Street Address",
+        "map_overlap_address_input": "",
+        "map_overlap_address_query": "",
+        "map_overlap_query_lat": None,
+        "map_overlap_query_lon": None,
+        "map_overlap_coord_lat": 31.0,
+        "map_overlap_coord_lon": -99.0,
+        "map_recent_addresses": [],
+        "map_overlap_confidence_filter": [],
+        "map_overlap_method_filter": [],
+        "map_overlap_entity_filter": "",
+        "map_overlap_focus_selected_subdivision": False,
+        "map_overlap_focus_selected_clients": False,
+        "map_overlap_sort_v4": "Signal Score",
+        "map_watchlist": [],
+        "map_batch_input_v4": "",
+        "map_batch_max_v4": 8,
+        "map_batch_results_v4": [],
+        "map_queue_priority_filter_v4": [],
+        "map_queue_search_v4": "",
+        "map_queue_sort_v4": "Lead Score",
+    }
+    for key, default in defaults.items():
+        if key not in st.session_state:
+            if isinstance(default, list):
+                st.session_state[key] = []
+            elif isinstance(default, dict):
+                st.session_state[key] = {}
+            else:
+                st.session_state[key] = default
+    if st.session_state.get("map_basemap_label") not in MAP_BASEMAP_OPTIONS:
+        st.session_state.map_basemap_label = next(iter(MAP_BASEMAP_OPTIONS.keys()))
+
+    sessions = (
+        base.get("Session", pd.Series(dtype=object))
+        .dropna().astype(str).str.strip().unique().tolist()
+    )
+    sessions = sorted(
+        [s for s in sessions if s and s.lower() not in {"none", "nan", "null"}],
+        key=_session_sort_key,
+    )
+    if not sessions:
+        st.error("No sessions found in workbook.")
+        st.stop()
+    default_session = _default_session_from_list(sessions)
+    if str(st.session_state.get("map_session", "")).strip().lower() in {
+        "", "none", "nan", "null",
+    }:
+        st.session_state.map_session = default_session
+
+    # ── workspace helpers ────────────────────────────────────────────
+    def _reset_workspace() -> None:
+        for key, default in defaults.items():
+            if isinstance(default, list):
+                st.session_state[key] = []
+            elif isinstance(default, dict):
+                st.session_state[key] = {}
+            else:
+                st.session_state[key] = default
+        st.session_state.map_session = default_session
+        st.session_state.map_basemap_label = next(iter(MAP_BASEMAP_OPTIONS.keys()))
+
+    def _open_client(entity_name: str) -> None:
+        value = str(entity_name).strip()
+        if not value:
+            return
+        st.session_state.client_query = value
+        st.session_state.client_query_input = value
+        st.session_state.client_name = ""
+        st.session_state.client_session = st.session_state.map_session
+        st.session_state.client_scope = st.session_state.map_scope
+        st.switch_page(_client_page)
+
+    def _miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        try:
+            d_lat = math.radians(float(lat2) - float(lat1))
+            d_lon = math.radians(float(lon2) - float(lon1))
+            a = (
+                math.sin(d_lat / 2) ** 2
+                + math.cos(math.radians(float(lat1)))
+                * math.cos(math.radians(float(lat2)))
+                * (math.sin(d_lon / 2) ** 2)
+            )
+            return 3958.7613 * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
+        except Exception:
+            return float("nan")
+
+    def _method_weight(method: str) -> float:
+        m = str(method).strip().lower()
+        if m == "spatial boundary (code)":
+            return 1.00
+        if m == "spatial boundary (name)":
+            return 0.94
+        if m == "spatial boundary (fuzzy)":
+            return 0.78
+        if "name + geocode context" in m:
+            return 0.62
+        if "name anchored" in m:
+            return 0.50
+        return 0.66
+
+    def _confidence_weight(conf: str) -> float:
+        return {
+            "high": 1.00,
+            "medium": 0.72,
+            "low": 0.46,
+            "unknown": 0.28,
+        }.get(str(conf).strip().lower(), 0.30)
+
+    def _priority_from_score(score: float) -> str:
+        value = float(score or 0.0)
+        if value >= 78:
+            return "Tier 1"
+        if value >= 58:
+            return "Tier 2"
+        return "Tier 3"
+
+    def _geocode_badge(score, floor: float) -> str:
+        if score is None:
+            return '<span class="mp5-badge mp5-badge-mid">Coordinate mode</span>'
+        s = float(score)
+        if s >= floor:
+            return f'<span class="mp5-badge mp5-badge-high">Geocode {s:.0f}</span>'
+        if s >= 70:
+            return f'<span class="mp5-badge mp5-badge-mid">Geocode {s:.0f} — below floor</span>'
+        return f'<span class="mp5-badge mp5-badge-low">Geocode {s:.0f} — weak</span>'
+
+    def _tier_html(tier: str) -> str:
+        cls = {"Tier 1": "mp5-tier1", "Tier 2": "mp5-tier2"}.get(tier, "mp5-tier3")
+        return f'<span class="{cls}">{html.escape(tier)}</span>'
+
+    # ══════════════════════════════════════════════════════════════════
+    # COMMAND DECK
+    # ══════════════════════════════════════════════════════════════════
+    st.markdown('<div class="mp5-glass">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="mp5-kicker">Command Deck</div>'
+        '<div class="mp5-title">Scope, quality, and rendering controls</div>'
+        '<div class="mp5-sub">These thresholds propagate to every tab — atlas filtering, '
+        'evidence scoring, and lead ranking.</div>',
+        unsafe_allow_html=True,
+    )
+
+    c1, c2, c3, c4, c5 = st.columns([1.5, 1.1, 1.0, 0.9, 0.7], gap="small")
+    with c1:
+        labels = [_session_label(s) for s in sessions]
+        label_map = dict(zip(labels, sessions))
+        current = _session_label(st.session_state.map_session)
+        if current not in labels:
+            current = _session_label(default_session)
+        picked = st.selectbox(
+            "Session", labels,
+            index=labels.index(current),
+            key="map_session_select_v4",
+        )
+        st.session_state.map_session = label_map.get(picked, default_session)
+    with c2:
+        st.session_state.map_scope = st.radio(
+            "Scope",
+            ["This Session", "All Sessions"],
+            index=0 if st.session_state.map_scope == "This Session" else 1,
+            key="map_scope_radio_v4",
+            horizontal=True,
+        )
+    with c3:
+        st.selectbox("Map style", list(MAP_BASEMAP_OPTIONS.keys()), key="map_basemap_label")
+    with c4:
+        st.slider("Geocode floor", 60, 99, key="map_geocode_floor")
+    with c5:
+        st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
+        if st.button("⟳ Reset", key="map_reset_workspace_btn_v4", use_container_width=True):
+            _reset_workspace()
+            st.rerun()
+
+    with st.expander("Advanced thresholds", expanded=False):
+        a1, a2, a3 = st.columns(3, gap="small")
+        with a1:
+            st.number_input("Min entity high ($)", min_value=0.0, step=25000.0, key="map_probe_min_high")
+        with a2:
+            st.slider("Distance cap (mi)", 10, 300, key="map_distance_cap_miles")
+        with a3:
+            st.number_input("Map point cap", min_value=100, max_value=1600, step=50, key="map_subdivision_map_cap")
+
+    # ── active filter summary chips ──────────────────────────────────
+    _active_chips = [
+        f"Session: {html.escape(_session_label(st.session_state.map_session))}",
+        f"Scope: {html.escape(st.session_state.map_scope)}",
+        f"Map: {html.escape(st.session_state.get('map_basemap_label', 'Gray Canvas'))}",
+        f"Geocode floor: {int(st.session_state.get('map_geocode_floor', 82))}",
+    ]
+    _min_high_val = float(st.session_state.get("map_probe_min_high", 0.0) or 0.0)
+    if _min_high_val > 0:
+        _active_chips.append(f"Min high: {fmt_usd(_min_high_val)}")
+    _dist_cap = int(st.session_state.get("map_distance_cap_miles", 160) or 160)
+    if _dist_cap < 160:
+        _active_chips.append(f"Distance cap: {_dist_cap} mi")
+    _ctx_v6 = st.session_state.get("map_selected_subdivision_context", {})
+    if isinstance(_ctx_v6, dict) and str(_ctx_v6.get("subdivision_name", "")).strip():
+        _active_chips.append(f"Context: {html.escape(str(_ctx_v6.get('subdivision_type', '')).strip())} · {html.escape(str(_ctx_v6.get('subdivision_name', '')).strip())}")
+    _watchlist_count = len(st.session_state.get("map_watchlist", []))
+    if _watchlist_count > 0:
+        _active_chips.append(f"Docket: {_watchlist_count:,} entities")
+    _chip_html = " ".join(
+        f'<span class="mp5-preset-btn">{c}</span>' for c in _active_chips
+    )
+    st.markdown(
+        f'<div class="mp5-action-strip">'
+        f'<span class="mp5-action-label">Active</span>{_chip_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── scope + coverage data ────────────────────────────────────────
+    scoped = base.copy()
+    scoped["Session"] = scoped["Session"].astype(str).str.strip()
+    session_for_filter = _tfl_session_for_filter(
+        st.session_state.map_session, tfl_sessions,
+    )
+    if st.session_state.map_scope == "This Session" and session_for_filter is not None:
+        scoped = scoped[scoped["Session"] == str(session_for_filter)].copy()
+    scoped = ensure_cols(scoped, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0, "LobbyShort": ""})
+    scoped = scoped[scoped["Client"].fillna("").astype(str).str.strip() != ""].copy()
+
+    totals = (
+        scoped.groupby("Client", as_index=False).agg(
+            Low=("Low_num", "sum"),
+            High=("High_num", "sum"),
+            Lobbyists=("LobbyShort", lambda s: s.dropna().astype(str).nunique()),
+            IsTFL=("IsTFL", "max"),
+        )
+        if not scoped.empty
+        else pd.DataFrame(columns=["Client", "Low", "High", "Lobbyists", "IsTFL"])
+    )
+
+    tfl_spend = totals[totals.get("IsTFL", 0) == 1].copy() if not totals.empty else pd.DataFrame()
+    if not tfl_spend.empty:
+        tfl_spend["Client"] = tfl_spend["Client"].fillna("").astype(str).str.strip()
+        tfl_spend = tfl_spend[tfl_spend["Client"] != ""].copy()
+        tfl_spend["Low"] = pd.to_numeric(tfl_spend["Low"], errors="coerce").fillna(0.0)
+        tfl_spend["High"] = pd.to_numeric(tfl_spend["High"], errors="coerce").fillna(0.0)
+        tfl_spend["Entity Type"] = tfl_spend["Client"].map(classify_requested_entity_type)
+
+    names = tuple(sorted({
+        str(v).strip()
+        for v in tfl_spend.get("Client", pd.Series(dtype=object)).dropna().astype(str).tolist()
+        if str(v).strip()
+    }))
+    subdivision_matches = build_tfl_political_subdivision_matches(names) if names else pd.DataFrame()
+    subdivision_matches = _attach_subdivision_spend_totals(subdivision_matches, totals)
+    if not subdivision_matches.empty:
+        subdivision_matches["match_count"] = pd.to_numeric(
+            subdivision_matches.get("match_count", 0), errors="coerce",
+        ).fillna(0).astype(int)
+        subdivision_matches["low_total"] = pd.to_numeric(
+            subdivision_matches.get("low_total", 0.0), errors="coerce",
+        ).fillna(0.0)
+        subdivision_matches["high_total"] = pd.to_numeric(
+            subdivision_matches.get("high_total", 0.0), errors="coerce",
+        ).fillna(0.0)
+
+    matched_clients: set[str] = set()
+    if not subdivision_matches.empty:
+        for vals in subdivision_matches.get("match_clients", pd.Series(dtype=object)).tolist():
+            if isinstance(vals, list):
+                matched_clients.update({str(v).strip() for v in vals if str(v).strip()})
+
+    total_tfl = int(tfl_spend["Client"].astype(str).nunique()) if not tfl_spend.empty else 0
+    total_high = float(pd.to_numeric(tfl_spend.get("High", 0.0), errors="coerce").fillna(0.0).sum()) if not tfl_spend.empty else 0.0
+    mapped_high = float(
+        pd.to_numeric(
+            tfl_spend[tfl_spend["Client"].astype(str).isin(matched_clients)]["High"],
+            errors="coerce",
+        ).fillna(0.0).sum()
+    ) if not tfl_spend.empty and matched_clients else 0.0
+    mapped_rate = (len(matched_clients) / total_tfl) if total_tfl else 0.0
+    unmapped_count = max(0, total_tfl - len(matched_clients))
+
+    # top hotspot
+    top_hotspot = (
+        subdivision_matches.sort_values(
+            ["high_total", "match_count"], ascending=[False, False],
+        ).head(1)
+        if not subdivision_matches.empty
+        else pd.DataFrame()
+    )
+    hotspot_label = "—"
+    hotspot_high = 0.0
+    if not top_hotspot.empty:
+        hotspot_label = (
+            f"{str(top_hotspot.iloc[0].get('subdivision_type', '')).strip()} · "
+            f"{str(top_hotspot.iloc[0].get('subdivision_name', '')).strip()}"
+        )
+        hotspot_high = float(top_hotspot.iloc[0].get("high_total", 0.0) or 0.0)
+
+    # ══════════════════════════════════════════════════════════════════
+    # SITUATION DASHBOARD
+    # ══════════════════════════════════════════════════════════════════
+    st.markdown('<div class="mp5-glass-inner">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="mp5-kicker">Situation Dashboard</div>'
+        '<div class="mp5-title">Statewide coverage baseline</div>',
+        unsafe_allow_html=True,
+    )
+
+    # narrative callout
+    if mapped_rate >= 0.75:
+        coverage_narrative = (
+            f"Strong coverage: <strong>{len(matched_clients):,}</strong> of "
+            f"<strong>{total_tfl:,}</strong> TFL entities are mapped to at least one "
+            f"political subdivision ({mapped_rate:.0%} entity rate, "
+            f"{(mapped_high / total_high) if total_high else 0:.0%} by spend)."
+        )
+    elif mapped_rate >= 0.40:
+        coverage_narrative = (
+            f"Moderate coverage: <strong>{len(matched_clients):,}</strong> of "
+            f"<strong>{total_tfl:,}</strong> entities mapped ({mapped_rate:.0%}). "
+            f"<strong>{unmapped_count:,}</strong> entities have no subdivision anchor — "
+            "address forensics will rely more on name-based fallback."
+        )
+    else:
+        coverage_narrative = (
+            f"Low coverage: only <strong>{len(matched_clients):,}</strong> of "
+            f"<strong>{total_tfl:,}</strong> entities mapped ({mapped_rate:.0%}). "
+            "Forensic results may be sparse; consider broadening scope or lowering "
+            "the match-count threshold."
+        )
+    st.markdown(f'<div class="mp5-narrative">{coverage_narrative}</div>', unsafe_allow_html=True)
+
+    # ── visual coverage health bar ───────────────────────────────────
+    _health_pct = min(100.0, mapped_rate * 100.0)
+    _health_cls = "is-strong" if mapped_rate >= 0.70 else ("is-moderate" if mapped_rate >= 0.40 else "is-weak")
+    _spend_pct = min(100.0, ((mapped_high / total_high) * 100.0) if total_high else 0.0)
+    _spend_cls = "is-strong" if _spend_pct >= 70 else ("is-moderate" if _spend_pct >= 40 else "is-weak")
+    st.markdown(
+        f"""
+<div class="mp5-health">
+  <div class="mp5-health-label"><span>Entity Coverage</span><span>{_health_pct:.1f}%</span></div>
+  <div class="mp5-health-track"><div class="mp5-health-fill {_health_cls}" style="width:{_health_pct:.1f}%"></div></div>
+</div>
+<div class="mp5-health">
+  <div class="mp5-health-label"><span>Spend Coverage</span><span>{_spend_pct:.1f}%</span></div>
+  <div class="mp5-health-track"><div class="mp5-health-fill {_spend_cls}" style="width:{_spend_pct:.1f}%"></div></div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+<div class="mp5-metrics">
+  <div class="mp5-card">
+    <div class="mp5-card-lbl">Entity Coverage</div>
+    <div class="mp5-card-val">{mapped_rate:.1%}</div>
+    <div class="mp5-card-sub">{len(matched_clients):,} of {total_tfl:,} entities</div>
+  </div>
+  <div class="mp5-card">
+    <div class="mp5-card-lbl">Spend Coverage</div>
+    <div class="mp5-card-val">{(mapped_high / total_high) if total_high else 0:.1%}</div>
+    <div class="mp5-card-sub">{fmt_usd(mapped_high)} of {fmt_usd(total_high)}</div>
+  </div>
+  <div class="mp5-card">
+    <div class="mp5-card-lbl">Atlas Rows</div>
+    <div class="mp5-card-val">{len(subdivision_matches):,}</div>
+    <div class="mp5-card-sub">mapped subdivisions</div>
+  </div>
+  <div class="mp5-card">
+    <div class="mp5-card-lbl">Top Hotspot</div>
+    <div class="mp5-card-val" style="font-size:.94rem">{html.escape(hotspot_label, quote=True)}</div>
+    <div class="mp5-card-sub">{fmt_usd(hotspot_high)} high estimate</div>
+  </div>
+  <div class="mp5-card">
+    <div class="mp5-card-lbl">Unmapped</div>
+    <div class="mp5-card-val">{unmapped_count:,}</div>
+    <div class="mp5-card-sub">entities with no subdivision anchor</div>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    # ── top coverage gaps alert ──────────────────────────────────────
+    _unmapped_tfl_names = set()
+    if not tfl_spend.empty:
+        _all_tfl_names_dash = {
+            str(v).strip()
+            for v in tfl_spend["Client"].dropna().astype(str).tolist()
+            if str(v).strip()
+        }
+        _unmapped_tfl_names = _all_tfl_names_dash - matched_clients
+    if _unmapped_tfl_names:
+        _gap_df = tfl_spend[tfl_spend["Client"].astype(str).isin(_unmapped_tfl_names)].copy()
+        _gap_df = _gap_df.sort_values("High", ascending=False).head(5)
+        _gap_items_html = ""
+        for _, _gap_row in _gap_df.iterrows():
+            _gap_items_html += (
+                f'<div style="display:flex;justify-content:space-between;font-size:.76rem;'
+                f'padding:2px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
+                f'<span style="color:rgba(255,220,223,.88)">{html.escape(str(_gap_row["Client"]).strip())}</span>'
+                f'<span style="color:rgba(247,186,189,.78)">{fmt_usd(float(_gap_row.get("High", 0.0) or 0.0))}</span>'
+                f'</div>'
+            )
+        st.markdown(
+            f"""
+<div class="mp5-gap-alert">
+  <div class="mp5-gap-icon">!</div>
+  <div class="mp5-gap-body">
+    <div class="mp5-gap-title">Top {min(5, len(_gap_df)):,} Unmapped Entities by Spend</div>
+    <div class="mp5-gap-sub">These entities have no subdivision match. Address forensics may still detect them via name-based overlap.</div>
+    {_gap_items_html}
+  </div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+    # ── coverage distribution in two columns ─────────────────────────
+    _dash_left, _dash_right = st.columns([1.4, 1.0], gap="large")
+
+    # ── coverage distribution mini-chart ─────────────────────────────
+    if not subdivision_matches.empty:
+        type_dist = (
+            subdivision_matches.groupby(
+                subdivision_matches["subdivision_type"].astype(str).str.strip(),
+            )
+            .agg(
+                subdivisions=("subdivision_name", "size"),
+                high_total=("high_total", "sum"),
+            )
+            .reset_index()
+            .rename(columns={"subdivision_type": "Type"})
+            .sort_values("high_total", ascending=False)
+        )
+        with _dash_left:
+            if len(type_dist) > 1:
+                fig_dist = px.bar(
+                    type_dist,
+                    x="Type",
+                    y="high_total",
+                    color="subdivisions",
+                    color_continuous_scale="tealgrn",
+                    labels={"high_total": "High Estimate ($)", "subdivisions": "Count"},
+                    title="Coverage by Subdivision Type",
+                )
+                fig_dist.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font_color="rgba(210,230,245,.88)",
+                    title_font_size=13,
+                    margin=dict(l=10, r=10, t=36, b=10),
+                    height=250,
+                    coloraxis_colorbar=dict(thickness=12, len=0.6),
+                )
+                fig_dist.update_xaxes(showgrid=False, tickangle=-35)
+                fig_dist.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,.06)")
+                st.markdown('<div class="mp5-chart-wrap">', unsafe_allow_html=True)
+                st.plotly_chart(fig_dist, use_container_width=True, key="mp5_cov_dist_chart")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+        with _dash_right:
+            # ── entity type breakdown (top 8) ────────────────────────
+            if not tfl_spend.empty and "Entity Type" in tfl_spend.columns:
+                _etype_summary = (
+                    tfl_spend.groupby("Entity Type", as_index=False)
+                    .agg(Entities=("Client", "nunique"), High=("High", "sum"))
+                    .sort_values("High", ascending=False)
+                    .head(8)
+                )
+                if not _etype_summary.empty:
+                    fig_etype_dash = px.pie(
+                        _etype_summary,
+                        names="Entity Type",
+                        values="High",
+                        title="Spend by Entity Type",
+                        hole=0.45,
+                        color_discrete_sequence=px.colors.qualitative.Set3,
+                    )
+                    fig_etype_dash.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font_color="rgba(210,230,245,.88)",
+                        title_font_size=13,
+                        margin=dict(l=10, r=10, t=36, b=10),
+                        height=250,
+                        showlegend=True,
+                        legend=dict(
+                            orientation="h",
+                            font_size=9,
+                            yanchor="top",
+                            y=-0.08,
+                            xanchor="center",
+                            x=0.5,
+                        ),
+                    )
+                    st.markdown('<div class="mp5-chart-wrap">', unsafe_allow_html=True)
+                    st.plotly_chart(fig_etype_dash, use_container_width=True, key="mp5_etype_dash_chart")
+                    st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        with _dash_left:
+            st.info("No subdivision matches available for chart.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════════
+    # TABS (with count badges)
+    # ══════════════════════════════════════════════════════════════════
+    _atlas_count = len(subdivision_matches) if not subdivision_matches.empty else 0
+    _docket_count = len(st.session_state.get("map_watchlist", []))
+    _atlas_label = f"🗺️  Coverage Atlas ({_atlas_count:,})"
+    _forensics_label = "🔬  Address Forensics"
+    _docket_label = f"📋  Case Docket ({_docket_count:,})" if _docket_count else "📋  Case Docket"
+    tab_cov, tab_forensics, tab_docket = st.tabs([
+        _atlas_label,
+        _forensics_label,
+        _docket_label,
+    ])
+
+    # ══════════════════════════════════════════════════════════════════
+    # TAB 1 — COVERAGE ATLAS
+    # ══════════════════════════════════════════════════════════════════
+    with tab_cov:
+        # ── section hero ─────────────────────────────────────────────
+        st.markdown(
+            f"""
+<div class="mp5-section-hero">
+  <div class="mp5-section-num">1</div>
+  <div class="mp5-title">Coverage Atlas</div>
+  <div class="mp5-sub">Explore statewide subdivision coverage patterns and anchor a context for downstream address forensics. Filter by type, match depth, and name to narrow the investigation area.</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        if subdivision_matches.empty:
+            st.info("No mapped subdivision matches found for this scope.")
+        else:
+            all_types = sorted({
+                str(v).strip()
+                for v in subdivision_matches.get(
+                    "subdivision_type", pd.Series(dtype=object),
+                ).dropna().tolist()
+                if str(v).strip()
+            })
+            if not st.session_state.get("map_subdivision_types_filter"):
+                st.session_state.map_subdivision_types_filter = list(all_types)
+            st.session_state.map_subdivision_types_filter = [
+                str(v) for v in st.session_state.get("map_subdivision_types_filter", [])
+                if str(v) in all_types
+            ] or list(all_types)
+
+            max_match = int(max(
+                1,
+                pd.to_numeric(
+                    subdivision_matches.get("match_count", 1), errors="coerce",
+                ).fillna(1).max(),
+            ))
+            st.session_state.map_min_match_count = min(
+                max(1, int(st.session_state.get("map_min_match_count", 1))),
+                max_match,
+            )
+            sort_options = [
+                "Highest Signal",
+                "Highest High",
+                "Most Matched Entities",
+                "Subdivision A-Z",
+            ]
+            if st.session_state.get("map_subdivision_sort_v4") not in sort_options:
+                st.session_state.map_subdivision_sort_v4 = "Highest Signal"
+
+            # ── atlas filters ────────────────────────────────────────
+            st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
+
+            # quick-filter presets
+            _core_types = {"School District", "County", "City"}
+            _special_types = set(all_types) - _core_types
+            _pq1, _pq2, _pq3, _pq4 = st.columns(4, gap="small")
+            with _pq1:
+                if st.button("All Types", key="map_preset_all_types", use_container_width=True):
+                    st.session_state.map_subdivision_types_filter = list(all_types)
+                    st.rerun()
+            with _pq2:
+                if st.button("Core Only", key="map_preset_core_types", use_container_width=True, help="School District, County, City"):
+                    st.session_state.map_subdivision_types_filter = [t for t in all_types if t in _core_types]
+                    st.rerun()
+            with _pq3:
+                if st.button("Special Districts", key="map_preset_special_types", use_container_width=True, help="All types excluding School District, County, City"):
+                    st.session_state.map_subdivision_types_filter = [t for t in all_types if t in _special_types]
+                    st.rerun()
+            with _pq4:
+                if st.button("High-Spend Only", key="map_preset_high_spend", use_container_width=True, help="Min 2 matched entities"):
+                    st.session_state.map_subdivision_types_filter = list(all_types)
+                    st.session_state.map_min_match_count = min(2, max_match)
+                    st.rerun()
+
+            f1, f2, f3, f4 = st.columns([1.8, 0.9, 1.3, 1.0], gap="small")
+            with f1:
+                st.multiselect("Subdivision types", all_types, key="map_subdivision_types_filter")
+            with f2:
+                st.slider("Min entities", 1, max_match, key="map_min_match_count")
+            with f3:
+                st.text_input(
+                    "Name / entity contains",
+                    key="map_subdivision_name_filter",
+                    placeholder="City, county, district, or client…",
+                )
+            with f4:
+                st.selectbox("Sort", sort_options, key="map_subdivision_sort_v4")
+
+            # ── apply filters ────────────────────────────────────────
+            filtered_cov = subdivision_matches.copy()
+            selected_types = st.session_state.get("map_subdivision_types_filter", [])
+            if selected_types:
+                filtered_cov = filtered_cov[
+                    filtered_cov["subdivision_type"].astype(str).isin(selected_types)
+                ].copy()
+            else:
+                filtered_cov = filtered_cov.iloc[0:0].copy()
+            filtered_cov = filtered_cov[
+                pd.to_numeric(filtered_cov["match_count"], errors="coerce").fillna(0)
+                >= int(st.session_state.get("map_min_match_count", 1))
+            ].copy()
+
+            query = str(st.session_state.get("map_subdivision_name_filter", "")).strip().lower()
+            if query:
+                preview_col = filtered_cov.get(
+                    "match_clients_preview",
+                    pd.Series("", index=filtered_cov.index),
+                ).fillna("").astype(str)
+                filtered_cov = filtered_cov[
+                    filtered_cov["subdivision_name"].astype(str).str.lower().str.contains(query, na=False)
+                    | preview_col.str.lower().str.contains(query, na=False)
+                ].copy()
+
+            filtered_cov["_signal"] = filtered_cov["high_total"] * (
+                1 + pd.to_numeric(filtered_cov["match_count"], errors="coerce").fillna(0).map(
+                    lambda x: math.log1p(max(float(x), 0.0))
+                )
+            )
+            sort_mode = st.session_state.get("map_subdivision_sort_v4", "Highest Signal")
+            if sort_mode == "Highest High":
+                filtered_cov = filtered_cov.sort_values(["high_total", "match_count"], ascending=[False, False])
+            elif sort_mode == "Most Matched Entities":
+                filtered_cov = filtered_cov.sort_values(["match_count", "high_total"], ascending=[False, False])
+            elif sort_mode == "Subdivision A-Z":
+                filtered_cov = filtered_cov.sort_values(["subdivision_name", "subdivision_type"], ascending=[True, True])
+            else:
+                filtered_cov = filtered_cov.sort_values(["_signal", "high_total"], ascending=[False, False])
+
+            # ── atlas KPI row ────────────────────────────────────────
+            cov_total_high_filtered = float(filtered_cov["high_total"].sum()) if not filtered_cov.empty else 0.0
+            cov_total_low_filtered = float(filtered_cov["low_total"].sum()) if not filtered_cov.empty else 0.0
+            cov_entity_count = 0
+            if not filtered_cov.empty:
+                _cov_clients: set[str] = set()
+                for vals in filtered_cov.get("match_clients", pd.Series(dtype=object)).tolist():
+                    if isinstance(vals, list):
+                        _cov_clients.update({str(v).strip() for v in vals if str(v).strip()})
+                cov_entity_count = len(_cov_clients)
+            _cov_type_count = int(filtered_cov["subdivision_type"].astype(str).nunique()) if not filtered_cov.empty else 0
+            _cov_avg_match = float(pd.to_numeric(filtered_cov.get("match_count", 0), errors="coerce").fillna(0).mean()) if not filtered_cov.empty else 0.0
+            _cov_filter_pct = (len(filtered_cov) / len(subdivision_matches) * 100.0) if len(subdivision_matches) > 0 else 0.0
+
+            st.markdown(
+                f"""
+<div class="mp5-metrics">
+  <div class="mp5-card"><div class="mp5-card-lbl">Filtered Subdivisions</div><div class="mp5-card-val">{len(filtered_cov):,}</div><div class="mp5-card-sub">{_cov_filter_pct:.0f}% of atlas</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Unique Entities</div><div class="mp5-card-val">{cov_entity_count:,}</div><div class="mp5-card-sub">across {_cov_type_count} subdivision types</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Spend Range</div><div class="mp5-card-val">{fmt_usd(cov_total_high_filtered)}</div><div class="mp5-card-sub">Low: {fmt_usd(cov_total_low_filtered)}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Avg Entity Depth</div><div class="mp5-card-val">{_cov_avg_match:.1f}</div><div class="mp5-card-sub">entities per subdivision</div></div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+
+            # ── map + context picker ─────────────────────────────────
+            left, right = st.columns([1.65, 1.0], gap="large")
+            with left:
+                if filtered_cov.empty:
+                    st.warning("No subdivisions remain after filters.")
+                else:
+                    render_subdivision_map_legend(
+                        filtered_cov["subdivision_type"].value_counts().to_dict(),
+                    )
+                    active_basemap = MAP_BASEMAP_OPTIONS.get(
+                        st.session_state.get("map_basemap_label", ""), "gray-vector",
+                    )
+                    cap = max(100, min(
+                        1600,
+                        int(st.session_state.get("map_subdivision_map_cap", 700) or 700),
+                    ))
+                    render_tfl_subdivision_arcgis_map(
+                        filtered_cov.head(cap), height=630, basemap=active_basemap,
+                    )
+            with right:
+                st.markdown(
+                    '<div class="mp5-kicker" style="margin-bottom:6px">'
+                    "Investigation Context</div>",
+                    unsafe_allow_html=True,
+                )
+                labels_atlas, rows_atlas = [], []
+                for row in filtered_cov.head(350).itertuples(index=False):
+                    code = str(getattr(row, "subdivision_code", "")).strip() or "N/A"
+                    label = (
+                        f"{str(getattr(row, 'subdivision_type', '')).strip()} · "
+                        f"{str(getattr(row, 'subdivision_name', '')).strip()} ({code})"
+                    )
+                    labels_atlas.append(label)
+                    rows_atlas.append(row)
+
+                opts_atlas = [""] + labels_atlas
+                if st.session_state.get("map_subdivision_pick_v4", "") not in opts_atlas:
+                    st.session_state.map_subdivision_pick_v4 = ""
+                pick = st.selectbox(
+                    "Select subdivision",
+                    opts_atlas,
+                    key="map_subdivision_pick_v4",
+                )
+                b1, b2 = st.columns(2, gap="small")
+                with b1:
+                    set_ctx = st.button(
+                        "Set Context",
+                        key="map_set_context_btn_v4",
+                        use_container_width=True,
+                        disabled=not bool(pick),
+                    )
+                with b2:
+                    clear_ctx = st.button(
+                        "Clear Context",
+                        key="map_clear_context_btn_v4",
+                        use_container_width=True,
+                    )
+
+                if set_ctx and pick in labels_atlas:
+                    row = rows_atlas[labels_atlas.index(pick)]
+                    clients = sorted({
+                        str(v).strip()
+                        for v in (
+                            getattr(row, "match_clients", [])
+                            if isinstance(getattr(row, "match_clients", []), list)
+                            else []
+                        )
+                        if str(v).strip()
+                    })
+                    st.session_state.map_selected_subdivision_context = {
+                        "subdivision_type": str(getattr(row, "subdivision_type", "")).strip(),
+                        "subdivision_name": str(getattr(row, "subdivision_name", "")).strip(),
+                        "subdivision_code": str(getattr(row, "subdivision_code", "")).strip(),
+                        "match_count": int(getattr(row, "match_count", 0) or 0),
+                        "high_total": float(getattr(row, "high_total", 0.0) or 0.0),
+                        "clients": clients,
+                    }
+                    st.rerun()
+                if clear_ctx:
+                    st.session_state.map_selected_subdivision_context = {}
+                    st.rerun()
+
+                ctx = st.session_state.get("map_selected_subdivision_context", {})
+                if isinstance(ctx, dict) and str(ctx.get("subdivision_name", "")).strip():
+                    _ctx_clients_list = [str(v).strip() for v in ctx.get("clients", []) if str(v).strip()]
+                    _ctx_preview = ", ".join(_ctx_clients_list[:6])
+                    if len(_ctx_clients_list) > 6:
+                        _ctx_preview += f" +{len(_ctx_clients_list) - 6} more"
+                    st.markdown(
+                        f"""
+<div class="mp5-anchor">
+  <strong>{html.escape(str(ctx.get("subdivision_type", "")), quote=True)} · {html.escape(str(ctx.get("subdivision_name", "")), quote=True)}</strong><br>
+  Code: {html.escape(str(ctx.get("subdivision_code", "") or "N/A"), quote=True)}<br>
+  Matched entities: <strong>{int(ctx.get("match_count", 0) or 0):,}</strong> · High estimate: <strong>{fmt_usd(float(ctx.get("high_total", 0.0) or 0.0))}</strong><br>
+  <span style="font-size:.74rem;color:rgba(195,220,236,.72)">Clients: {html.escape(_ctx_preview or "None", quote=True)}</span>
+</div>
+""",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption("Context is active. Switch to Address Forensics to investigate this subdivision's overlap.")
+                else:
+                    st.markdown(
+                        '<div class="mp5-anchor-empty">No context anchor. '
+                        "Select a subdivision above to scope Address Forensics.</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                # entity type distribution for filtered set
+                if not filtered_cov.empty:
+                    _atlas_type_summary = (
+                        filtered_cov.groupby(
+                            filtered_cov["subdivision_type"].astype(str).str.strip(),
+                            as_index=False,
+                        ).agg(
+                            Count=("subdivision_name", "size"),
+                            High=("high_total", "sum"),
+                        )
+                        .sort_values("High", ascending=False)
+                    )
+                    if not _atlas_type_summary.empty:
+                        _atlas_type_summary["High"] = _atlas_type_summary["High"].apply(fmt_usd)
+                        st.markdown(
+                            '<div class="mp5-kicker" style="margin-top:10px;margin-bottom:4px">Type Summary</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.dataframe(_atlas_type_summary, use_container_width=True, height=min(200, len(_atlas_type_summary) * 40 + 40), hide_index=True)
+
+            # ── atlas charts ─────────────────────────────────────────
+            st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
+            _atlas_chart_left, _atlas_chart_right = st.columns(2, gap="medium")
+
+            with _atlas_chart_left:
+                # Treemap — spend concentration by subdivision type → subdivision
+                if not filtered_cov.empty and len(filtered_cov) > 1:
+                    tree_df = filtered_cov.copy()
+                    tree_df["_type"] = tree_df["subdivision_type"].astype(str).str.strip()
+                    tree_df["_name"] = tree_df["subdivision_name"].astype(str).str.strip()
+                    tree_df["high_total"] = pd.to_numeric(tree_df["high_total"], errors="coerce").fillna(0.0)
+                    tree_df = tree_df[tree_df["high_total"] > 0].head(200)
+                    if not tree_df.empty:
+                        fig_tree = px.treemap(
+                            tree_df,
+                            path=["_type", "_name"],
+                            values="high_total",
+                            color="high_total",
+                            color_continuous_scale="tealgrn",
+                            title="Spend Concentration Treemap",
+                        )
+                        fig_tree.update_layout(
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            font_color="rgba(210,230,245,.88)",
+                            title_font_size=13,
+                            margin=dict(l=4, r=4, t=36, b=4),
+                            height=300,
+                            coloraxis_colorbar=dict(thickness=10, len=0.5),
+                        )
+                        st.markdown('<div class="mp5-chart-wrap">', unsafe_allow_html=True)
+                        st.plotly_chart(fig_tree, use_container_width=True, key="mp5_atlas_treemap")
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+            with _atlas_chart_right:
+                # Histogram — distribution of matched-entity counts
+                if not filtered_cov.empty and len(filtered_cov) > 2:
+                    hist_vals = pd.to_numeric(filtered_cov["match_count"], errors="coerce").dropna()
+                    if len(hist_vals) > 2:
+                        fig_hist = px.histogram(
+                            hist_vals,
+                            nbins=min(30, int(hist_vals.max())),
+                            title="Matched-Entity Count Distribution",
+                            labels={"value": "Matched Entities per Subdivision", "count": "Subdivisions"},
+                            color_discrete_sequence=["rgba(0,224,184,.65)"],
+                        )
+                        fig_hist.update_layout(
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font_color="rgba(210,230,245,.88)",
+                            title_font_size=13,
+                            margin=dict(l=10, r=10, t=36, b=10),
+                            height=300,
+                            showlegend=False,
+                        )
+                        fig_hist.update_xaxes(showgrid=False)
+                        fig_hist.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,.06)")
+                        st.markdown('<div class="mp5-chart-wrap">', unsafe_allow_html=True)
+                        st.plotly_chart(fig_hist, use_container_width=True, key="mp5_atlas_hist")
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+            # ── atlas data table ─────────────────────────────────────
+            cov_view = filtered_cov[
+                ["subdivision_type", "subdivision_name", "subdivision_code", "match_count", "high_total", "source_name"]
+            ].rename(columns={
+                "subdivision_type": "Type",
+                "subdivision_name": "Subdivision",
+                "subdivision_code": "Code",
+                "match_count": "Matched Entities",
+                "high_total": "Matched High",
+                "source_name": "Map Source",
+            })
+            st.dataframe(cov_view, use_container_width=True, height=300, hide_index=True)
+            _ = export_dataframe(cov_view, "coverage_atlas.csv", label="Download Coverage Atlas CSV")
+
+    # ══════════════════════════════════════════════════════════════════
+    # TAB 2 — ADDRESS FORENSICS
+    # ══════════════════════════════════════════════════════════════════
+    with tab_forensics:
+        # ── section hero ─────────────────────────────────────────────
+        st.markdown(
+            f"""
+<div class="mp5-section-hero">
+  <div class="mp5-section-num">2</div>
+  <div class="mp5-title">Address Forensics</div>
+  <div class="mp5-sub">Resolve a specific Texas address or coordinate pair, identify which political subdivisions overlap that point, and rank matched taxpayer-funded entities by evidence strength. Results are scored using geocode quality, match method weight, confidence level, and proximity.</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+        ctx = (
+            st.session_state.get("map_selected_subdivision_context", {})
+            if isinstance(st.session_state.get("map_selected_subdivision_context", {}), dict)
+            else {}
+        )
+        selected_type = str(ctx.get("subdivision_type", "")).strip()
+        selected_name = str(ctx.get("subdivision_name", "")).strip()
+        selected_clients = (
+            [str(v).strip() for v in ctx.get("clients", []) if str(v).strip()]
+            if isinstance(ctx.get("clients", []), list)
+            else []
+        )
+        selected_client_set = {v.lower() for v in selected_clients}
+
+        if st.session_state.get("map_overlap_input_mode") not in {"Street Address", "Coordinates"}:
+            st.session_state.map_overlap_input_mode = "Street Address"
+
+        analysis_point = None
+        geocode_message = ""
+        overlap_points = pd.DataFrame()
+        overlap_spend = pd.DataFrame()
+
+        # ── input panel + context sidebar ────────────────────────────
+        lcol, rcol = st.columns([1.1, 1.7], gap="large")
+        with lcol:
+            # context badge
+            if selected_name:
+                _ctx_client_preview = ", ".join(selected_clients[:4])
+                if len(selected_clients) > 4:
+                    _ctx_client_preview += f" +{len(selected_clients) - 4}"
+                st.markdown(
+                    f'<div class="mp5-anchor"><strong>{html.escape(selected_type, quote=True)} · '
+                    f"{html.escape(selected_name, quote=True)}</strong><br>"
+                    f"Context clients: <strong>{len(selected_clients):,}</strong><br>"
+                    f'<span style="font-size:.72rem;color:rgba(195,220,236,.68)">{html.escape(_ctx_client_preview or "—", quote=True)}</span></div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<div class="mp5-anchor-empty">No active context — results will be unscoped. '
+                    'Set context in Coverage Atlas for focused filtering.</div>',
+                    unsafe_allow_html=True,
+                )
+
+            mode = st.radio(
+                "Lookup mode",
+                ["Street Address", "Coordinates"],
+                key="map_overlap_input_mode",
+                horizontal=True,
+            )
+            if mode == "Street Address":
+                with st.form("map_addr_form_v4"):
+                    st.text_input(
+                        "Street address",
+                        key="map_overlap_address_input",
+                        placeholder="e.g. 1100 Congress Ave, Austin, TX",
+                    )
+                    run_addr = st.form_submit_button("Run Address Forensics", use_container_width=True)
+                if run_addr:
+                    q = str(st.session_state.get("map_overlap_address_input", "")).strip()
+                    st.session_state.map_overlap_address_query = q
+                    if q:
+                        recent = [q] + [
+                            str(v).strip()
+                            for v in st.session_state.get("map_recent_addresses", [])
+                            if str(v).strip() and str(v).strip().lower() != q.lower()
+                        ]
+                        st.session_state.map_recent_addresses = recent[:10]
+
+                recent_options = [
+                    str(v).strip()
+                    for v in st.session_state.get("map_recent_addresses", [])
+                    if str(v).strip()
+                ]
+                if recent_options:
+                    recent_pick = st.selectbox(
+                        "Recent queries", [""] + recent_options, key="map_recent_pick_v4",
+                    )
+                    if st.button("Use Recent", key="map_use_recent_btn_v4", use_container_width=True) and recent_pick:
+                        st.session_state.map_overlap_address_query = recent_pick
+
+                active_query = str(st.session_state.get("map_overlap_address_query", "")).strip()
+                if active_query:
+                    geo = geocode_address_arcgis(active_query)
+                    if geo:
+                        analysis_point = {
+                            "query": active_query,
+                            "matched_address": str(geo.get("matched_address", active_query)).strip(),
+                            "lat": float(geo.get("lat", 0.0)),
+                            "lon": float(geo.get("lon", 0.0)),
+                            "score": float(geo.get("score", 0.0)),
+                        }
+                        score = float(analysis_point["score"])
+                        floor = float(st.session_state.get("map_geocode_floor", 82))
+                        geocode_message = f"Geocode score: {score:.1f}"
+                        if score < floor:
+                            geocode_message += f" (below floor {int(floor)})"
+                    else:
+                        st.warning("Address could not be geocoded.")
+            else:
+                with st.form("map_coord_form_v4"):
+                    cc1, cc2 = st.columns(2, gap="small")
+                    with cc1:
+                        st.number_input(
+                            "Latitude", min_value=25.0, max_value=37.0,
+                            step=0.0001, format="%.6f",
+                            key="map_overlap_coord_lat",
+                        )
+                    with cc2:
+                        st.number_input(
+                            "Longitude", min_value=-107.0, max_value=-93.0,
+                            step=0.0001, format="%.6f",
+                            key="map_overlap_coord_lon",
+                        )
+                    run_coord = st.form_submit_button("Run Coordinate Forensics", use_container_width=True)
+                if run_coord:
+                    st.session_state.map_overlap_query_lat = float(st.session_state.get("map_overlap_coord_lat", 31.0))
+                    st.session_state.map_overlap_query_lon = float(st.session_state.get("map_overlap_coord_lon", -99.0))
+                if (
+                    st.session_state.get("map_overlap_query_lat") is not None
+                    and st.session_state.get("map_overlap_query_lon") is not None
+                ):
+                    lat_q = float(st.session_state.get("map_overlap_query_lat"))
+                    lon_q = float(st.session_state.get("map_overlap_query_lon"))
+                    analysis_point = {
+                        "query": f"{lat_q:.6f}, {lon_q:.6f}",
+                        "matched_address": f"Coordinates: {lat_q:.6f}, {lon_q:.6f}",
+                        "lat": lat_q,
+                        "lon": lon_q,
+                        "score": None,
+                    }
+                    geocode_message = "Coordinate mode — no geocode confidence score"
+
+            if analysis_point is not None:
+                overlap_sub = query_texas_subdivisions_for_point(
+                    round(float(analysis_point["lon"]), 6),
+                    round(float(analysis_point["lat"]), 6),
+                )
+                overlap_points = build_overlap_map_points(
+                    overlap_subdivisions=overlap_sub,
+                    subdivision_matches=subdivision_matches,
+                )
+                overlap_spend = build_address_overlap_spending_rows(
+                    overlap_subdivisions=overlap_sub,
+                    subdivision_matches=subdivision_matches,
+                    tfl_spending=tfl_spend,
+                )
+
+        # ── results panel ────────────────────────────────────────────
+        filtered = pd.DataFrame()
+        leads = pd.DataFrame()
+        with rcol:
+            if analysis_point is None:
+                st.markdown(
+                    '<div class="mp5-anchor-empty" style="text-align:center;padding:40px 16px">'
+                    "Enter an address or coordinates to generate overlap evidence.</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                # geocode badge
+                floor_val = float(st.session_state.get("map_geocode_floor", 82))
+                st.markdown(
+                    _geocode_badge(analysis_point.get("score"), floor_val),
+                    unsafe_allow_html=True,
+                )
+
+                active_basemap = MAP_BASEMAP_OPTIONS.get(
+                    st.session_state.get("map_basemap_label", ""), "gray-vector",
+                )
+                render_address_overlap_arcgis_map(
+                    float(analysis_point["lon"]),
+                    float(analysis_point["lat"]),
+                    str(analysis_point.get("matched_address", analysis_point.get("query", ""))),
+                    overlap_points,
+                    height=520,
+                    basemap=active_basemap,
+                )
+                if overlap_spend.empty:
+                    st.info("No matched entities at this location.")
+                else:
+                    rows = overlap_spend.copy()
+                    rows["Low"] = pd.to_numeric(rows["Low"], errors="coerce").fillna(0.0)
+                    rows["High"] = pd.to_numeric(rows["High"], errors="coerce").fillna(0.0)
+                    rows["Mid"] = pd.to_numeric(rows["Mid"], errors="coerce").fillna(0.0)
+                    rows["Entity Type"] = rows.get("Entity Type", "").fillna("").astype(str).str.strip()
+                    missing_type = rows["Entity Type"] == ""
+                    rows.loc[missing_type, "Entity Type"] = rows.loc[
+                        missing_type, "TFL Entity"
+                    ].map(classify_requested_entity_type)
+
+                    dist_lookup: dict[tuple, float] = {}
+                    if isinstance(overlap_points, pd.DataFrame) and not overlap_points.empty:
+                        for p in overlap_points.itertuples(index=False):
+                            key = (
+                                str(getattr(p, "subdivision_type", "")).strip(),
+                                str(getattr(p, "subdivision_name", "")).strip(),
+                                str(getattr(p, "subdivision_code", "")).strip(),
+                            )
+                            dist_lookup[key] = _miles(
+                                float(analysis_point["lat"]),
+                                float(analysis_point["lon"]),
+                                float(getattr(p, "lat", 0.0)),
+                                float(getattr(p, "lon", 0.0)),
+                            )
+
+                    rows["Distance Miles"] = rows.apply(
+                        lambda r: dist_lookup.get(
+                            (
+                                str(r.get("Subdivision Type", "")).strip(),
+                                str(r.get("Subdivision", "")).strip(),
+                                str(r.get("Code", "")).strip(),
+                            ),
+                            float("nan"),
+                        ),
+                        axis=1,
+                    )
+                    rows["Method Weight"] = rows["Match Method"].map(_method_weight)
+                    rows["Confidence Weight"] = rows["Match Confidence"].map(_confidence_weight)
+                    rows["Boundary Match"] = (
+                        rows["Match Method"].astype(str).str.lower().str.startswith("spatial boundary")
+                    )
+                    rows["Row Signal"] = (
+                        rows["High"]
+                        * rows["Method Weight"]
+                        * rows["Confidence Weight"]
+                        * rows["Distance Miles"].apply(
+                            lambda d: 0.72 if pd.isna(d) else 1.0 / (1.0 + (max(float(d), 0.0) / 70.0))
+                        )
+                    )
+
+                    # ── evidence filters (in left column) ────────────
+                    conf_opts = [
+                        c for c in ["High", "Medium", "Low", "Unknown"]
+                        if c in rows["Match Confidence"].astype(str).value_counts().to_dict()
+                    ]
+                    method_opts = sorted({
+                        str(v).strip()
+                        for v in rows["Match Method"].dropna().astype(str).tolist()
+                        if str(v).strip()
+                    })
+                    if conf_opts:
+                        st.session_state.map_overlap_confidence_filter = [
+                            str(v) for v in st.session_state.get("map_overlap_confidence_filter", [])
+                            if str(v) in conf_opts
+                        ] or list(conf_opts)
+                    if method_opts:
+                        st.session_state.map_overlap_method_filter = [
+                            str(v) for v in st.session_state.get("map_overlap_method_filter", [])
+                            if str(v) in method_opts
+                        ] or list(method_opts)
+
+                    with lcol:
+                        st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
+                        st.markdown(
+                            '<div class="mp5-kicker" style="margin-bottom:4px">Evidence Filters</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.selectbox(
+                            "Sort",
+                            ["Signal Score", "Highest High", "Closest Distance", "Entity A-Z"],
+                            key="map_overlap_sort_v4",
+                        )
+                        st.multiselect("Confidence", conf_opts, key="map_overlap_confidence_filter")
+                        st.multiselect("Method", method_opts, key="map_overlap_method_filter")
+                        st.text_input("Entity contains", key="map_overlap_entity_filter")
+                        st.checkbox(
+                            "Focus active subdivision",
+                            key="map_overlap_focus_selected_subdivision",
+                            disabled=not bool(selected_name),
+                        )
+                        st.checkbox(
+                            "Focus context entities only",
+                            key="map_overlap_focus_selected_clients",
+                            disabled=not bool(selected_clients),
+                        )
+
+                    # ── apply evidence filters ───────────────────────
+                    filtered = rows.copy()
+                    filtered = filtered[
+                        filtered["Match Confidence"].astype(str).isin(
+                            st.session_state.get("map_overlap_confidence_filter", []),
+                        )
+                    ].copy()
+                    filtered = filtered[
+                        filtered["Match Method"].astype(str).isin(
+                            st.session_state.get("map_overlap_method_filter", []),
+                        )
+                    ].copy()
+                    q_entity = str(st.session_state.get("map_overlap_entity_filter", "")).strip().lower()
+                    if q_entity:
+                        filtered = filtered[
+                            filtered["TFL Entity"].astype(str).str.lower().str.contains(q_entity, na=False)
+                        ].copy()
+                    min_high = float(st.session_state.get("map_probe_min_high", 0.0) or 0.0)
+                    if min_high > 0:
+                        filtered = filtered[filtered["High"] >= min_high].copy()
+                    dist_cap = float(st.session_state.get("map_distance_cap_miles", 160) or 160)
+                    filtered = filtered[
+                        filtered["Distance Miles"].isna()
+                        | (pd.to_numeric(filtered["Distance Miles"], errors="coerce").fillna(dist_cap + 1) <= dist_cap)
+                    ].copy()
+                    if st.session_state.get("map_overlap_focus_selected_subdivision", False) and selected_name:
+                        filtered = filtered[
+                            (filtered["Subdivision Type"].astype(str) == selected_type)
+                            & (filtered["Subdivision"].astype(str) == selected_name)
+                        ].copy()
+                    if st.session_state.get("map_overlap_focus_selected_clients", False) and selected_client_set:
+                        filtered = filtered[
+                            filtered["TFL Entity"].astype(str).str.lower().isin(selected_client_set)
+                        ].copy()
+
+                    sort_mode = st.session_state.get("map_overlap_sort_v4", "Signal Score")
+                    if sort_mode == "Highest High":
+                        filtered = filtered.sort_values(["High", "Row Signal"], ascending=[False, False])
+                    elif sort_mode == "Closest Distance":
+                        filtered = filtered.sort_values(
+                            ["Distance Miles", "Row Signal"],
+                            ascending=[True, False],
+                            na_position="last",
+                        )
+                    elif sort_mode == "Entity A-Z":
+                        filtered = filtered.sort_values(["TFL Entity", "High"], ascending=[True, False])
+                    else:
+                        filtered = filtered.sort_values(["Row Signal", "High"], ascending=[False, False])
+
+                    # ── evidence KPIs ────────────────────────────────
+                    if filtered.empty:
+                        st.warning("All overlap rows were removed by current filters.")
+                    else:
+                        n_filtered = len(filtered)
+                        n_entities = int(filtered["TFL Entity"].astype(str).nunique())
+                        filtered_high = float(filtered["High"].sum())
+                        hc_share = float((filtered["Match Confidence"].astype(str) == "High").mean())
+                        boundary_share = float(filtered["Boundary Match"].fillna(False).astype(bool).mean())
+                        _avg_signal = float(filtered["Row Signal"].mean()) if "Row Signal" in filtered.columns else 0.0
+                        _max_signal = float(filtered["Row Signal"].max()) if "Row Signal" in filtered.columns else 0.0
+
+                        # composite evidence quality score (0-100)
+                        _eq_score = min(100.0, hc_share * 40 + boundary_share * 30 + min(_avg_signal / max(_max_signal, 1) * 30, 30))
+                        _eq_pct = max(0, min(100, int(round(_eq_score))))
+                        _eq_dash = int(round(251.2 * (1 - _eq_pct / 100)))
+                        _eq_color = "#6ee7b7" if _eq_pct >= 65 else ("#fcd34d" if _eq_pct >= 40 else "#fca5a5")
+
+                        # quality narrative
+                        if hc_share >= 0.6 and boundary_share >= 0.5:
+                            quality_note = "Strong evidence mix — majority high-confidence and boundary-matched."
+                            _eq_label = "Strong"
+                        elif hc_share >= 0.4:
+                            quality_note = "Moderate evidence quality. Review low-confidence rows before promoting."
+                            _eq_label = "Moderate"
+                        else:
+                            quality_note = "Weak evidence mix — most rows lack high confidence. Apply stricter filters."
+                            _eq_label = "Weak"
+
+                        # evidence quality meter + narrative side-by-side
+                        _meter_left, _meter_right = st.columns([1, 3], gap="small")
+                        with _meter_left:
+                            st.markdown(f"""
+<div class="mp5-meter">
+  <svg viewBox="0 0 90 90" style="width:100%;max-width:110px;display:block;margin:auto">
+    <circle cx="45" cy="45" r="40" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="7"/>
+    <circle cx="45" cy="45" r="40" fill="none" stroke="{_eq_color}" stroke-width="7"
+            stroke-dasharray="251.2" stroke-dashoffset="{_eq_dash}"
+            stroke-linecap="round" transform="rotate(-90 45 45)"
+            style="transition:stroke-dashoffset .6s ease"/>
+    <text x="45" y="42" text-anchor="middle" fill="{_eq_color}" font-size="18" font-weight="700">{_eq_pct}</text>
+    <text x="45" y="56" text-anchor="middle" fill="rgba(210,230,245,.6)" font-size="8">{_eq_label}</text>
+  </svg>
+  <div style="text-align:center;font-size:.7rem;color:rgba(210,230,245,.55);margin-top:2px">Evidence Quality</div>
+</div>
+""", unsafe_allow_html=True)
+                        with _meter_right:
+                            st.markdown(f'<div class="mp5-narrative" style="margin-top:12px">{quality_note}</div>', unsafe_allow_html=True)
+                            # breakdown bars
+                            st.markdown(f"""
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px">
+  <div style="flex:1;min-width:120px">
+    <div style="font-size:.7rem;color:rgba(210,230,245,.55);margin-bottom:2px">High-Confidence Share</div>
+    <div class="mp5-health-track"><div class="mp5-health-fill" style="width:{hc_share*100:.0f}%;background:{'#6ee7b7' if hc_share>=0.6 else '#fcd34d' if hc_share>=0.3 else '#fca5a5'}"></div></div>
+    <div style="font-size:.72rem;color:rgba(210,230,245,.7);margin-top:1px">{hc_share:.0%}</div>
+  </div>
+  <div style="flex:1;min-width:120px">
+    <div style="font-size:.7rem;color:rgba(210,230,245,.55);margin-bottom:2px">Boundary Match Share</div>
+    <div class="mp5-health-track"><div class="mp5-health-fill" style="width:{boundary_share*100:.0f}%;background:{'#6ee7b7' if boundary_share>=0.5 else '#fcd34d' if boundary_share>=0.3 else '#fca5a5'}"></div></div>
+    <div style="font-size:.72rem;color:rgba(210,230,245,.7);margin-top:1px">{boundary_share:.0%}</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+                        st.markdown(
+                            f"""
+<div class="mp5-metrics">
+  <div class="mp5-card"><div class="mp5-card-lbl">Evidence Rows</div><div class="mp5-card-val">{n_filtered:,}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Unique Entities</div><div class="mp5-card-val">{n_entities:,}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Filtered High</div><div class="mp5-card-val">{fmt_usd(filtered_high)}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">High-Conf Share</div><div class="mp5-card-val">{hc_share:.0%}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Boundary Share</div><div class="mp5-card-val">{boundary_share:.0%}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Avg Signal</div><div class="mp5-card-val">{_avg_signal:.1f}</div></div>
+</div>
+""",
+                            unsafe_allow_html=True,
+                        )
+
+                    # ── evidence table ────────────────────────────────
+                    probe_view = filtered[
+                        [
+                            "Subdivision Type", "Subdivision", "Entity Type",
+                            "TFL Entity", "Match Method", "Match Confidence",
+                            "Low", "High", "Mid", "Distance Miles", "Row Signal",
+                        ]
+                    ].rename(columns={"Mid": "Midpoint"})
+                    st.dataframe(probe_view, use_container_width=True, height=300, hide_index=True)
+                    _ = export_dataframe(filtered, "address_forensics_rows.csv", label="Download Evidence CSV")
+
+                    # ── signal scatter chart ─────────────────────────
+                    if not filtered.empty and len(filtered) > 1:
+                        chart_df = filtered.copy()
+                        chart_df["Confidence"] = chart_df["Match Confidence"].astype(str)
+                        fig_scatter = px.scatter(
+                            chart_df,
+                            x="Distance Miles",
+                            y="Row Signal",
+                            size="High",
+                            color="Confidence",
+                            hover_name="TFL Entity",
+                            color_discrete_map={
+                                "High": "#6ee7b7",
+                                "Medium": "#fcd34d",
+                                "Low": "#fca5a5",
+                                "Unknown": "#94a3b8",
+                            },
+                            title="Evidence Quality · Signal vs Distance",
+                            labels={
+                                "Row Signal": "Row Signal Score",
+                                "Distance Miles": "Distance (mi)",
+                            },
+                        )
+                        fig_scatter.update_layout(
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font_color="rgba(210,230,245,.88)",
+                            title_font_size=13,
+                            margin=dict(l=10, r=10, t=36, b=10),
+                            height=260,
+                            legend=dict(
+                                orientation="h", yanchor="bottom", y=1.02,
+                                xanchor="right", x=1,
+                            ),
+                        )
+                        fig_scatter.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,.06)")
+                        fig_scatter.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,.06)")
+                        st.markdown('<div class="mp5-chart-wrap">', unsafe_allow_html=True)
+                        st.plotly_chart(fig_scatter, use_container_width=True, key="mp5_evidence_scatter")
+                        st.markdown("</div>", unsafe_allow_html=True)
+
+                    # ── confidence × method heatmap + entity-type spend ──
+                    if not filtered.empty and len(filtered) > 2:
+                        _fc_left, _fc_right = st.columns(2, gap="medium")
+                        with _fc_left:
+                            # Heatmap — confidence vs method row counts
+                            heat_df = (
+                                filtered.groupby(
+                                    [filtered["Match Confidence"].astype(str), filtered["Match Method"].astype(str)],
+                                )
+                                .size()
+                                .reset_index(name="Count")
+                            )
+                            heat_df.columns = ["Confidence", "Method", "Count"]
+                            if len(heat_df) > 1:
+                                heat_pivot = heat_df.pivot_table(
+                                    index="Confidence", columns="Method", values="Count", fill_value=0,
+                                )
+                                fig_heat = px.imshow(
+                                    heat_pivot,
+                                    color_continuous_scale="tealgrn",
+                                    title="Confidence × Method (row count)",
+                                    aspect="auto",
+                                )
+                                fig_heat.update_layout(
+                                    paper_bgcolor="rgba(0,0,0,0)",
+                                    plot_bgcolor="rgba(0,0,0,0)",
+                                    font_color="rgba(210,230,245,.88)",
+                                    title_font_size=13,
+                                    margin=dict(l=10, r=10, t=36, b=10),
+                                    height=280,
+                                    coloraxis_colorbar=dict(thickness=10, len=0.5),
+                                )
+                                st.markdown('<div class="mp5-chart-wrap">', unsafe_allow_html=True)
+                                st.plotly_chart(fig_heat, use_container_width=True, key="mp5_conf_method_heat")
+                                st.markdown('</div>', unsafe_allow_html=True)
+
+                        with _fc_right:
+                            # Grouped bar — spend by entity type
+                            etype_df = (
+                                filtered.groupby(filtered["Entity Type"].astype(str).str.strip(), as_index=False)
+                                .agg(Low=("Low", "sum"), High=("High", "sum"))
+                            )
+                            etype_df.columns = ["Entity Type", "Low", "High"]
+                            etype_df = etype_df[etype_df["Entity Type"] != ""].sort_values("High", ascending=False).head(15)
+                            if not etype_df.empty and len(etype_df) > 1:
+                                etype_melt = etype_df.melt(
+                                    id_vars="Entity Type", value_vars=["Low", "High"],
+                                    var_name="Estimate", value_name="Amount",
+                                )
+                                fig_etype = px.bar(
+                                    etype_melt,
+                                    x="Entity Type",
+                                    y="Amount",
+                                    color="Estimate",
+                                    barmode="group",
+                                    color_discrete_map={"Low": "#94a3b8", "High": "#6ee7b7"},
+                                    title="Spend by Entity Type",
+                                )
+                                fig_etype.update_layout(
+                                    paper_bgcolor="rgba(0,0,0,0)",
+                                    plot_bgcolor="rgba(0,0,0,0)",
+                                    font_color="rgba(210,230,245,.88)",
+                                    title_font_size=13,
+                                    margin=dict(l=10, r=10, t=36, b=10),
+                                    height=280,
+                                    legend=dict(
+                                        orientation="h", yanchor="bottom", y=1.02,
+                                        xanchor="right", x=1,
+                                    ),
+                                )
+                                fig_etype.update_xaxes(showgrid=False, tickangle=-35)
+                                fig_etype.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,.06)")
+                                st.markdown('<div class="mp5-chart-wrap">', unsafe_allow_html=True)
+                                st.plotly_chart(fig_etype, use_container_width=True, key="mp5_etype_spend")
+                                st.markdown('</div>', unsafe_allow_html=True)
+
+                    # ═══ RANKED LEADS ════════════════════════════════
+                    leads = (
+                        filtered.groupby("TFL Entity", as_index=False).agg(
+                            EntityType=("Entity Type", lambda s: next((str(v).strip() for v in s if str(v).strip()), "")),
+                            Low=("Low", "sum"),
+                            High=("High", "sum"),
+                            Midpoint=("Mid", "sum"),
+                            OverlapRows=("TFL Entity", "size"),
+                            HighRows=("Match Confidence", lambda s: int((s.astype(str) == "High").sum())),
+                            BoundaryRows=("Boundary Match", lambda s: int(pd.Series(s).fillna(False).astype(bool).sum())),
+                            AvgDistance=("Distance Miles", "mean"),
+                            SignalScore=("Row Signal", "sum"),
+                        )
+                    )
+                    if not leads.empty:
+                        leads["HighShare"] = leads["HighRows"] / leads["OverlapRows"].replace(0, 1)
+                        leads["BoundaryShare"] = leads["BoundaryRows"] / leads["OverlapRows"].replace(0, 1)
+                        max_signal = float(leads["SignalScore"].max() or 0.0)
+                        leads["SignalNorm"] = (leads["SignalScore"] / max_signal * 100.0) if max_signal > 0 else 0.0
+                        leads["ProximityScore"] = leads["AvgDistance"].apply(
+                            lambda d: 44.0 if pd.isna(d) else (100.0 / (1.0 + (max(float(d), 0.0) / 55.0)))
+                        )
+                        leads["LeadScore"] = (
+                            leads["SignalNorm"] * 0.55
+                            + leads["HighShare"] * 100.0 * 0.2
+                            + leads["BoundaryShare"] * 100.0 * 0.15
+                            + leads["ProximityScore"] * 0.1
+                        )
+                        leads["Priority"] = leads["LeadScore"].map(_priority_from_score)
+                        leads = leads.sort_values(
+                            ["LeadScore", "SignalScore", "High"],
+                            ascending=[False, False, False],
+                        )
+
+                        st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
+                        st.markdown(
+                            '<div class="mp5-section-hero">' 
+                            '<span class="mp5-section-num">2B</span>'
+                            '<span style="font-size:1.05rem;font-weight:600;">Ranked Leads</span>'
+                            '<span style="font-size:.78rem;color:rgba(210,230,245,.55);margin-left:8px;">'
+                            'Entities ranked by composite lead score — promote top signals to Case Docket</span>'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        # lead tier summary
+                        t1 = int((leads["Priority"] == "Tier 1").sum())
+                        t2 = int((leads["Priority"] == "Tier 2").sum())
+                        t3 = int((leads["Priority"] == "Tier 3").sum())
+                        _top_lead_name = str(leads.iloc[0]["TFL Entity"]) if not leads.empty else "—"
+                        _top_lead_score = float(leads.iloc[0]["LeadScore"]) if not leads.empty else 0.0
+                        st.markdown(
+                            f"""
+<div class="mp5-metrics">
+  <div class="mp5-card"><div class="mp5-card-lbl">Total Leads</div><div class="mp5-card-val">{len(leads):,}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Tier 1</div><div class="mp5-card-val mp5-tier1">{t1}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Tier 2</div><div class="mp5-card-val mp5-tier2">{t2}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Tier 3</div><div class="mp5-card-val mp5-tier3">{t3}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Top Lead</div><div class="mp5-card-val" style="font-size:.82rem">{_top_lead_name[:28]}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Top Score</div><div class="mp5-card-val">{_top_lead_score:.1f}</div></div>
+</div>
+""",
+                            unsafe_allow_html=True,
+                        )
+
+                        st.dataframe(
+                            leads[
+                                [
+                                    "Priority", "TFL Entity", "EntityType",
+                                    "Low", "High", "Midpoint", "LeadScore",
+                                    "SignalScore", "HighShare", "BoundaryShare",
+                                    "AvgDistance", "OverlapRows",
+                                ]
+                            ].rename(columns={
+                                "EntityType": "Entity Type",
+                                "LeadScore": "Lead Score",
+                                "SignalScore": "Signal Score",
+                                "HighShare": "High Conf %",
+                                "BoundaryShare": "Boundary %",
+                                "AvgDistance": "Avg Dist (mi)",
+                                "OverlapRows": "Rows",
+                            }),
+                            use_container_width=True,
+                            height=260,
+                            hide_index=True,
+                        )
+                        _ = export_dataframe(leads, "address_ranked_leads.csv", label="Download Ranked Leads CSV")
+
+                        # ── lead score bar chart ─────────────────────
+                        if len(leads) > 1:
+                            chart_leads = leads.head(20).copy()
+                            chart_leads["Entity"] = chart_leads["TFL Entity"].astype(str).str[:40]
+                            fig_leads = px.bar(
+                                chart_leads,
+                                x="LeadScore",
+                                y="Entity",
+                                color="Priority",
+                                orientation="h",
+                                color_discrete_map={
+                                    "Tier 1": "#6ee7b7",
+                                    "Tier 2": "#fcd34d",
+                                    "Tier 3": "#fca5a5",
+                                },
+                                title="Top 20 Leads by Score",
+                            )
+                            fig_leads.update_layout(
+                                paper_bgcolor="rgba(0,0,0,0)",
+                                plot_bgcolor="rgba(0,0,0,0)",
+                                font_color="rgba(210,230,245,.88)",
+                                title_font_size=13,
+                                margin=dict(l=10, r=10, t=36, b=10),
+                                height=max(220, len(chart_leads) * 22 + 60),
+                                yaxis=dict(autorange="reversed"),
+                                legend=dict(
+                                    orientation="h", yanchor="bottom", y=1.02,
+                                    xanchor="right", x=1,
+                                ),
+                            )
+                            fig_leads.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,.06)")
+                            fig_leads.update_yaxes(showgrid=False)
+                            st.markdown('<div class="mp5-chart-wrap">', unsafe_allow_html=True)
+                            st.plotly_chart(fig_leads, use_container_width=True, key="mp5_lead_bar")
+                            st.markdown("</div>", unsafe_allow_html=True)
+
+                        # ── promote + open ───────────────────────────
+                        st.markdown(
+                            '<div class="mp5-action-strip" style="margin-top:8px">'
+                            '<span style="font-weight:600;font-size:.82rem;">Actions</span>'
+                            '<span style="font-size:.72rem;color:rgba(210,230,245,.5);margin-left:6px">'
+                            'Promote high-signal leads to Case Docket or open in Client Look-Up</span>'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+                        add_opts = [
+                            str(v).strip()
+                            for v in leads["TFL Entity"].dropna().astype(str).tolist()
+                            if str(v).strip()
+                        ]
+                        a1, a2 = st.columns([3.0, 1.0], gap="small")
+                        with a1:
+                            add_pick = st.multiselect(
+                                "Promote to Case Docket",
+                                add_opts,
+                                key="map_watch_add_from_probe_v4",
+                            )
+                        with a2:
+                            add_btn = st.button("Promote", key="map_watch_add_btn_v4", use_container_width=True)
+                        if add_btn and add_pick:
+                            watch = st.session_state.get("map_watchlist", [])
+                            existing = {
+                                str(r.get("TFL Entity", "")).strip().lower()
+                                for r in watch if isinstance(r, dict)
+                            }
+                            stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                            for entity in add_pick:
+                                k = str(entity).strip().lower()
+                                if not k or k in existing:
+                                    continue
+                                row = leads[leads["TFL Entity"].astype(str) == str(entity)].head(1)
+                                if row.empty:
+                                    continue
+                                rec = row.iloc[0]
+                                watch.append({
+                                    "Added": stamp,
+                                    "TFL Entity": str(entity).strip(),
+                                    "Priority": str(rec.get("Priority", "Tier 3")),
+                                    "Lead Score": float(rec.get("LeadScore", 0.0) or 0.0),
+                                    "Signal Score": float(rec.get("SignalScore", 0.0) or 0.0),
+                                    "High": float(rec.get("High", 0.0) or 0.0),
+                                    "High Confidence Share": float(rec.get("HighShare", 0.0) or 0.0),
+                                    "Boundary Share": float(rec.get("BoundaryShare", 0.0) or 0.0),
+                                    "Avg Distance (mi)": float(rec.get("AvgDistance", 0.0) or 0.0),
+                                    "Overlap Rows": int(rec.get("OverlapRows", 0) or 0),
+                                    "Source Query": str(analysis_point.get("query", "")),
+                                })
+                                existing.add(k)
+                            st.session_state.map_watchlist = watch
+                            st.success(f"Case Docket → {len(watch):,} entities.")
+
+                        open_entity = (
+                            st.selectbox(
+                                "Open in Client Look-Up",
+                                add_opts,
+                                key="map_open_client_pick_v4",
+                            )
+                            if add_opts
+                            else ""
+                        )
+                        if st.button("Open Client", key="map_open_client_from_probe_btn_v4", use_container_width=True) and open_entity:
+                            _open_client(open_entity)
+
+        # ── batch triage ─────────────────────────────────────────────
+        with st.expander("Batch Address Triage", expanded=False):
+            st.text_area(
+                "Street addresses (one per line)",
+                key="map_batch_input_v4",
+                height=130,
+                placeholder="1100 Congress Ave, Austin, TX\n500 E San Antonio Ave, El Paso, TX",
+            )
+            bb1, bb2 = st.columns([1.3, 1.0], gap="small")
+            with bb1:
+                st.number_input("Max addresses", min_value=1, max_value=20, step=1, key="map_batch_max_v4")
+            with bb2:
+                run_batch = st.button("Run Batch Triage", key="map_batch_run_btn_v4", use_container_width=True)
+
+            if run_batch:
+                raw_lines = [
+                    str(v).strip()
+                    for v in str(st.session_state.get("map_batch_input_v4", "")).splitlines()
+                ]
+                deduped: list[str] = []
+                seen: set[str] = set()
+                for line in raw_lines:
+                    key = line.lower()
+                    if line and key not in seen:
+                        deduped.append(line)
+                        seen.add(key)
+                deduped = deduped[: int(st.session_state.get("map_batch_max_v4", 8) or 8)]
+
+                batch_rows: list[dict] = []
+                for addr in deduped:
+                    geo = geocode_address_arcgis(addr)
+                    if not geo:
+                        batch_rows.append({
+                            "Input": addr,
+                            "Status": "Geocode Failed",
+                            "Matched Address": "",
+                            "Geocode Score": 0.0,
+                            "Overlap Rows": 0,
+                            "Unique Entities": 0,
+                            "Combined High": 0.0,
+                            "High Confidence Share": 0.0,
+                            "Triage Score": 0.0,
+                            "Top Entity": "",
+                        })
+                        continue
+
+                    lon_i = float(geo.get("lon", 0.0))
+                    lat_i = float(geo.get("lat", 0.0))
+                    overlap_sub_i = query_texas_subdivisions_for_point(round(lon_i, 6), round(lat_i, 6))
+                    overlap_rows_i = build_address_overlap_spending_rows(
+                        overlap_subdivisions=overlap_sub_i,
+                        subdivision_matches=subdivision_matches,
+                        tfl_spending=tfl_spend,
+                    )
+                    if overlap_rows_i.empty:
+                        batch_rows.append({
+                            "Input": addr,
+                            "Status": "No Overlap",
+                            "Matched Address": str(geo.get("matched_address", addr)).strip(),
+                            "Geocode Score": float(geo.get("score", 0.0) or 0.0),
+                            "Overlap Rows": 0,
+                            "Unique Entities": 0,
+                            "Combined High": 0.0,
+                            "High Confidence Share": 0.0,
+                            "Triage Score": 0.0,
+                            "Top Entity": "",
+                        })
+                        continue
+
+                    overlap_rows_i["High"] = pd.to_numeric(
+                        overlap_rows_i.get("High", 0.0), errors="coerce",
+                    ).fillna(0.0)
+                    high_total_i = float(overlap_rows_i["High"].sum())
+                    entity_totals_i = (
+                        overlap_rows_i.groupby("TFL Entity", as_index=False)["High"]
+                        .sum()
+                        .sort_values("High", ascending=False)
+                    )
+                    top_entity_i = str(entity_totals_i.iloc[0]["TFL Entity"]).strip() if not entity_totals_i.empty else ""
+                    high_share_i = float((overlap_rows_i["Match Confidence"].astype(str) == "High").mean())
+                    triage_i = (
+                        (math.log10(high_total_i + 1.0) * 34.0)
+                        + (high_share_i * 45.0)
+                        + (int(overlap_rows_i["TFL Entity"].astype(str).nunique()) * 1.7)
+                    )
+                    batch_rows.append({
+                        "Input": addr,
+                        "Status": "Matched",
+                        "Matched Address": str(geo.get("matched_address", addr)).strip(),
+                        "Geocode Score": float(geo.get("score", 0.0) or 0.0),
+                        "Overlap Rows": int(len(overlap_rows_i)),
+                        "Unique Entities": int(overlap_rows_i["TFL Entity"].astype(str).nunique()),
+                        "Combined High": high_total_i,
+                        "High Confidence Share": high_share_i,
+                        "Triage Score": float(triage_i),
+                        "Top Entity": top_entity_i,
+                    })
+
+                st.session_state.map_batch_results_v4 = batch_rows
+
+            batch_results = st.session_state.get("map_batch_results_v4", [])
+            if isinstance(batch_results, list) and batch_results:
+                batch_df = pd.DataFrame(batch_results)
+                batch_df["Triage Score"] = pd.to_numeric(batch_df.get("Triage Score", 0.0), errors="coerce").fillna(0.0)
+                batch_df["Combined High"] = pd.to_numeric(batch_df.get("Combined High", 0.0), errors="coerce").fillna(0.0)
+                batch_df = batch_df.sort_values(
+                    ["Triage Score", "Combined High"], ascending=[False, False],
+                ).reset_index(drop=True)
+                st.dataframe(batch_df, use_container_width=True, height=250, hide_index=True)
+                _ = export_dataframe(batch_df, "batch_address_triage.csv", label="Download Batch Triage CSV")
+                top = batch_df.iloc[0]
+                can_promote = str(top.get("Status", "")).strip().lower() == "matched"
+                if st.button(
+                    "Use top result in Address Forensics",
+                    key="map_batch_promote_top_btn_v4",
+                    disabled=not can_promote,
+                ):
+                    st.session_state.map_overlap_input_mode = "Street Address"
+                    st.session_state.map_overlap_address_input = str(top.get("Input", "")).strip()
+                    st.session_state.map_overlap_address_query = str(top.get("Input", "")).strip()
+                    st.rerun()
+
+    # ══════════════════════════════════════════════════════════════════
+    # TAB 3 — CASE DOCKET
+    # ══════════════════════════════════════════════════════════════════
+    with tab_docket:
+        st.markdown(
+            '<div class="mp5-section-hero">'
+            '<span class="mp5-section-num">3</span>'
+            '<span style="font-size:1.08rem;font-weight:600;">Case Docket</span>'
+            '<span style="font-size:.78rem;color:rgba(210,230,245,.55);margin-left:8px;">'
+            'Track promoted entities through investigation stages — assign status, add notes, and manage your queue</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        watch = st.session_state.get("map_watchlist", [])
+        if not isinstance(watch, list) or not watch:
+            st.markdown(
+                '<div class="mp5-anchor-empty" style="text-align:center;padding:30px 16px">'
+                '<div style="font-size:1.3rem;margin-bottom:8px;">📋</div>'
+                "Case Docket is empty. Promote entities from Address Forensics to begin."
+                '<div style="font-size:.72rem;color:rgba(210,230,245,.45);margin-top:6px">'
+                "Use the Ranked Leads section in Address Forensics to promote high-signal entities here.</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            wd = pd.DataFrame(watch).copy()
+            defaults_queue = {
+                "Added": "",
+                "TFL Entity": "",
+                "Priority": "Tier 3",
+                "Lead Score": 0.0,
+                "Signal Score": 0.0,
+                "High": 0.0,
+                "High Confidence Share": 0.0,
+                "Boundary Share": 0.0,
+                "Avg Distance (mi)": float("nan"),
+                "Overlap Rows": 0,
+                "Source Query": "",
+                "Status": "New",
+                "Notes": "",
+            }
+            for c_name, c_default in defaults_queue.items():
+                if c_name not in wd.columns:
+                    wd[c_name] = c_default
+            wd["Status"] = wd["Status"].fillna("New").replace("", "New")
+            wd["Notes"] = wd["Notes"].fillna("")
+            wd["Lead Score"] = pd.to_numeric(wd["Lead Score"], errors="coerce").fillna(0.0)
+            wd["Signal Score"] = pd.to_numeric(wd["Signal Score"], errors="coerce").fillna(0.0)
+            wd["High"] = pd.to_numeric(wd["High"], errors="coerce").fillna(0.0)
+            wd["High Confidence Share"] = pd.to_numeric(wd["High Confidence Share"], errors="coerce").fillna(0.0)
+            wd["Boundary Share"] = pd.to_numeric(wd["Boundary Share"], errors="coerce").fillna(0.0)
+            wd["Avg Distance (mi)"] = pd.to_numeric(wd["Avg Distance (mi)"], errors="coerce")
+            wd["Overlap Rows"] = pd.to_numeric(wd["Overlap Rows"], errors="coerce").fillna(0).astype(int)
+            wd["Added TS"] = pd.to_datetime(wd["Added"], errors="coerce")
+
+            p_opts = [
+                p for p in ["Tier 1", "Tier 2", "Tier 3"]
+                if p in wd["Priority"].astype(str).tolist()
+            ]
+            if not st.session_state.get("map_queue_priority_filter_v4"):
+                st.session_state.map_queue_priority_filter_v4 = list(dict.fromkeys(p_opts))
+            st.session_state.map_queue_priority_filter_v4 = [
+                str(v) for v in st.session_state.get("map_queue_priority_filter_v4", [])
+                if str(v) in p_opts
+            ] or list(dict.fromkeys(p_opts))
+
+            # status options
+            _status_opts = ["New", "Investigating", "Resolved"]
+            _s_opts_present = [s for s in _status_opts if s in wd["Status"].astype(str).tolist()] or _status_opts
+            if not st.session_state.get("map_queue_status_filter_v4"):
+                st.session_state.map_queue_status_filter_v4 = list(_s_opts_present)
+
+            q1, q2, q3, q4 = st.columns([1.2, 1.0, 1.0, 0.8], gap="small")
+            with q1:
+                st.multiselect("Priority", list(dict.fromkeys(p_opts)), key="map_queue_priority_filter_v4")
+            with q2:
+                st.multiselect("Status", _status_opts, key="map_queue_status_filter_v4")
+            with q3:
+                st.text_input("Search entity / query", key="map_queue_search_v4")
+            with q4:
+                st.selectbox("Sort", ["Lead Score", "Signal Score", "Highest High", "Newest"], key="map_queue_sort_v4")
+
+            qv = wd.copy()
+            qv = qv[
+                qv["Priority"].astype(str).isin(
+                    st.session_state.get("map_queue_priority_filter_v4", []),
+                )
+            ].copy()
+            _sel_statuses = st.session_state.get("map_queue_status_filter_v4", _status_opts)
+            if _sel_statuses:
+                qv = qv[qv["Status"].astype(str).isin(_sel_statuses)].copy()
+            q_text = str(st.session_state.get("map_queue_search_v4", "")).strip().lower()
+            if q_text:
+                qv = qv[
+                    qv["TFL Entity"].astype(str).str.lower().str.contains(q_text, na=False)
+                    | qv["Source Query"].astype(str).str.lower().str.contains(q_text, na=False)
+                ].copy()
+
+            q_sort = st.session_state.get("map_queue_sort_v4", "Lead Score")
+            if q_sort == "Signal Score":
+                qv = qv.sort_values(["Signal Score", "Lead Score", "High"], ascending=[False, False, False])
+            elif q_sort == "Highest High":
+                qv = qv.sort_values(["High", "Lead Score"], ascending=[False, False])
+            elif q_sort == "Newest":
+                qv = qv.sort_values(["Added TS", "Lead Score"], ascending=[False, False], na_position="last")
+            else:
+                qv = qv.sort_values(["Lead Score", "Signal Score", "High"], ascending=[False, False, False])
+            qv = qv.reset_index(drop=True)
+
+            # ── docket KPIs ──────────────────────────────────────────
+            docket_entities = int(qv["TFL Entity"].astype(str).nunique()) if not qv.empty else 0
+            docket_t1 = int((qv["Priority"].astype(str) == "Tier 1").sum()) if not qv.empty else 0
+            docket_avg = float(qv["Lead Score"].mean()) if not qv.empty else 0.0
+            docket_high = float(qv["High"].sum()) if not qv.empty else 0.0
+            _d_new = int((qv["Status"].astype(str) == "New").sum()) if not qv.empty else 0
+            _d_investigating = int((qv["Status"].astype(str) == "Investigating").sum()) if not qv.empty else 0
+            _d_resolved = int((qv["Status"].astype(str) == "Resolved").sum()) if not qv.empty else 0
+
+            st.markdown(
+                f"""
+<div class="mp5-metrics">
+  <div class="mp5-card"><div class="mp5-card-lbl">Queued Entities</div><div class="mp5-card-val">{docket_entities:,}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Tier 1</div><div class="mp5-card-val mp5-tier1">{docket_t1:,}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Avg Lead Score</div><div class="mp5-card-val">{docket_avg:.1f}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl">Total High</div><div class="mp5-card-val">{fmt_usd(docket_high)}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl"><span class="mp5-status mp5-status-new">New</span></div><div class="mp5-card-val">{_d_new}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl"><span class="mp5-status mp5-status-investigating">Investigating</span></div><div class="mp5-card-val">{_d_investigating}</div></div>
+  <div class="mp5-card"><div class="mp5-card-lbl"><span class="mp5-status mp5-status-resolved">Resolved</span></div><div class="mp5-card-val">{_d_resolved}</div></div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+
+            # ── docket priority distribution chart ───────────────────
+            if not qv.empty and len(qv) > 1:
+                tier_counts = qv["Priority"].value_counts().reset_index()
+                tier_counts.columns = ["Priority", "Count"]
+                fig_tier = px.pie(
+                    tier_counts,
+                    names="Priority",
+                    values="Count",
+                    color="Priority",
+                    color_discrete_map={
+                        "Tier 1": "#6ee7b7",
+                        "Tier 2": "#fcd34d",
+                        "Tier 3": "#fca5a5",
+                    },
+                    title="Docket Priority Mix",
+                    hole=0.45,
+                )
+                fig_tier.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font_color="rgba(210,230,245,.88)",
+                    title_font_size=13,
+                    margin=dict(l=10, r=10, t=36, b=10),
+                    height=220,
+                    showlegend=True,
+                    legend=dict(
+                        orientation="h", yanchor="bottom", y=-0.15,
+                        xanchor="center", x=0.5,
+                    ),
+                )
+                st.markdown('<div class="mp5-chart-wrap">', unsafe_allow_html=True)
+                st.plotly_chart(fig_tier, use_container_width=True, key="mp5_docket_pie")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            # ── docket scatter + source bar ──────────────────────────
+            if not qv.empty and len(qv) > 1:
+                _dq_left, _dq_right = st.columns(2, gap="medium")
+                with _dq_left:
+                    # Scatter — Lead Score vs High estimate
+                    fig_dq_scatter = px.scatter(
+                        qv,
+                        x="High",
+                        y="Lead Score",
+                        size="Overlap Rows",
+                        color="Priority",
+                        hover_name="TFL Entity",
+                        color_discrete_map={
+                            "Tier 1": "#6ee7b7",
+                            "Tier 2": "#fcd34d",
+                            "Tier 3": "#fca5a5",
+                        },
+                        title="Lead Score vs High Estimate",
+                        labels={"High": "High Estimate ($)", "Lead Score": "Lead Score"},
+                    )
+                    fig_dq_scatter.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font_color="rgba(210,230,245,.88)",
+                        title_font_size=13,
+                        margin=dict(l=10, r=10, t=36, b=10),
+                        height=280,
+                        legend=dict(
+                            orientation="h", yanchor="bottom", y=1.02,
+                            xanchor="right", x=1,
+                        ),
+                    )
+                    fig_dq_scatter.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,.06)")
+                    fig_dq_scatter.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,.06)")
+                    st.markdown('<div class="mp5-chart-wrap">', unsafe_allow_html=True)
+                    st.plotly_chart(fig_dq_scatter, use_container_width=True, key="mp5_docket_scatter")
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+                with _dq_right:
+                    # Bar — spend by source query
+                    src_df = (
+                        qv.groupby(qv["Source Query"].astype(str).str.strip(), as_index=False)
+                        .agg(Entities=("TFL Entity", "nunique"), High=("High", "sum"))
+                    )
+                    src_df.columns = ["Source Query", "Entities", "High"]
+                    src_df = src_df[src_df["Source Query"] != ""].sort_values("High", ascending=False).head(10)
+                    if not src_df.empty and len(src_df) > 0:
+                        fig_src = px.bar(
+                            src_df,
+                            x="High",
+                            y="Source Query",
+                            color="Entities",
+                            orientation="h",
+                            color_continuous_scale="tealgrn",
+                            title="Docket Spend by Source Query",
+                            labels={"High": "High Estimate ($)", "Entities": "Entities"},
+                        )
+                        fig_src.update_layout(
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font_color="rgba(210,230,245,.88)",
+                            title_font_size=13,
+                            margin=dict(l=10, r=10, t=36, b=10),
+                            height=280,
+                            yaxis=dict(autorange="reversed"),
+                            coloraxis_colorbar=dict(thickness=10, len=0.5),
+                        )
+                        fig_src.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,.06)")
+                        fig_src.update_yaxes(showgrid=False)
+                        st.markdown('<div class="mp5-chart-wrap">', unsafe_allow_html=True)
+                        st.plotly_chart(fig_src, use_container_width=True, key="mp5_docket_source_bar")
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+            st.dataframe(
+                qv[
+                    [
+                        "Added", "Status", "Priority", "TFL Entity", "Lead Score",
+                        "Signal Score", "High", "High Confidence Share",
+                        "Boundary Share", "Avg Distance (mi)", "Overlap Rows",
+                        "Source Query", "Notes",
+                    ]
+                ],
+                use_container_width=True,
+                height=340,
+                hide_index=True,
+            )
+            _ = export_dataframe(
+                qv.drop(columns=["Added TS"], errors="ignore"),
+                "case_docket.csv",
+                label="Download Case Docket CSV",
+            )
+
+            # ── bulk status update + notes ───────────────────────────
+            st.markdown(
+                '<div class="mp5-action-strip" style="margin-top:10px">'
+                '<span style="font-weight:600;font-size:.82rem;">Case Management</span>'
+                '<span style="font-size:.72rem;color:rgba(210,230,245,.5);margin-left:6px">'
+                'Update status, add investigation notes, or manage queue</span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+            # ── docket actions ───────────────────────────────────────
+            open_opts = [
+                str(v).strip()
+                for v in qv.get("TFL Entity", pd.Series(dtype=object)).dropna().astype(str).tolist()
+                if str(v).strip()
+            ]
+            remove_opts = list(dict.fromkeys(open_opts))
+
+            # status update row
+            _su1, _su2, _su3 = st.columns([2.0, 1.2, 0.8], gap="small")
+            with _su1:
+                _status_entity_pick = st.multiselect(
+                    "Select entities to update",
+                    remove_opts,
+                    key="map_docket_status_entity_v4",
+                )
+            with _su2:
+                _new_status = st.selectbox(
+                    "New status",
+                    ["New", "Investigating", "Resolved"],
+                    key="map_docket_new_status_v4",
+                )
+            with _su3:
+                if st.button("Update Status", key="map_docket_status_btn_v4", use_container_width=True):
+                    if _status_entity_pick:
+                        _upd_set = {str(v).strip().lower() for v in _status_entity_pick}
+                        for rec in st.session_state.get("map_watchlist", []):
+                            if isinstance(rec, dict) and str(rec.get("TFL Entity", "")).strip().lower() in _upd_set:
+                                rec["Status"] = _new_status
+                        st.rerun()
+
+            # notes row
+            _n1, _n2, _n3 = st.columns([2.0, 1.5, 0.5], gap="small")
+            with _n1:
+                _note_entity = st.selectbox(
+                    "Entity for notes",
+                    [""] + remove_opts,
+                    key="map_docket_note_entity_v4",
+                )
+            with _n2:
+                _note_text = st.text_input(
+                    "Investigation note",
+                    key="map_docket_note_text_v4",
+                    placeholder="Add observation or finding...",
+                )
+            with _n3:
+                if st.button("Save Note", key="map_docket_note_btn_v4", use_container_width=True):
+                    if _note_entity and _note_text:
+                        _nk = str(_note_entity).strip().lower()
+                        for rec in st.session_state.get("map_watchlist", []):
+                            if isinstance(rec, dict) and str(rec.get("TFL Entity", "")).strip().lower() == _nk:
+                                _prev = str(rec.get("Notes", "")).strip()
+                                _stamp = datetime.now().strftime("%m/%d %H:%M")
+                                rec["Notes"] = f"{_stamp}: {_note_text}" + (f" | {_prev}" if _prev else "")
+                        st.rerun()
+
+            st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
+
+            o1, o2 = st.columns([1.7, 1.3], gap="small")
+            with o1:
+                open_pick = (
+                    st.selectbox("Open in Client Look-Up", open_opts, key="map_watch_open_entity_v4")
+                    if open_opts
+                    else ""
+                )
+            with o2:
+                remove_pick = (
+                    st.multiselect("Remove entities", remove_opts, key="map_watch_remove_pick_v4")
+                    if remove_opts
+                    else []
+                )
+            b1, b2, b3 = st.columns(3, gap="small")
+            with b1:
+                if st.button("Open Client", key="map_watch_open_btn_v4", use_container_width=True) and open_pick:
+                    _open_client(open_pick)
+            with b2:
+                if st.button("Remove Selected", key="map_watch_remove_btn_v4", use_container_width=True) and remove_pick:
+                    remove_set = {str(v).strip().lower() for v in remove_pick if str(v).strip()}
+                    st.session_state.map_watchlist = [
+                        rec for rec in watch
+                        if str((rec or {}).get("TFL Entity", "")).strip().lower() not in remove_set
+                    ]
+                    st.rerun()
+            with b3:
+                if st.button("Clear Docket", key="map_watch_clear_btn_v4", use_container_width=True):
+                    st.session_state.map_watchlist = []
+                    st.rerun()
+
+    # ── workspace links ──────────────────────────────────────────────
+    _render_workspace_links(
+        "map_rebuild_next_v4",
+        [
+            ("Open Clients", _client_page, "Validate ranked entities at filing level."),
+            ("Open Lobbyists", _lobby_page, "Reconnect leads to statewide concentration."),
+            ("Open Legislators", _member_page, "Attach overlap to bill and witness activity."),
+        ],
+    )
+
 def _page_map_address_rebuild():
+    # Route to the full redesign workspace implementation.
+    _page_map_address_full_pass()
+    return
+
     _render_page_intro(
         kicker="Geospatial Investigation Studio",
         title="Map & Address Intelligence",
@@ -11647,132 +14623,438 @@ def render_address_overlap_arcgis_map(
     )
     basemap_safe = json.dumps(str(basemap).strip() or "gray-vector")
 
+    # Build legend entries from distinct subdivision types present
+    legend_types: dict[str, str] = {}
+    if point_rows:
+        for pr in point_rows:
+            st_key = pr["subdivision_type"]
+            if st_key and st_key not in legend_types:
+                legend_types[st_key] = _subdivision_color_hex(st_key)
+    legend_json = json.dumps(
+        [{"type": t, "color": c} for t, c in legend_types.items()],
+        ensure_ascii=True,
+    )
+
     arcgis_html = f"""
-<div style="width:100%;height:{height}px;">
+<link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/dark/main.css"/>
+<style>
+  /* ── Dark popup theme ── */
+  .esri-popup__main-container {{
+    background: rgba(13,23,36,0.96) !important;
+    color: rgba(220,230,240,0.95) !important;
+    border: 1px solid rgba(100,140,180,0.22) !important;
+    border-radius: 10px !important;
+    backdrop-filter: blur(10px) !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45) !important;
+  }}
+  .esri-popup__header-title {{ color: rgba(235,242,250,0.97) !important; font-weight: 600 !important; }}
+  .esri-popup__content {{ color: rgba(200,215,230,0.92) !important; }}
+  .esri-popup__button {{ color: rgba(180,200,220,0.85) !important; }}
+  .esri-popup__button:hover {{ color: #fff !important; background: rgba(100,180,255,0.18) !important; }}
+  .esri-popup__pointer-direction {{ background: rgba(13,23,36,0.96) !important; }}
+
+  /* ── Sketch toolbar styling ── */
+  .esri-sketch {{ background: rgba(13,23,36,0.92) !important; border-radius: 8px !important; border: 1px solid rgba(100,140,180,0.22) !important; }}
+
+  /* ── Legend — bottom-right, compact ── */
+  #tfl-addr-legend {{
+    position: absolute; bottom: 36px; right: 12px; z-index: 90;
+    background: rgba(10,20,32,0.92); border: 1px solid rgba(100,140,180,0.18);
+    border-radius: 10px; padding: 6px 10px; max-width: 210px;
+    font-family: 'Avenir Next LT Pro', system-ui, sans-serif; font-size: 10.5px;
+    color: rgba(210,225,240,0.90); backdrop-filter: blur(8px);
+    max-height: 160px; overflow-y: auto;
+  }}
+  #tfl-addr-legend .leg-title {{
+    text-transform: uppercase; letter-spacing: 0.14em; font-size: 8px;
+    color: rgba(150,175,200,0.70); margin-bottom: 3px; font-weight: 700;
+  }}
+  #tfl-addr-legend .leg-row {{ display: flex; align-items: center; gap: 5px; padding: 1.5px 0; }}
+  #tfl-addr-legend .leg-chip {{
+    width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.18);
+  }}
+
+  /* ── Loading overlay ── */
+  @keyframes tfl-pulse {{ 0%,100% {{ transform:scale(1); opacity:0.92; }} 50% {{ transform:scale(1.35); opacity:0.45; }} }}
+  #tfl-addr-loading {{
+    position:absolute; top:0; left:0; width:100%; height:100%;
+    background:rgba(10,16,26,0.92); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:10px;
+    z-index:100; border-radius:14px; transition:opacity 0.6s ease;
+  }}
+  #tfl-addr-loading .ld-spinner {{
+    width:30px; height:30px; border:2.5px solid rgba(100,140,180,0.18);
+    border-top:2.5px solid rgba(100,180,255,0.80); border-radius:50%;
+    animation: tfl-ld-spin 0.8s linear infinite;
+  }}
+  #tfl-addr-loading .ld-label {{
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:10px;
+    color:rgba(160,185,210,0.65); letter-spacing:0.06em;
+  }}
+  @keyframes tfl-ld-spin {{ 0%{{transform:rotate(0deg)}} 100%{{transform:rotate(360deg)}} }}
+
+  /* ── Coordinate bar ── */
+  #tfl-addr-coord {{
+    position:absolute; bottom:10px; left:50%; transform:translateX(-50%); z-index:90;
+    background:rgba(10,16,26,0.85); border:1px solid rgba(100,140,180,0.15);
+    border-radius:6px; padding:2px 10px;
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:10px;
+    color:rgba(180,200,220,0.75); pointer-events:none; backdrop-filter:blur(6px);
+    white-space:nowrap; letter-spacing:0.04em;
+  }}
+
+  /* ── Lasso/selection feedback ── */
+  #tfl-addr-sel-info {{
+    position:absolute; bottom:36px; left:12px; z-index:90;
+    background:rgba(10,16,26,0.92); border:1px solid rgba(0,180,255,0.25);
+    border-radius:8px; padding:6px 12px; backdrop-filter:blur(6px);
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:11px;
+    color:rgba(200,220,240,0.90); display:none; max-width:280px;
+  }}
+  #tfl-addr-sel-info .sel-title {{
+    font-weight:700; color:rgba(100,200,255,0.95); font-size:10px;
+    text-transform:uppercase; letter-spacing:0.08em; margin-bottom:3px;
+  }}
+</style>
+<div style="width:100%;height:{height}px;position:relative;">
   <div id="tfl-address-overlap-map" style="width:100%;height:100%;border-radius:14px;overflow:hidden;"></div>
+  <div id="tfl-addr-legend"></div>
+  <div id="tfl-addr-loading"><div class="ld-spinner"></div><div class="ld-label">Loading map layers&hellip;</div></div>
+  <div id="tfl-addr-coord">&ndash;</div>
+  <div id="tfl-addr-sel-info"></div>
 </div>
 <script src="https://js.arcgis.com/4.30/"></script>
 <script>
   const overlapPoints = {points_json};
   const addressPoint = {address_json};
   const baseMapId = {basemap_safe};
+  const legendEntries = {legend_json};
+
+  /* Build on-map legend */
+  (function() {{
+    const el = document.getElementById("tfl-addr-legend");
+    if (!el || legendEntries.length === 0) {{ if (el) el.style.display = "none"; return; }}
+    let h = '<div class="leg-title">Subdivision Types</div>';
+    for (const e of legendEntries) {{
+      h += '<div class="leg-row"><span class="leg-chip" style="background:' + e.color + ';"></span><span>' + e.type + '</span></div>';
+    }}
+    h += '<div class="leg-row" style="margin-top:2px;"><span class="leg-chip" style="background:#c92234;transform:rotate(45deg);border-radius:2px;"></span><span>Queried Address</span></div>';
+    el.innerHTML = h;
+  }})();
+
   require([
     "esri/Map",
     "esri/views/MapView",
+    "esri/layers/FeatureLayer",
     "esri/layers/GraphicsLayer",
     "esri/Graphic",
     "esri/widgets/Home",
     "esri/widgets/ScaleBar",
     "esri/widgets/BasemapToggle",
     "esri/widgets/Compass",
-    "esri/widgets/Fullscreen"
-  ], function(Map, MapView, GraphicsLayer, Graphic, Home, ScaleBar, BasemapToggle, Compass, Fullscreen) {{
+    "esri/widgets/Fullscreen",
+    "esri/widgets/Search",
+    "esri/widgets/Locate",
+    "esri/widgets/Sketch",
+    "esri/widgets/Expand",
+    "esri/geometry/geometryEngine"
+  ], function(Map, MapView, FeatureLayer, GraphicsLayer, Graphic, Home, ScaleBar, BasemapToggle, Compass, Fullscreen, Search, Locate, Sketch, Expand, geometryEngine) {{
     const map = new Map({{ basemap: baseMapId }});
+
+    /* ── Reference boundary layers ── */
+    const countyLayer = new FeatureLayer({{
+      url: "{TEA_ARCGIS_COUNTY_LAYER_URL}",
+      outFields: ["FENAME", "FIPS"],
+      popupEnabled: false, labelsVisible: false,
+      labelingInfo: [{{
+        labelExpressionInfo: {{ expression: "$feature.FENAME + ' County'" }},
+        symbol: {{ type: "text", color: [160, 140, 110, 0.75], haloColor: [13, 23, 36, 0.80], haloSize: 0.8,
+          font: {{ size: 11, family: "Avenir Next LT Pro", weight: "600" }} }}
+      }}],
+      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [0,0,0,0], outline: {{ color: [145, 111, 63, 0.22], width: 0.6 }} }} }},
+      opacity: 0.35
+    }});
+
+    const districtLayer = new FeatureLayer({{
+      url: "{TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL}",
+      outFields: ["FID", "NAME20", "DISTRICT"],
+      popupEnabled: false, labelsVisible: false,
+      labelingInfo: [{{
+        labelExpressionInfo: {{ expression: "$feature.NAME20" }},
+        symbol: {{ type: "text", color: [73, 112, 150, 0.65], haloColor: [13, 23, 36, 0.8], haloSize: 0.6,
+          font: {{ size: 8, family: "Avenir Next LT Pro", weight: "normal" }} }}
+      }}],
+      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [0,0,0,0], outline: {{ color: [30, 144, 255, 0.20], width: 0.5 }} }} }},
+      opacity: 0.35
+    }});
+
+    const cityLayer = new FeatureLayer({{
+      url: "{CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL}",
+      outFields: ["NAME", "BASENAME", "GEOID", "STATE"],
+      definitionExpression: "STATE = '48'",
+      popupEnabled: false, labelsVisible: false,
+      labelingInfo: [{{
+        labelExpressionInfo: {{ expression: "DefaultValue($feature.BASENAME, $feature.NAME)" }},
+        symbol: {{ type: "text", color: [165, 100, 105, 0.80], haloColor: [13, 23, 36, 0.76], haloSize: 0.7,
+          font: {{ size: 9, family: "Avenir Next LT Pro", weight: "500" }} }}
+      }}],
+      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [0,0,0,0], outline: {{ color: [158, 42, 43, 0.12], width: 0.4 }} }} }},
+      opacity: 0.20
+    }});
+
+    /* ── Texas House & Senate district boundaries ── */
+    const houseLayer = new FeatureLayer({{
+      url: "{TEXAS_HOUSE_DISTRICTS_LAYER_URL}",
+      outFields: ["*"],
+      popupEnabled: true,
+      popupTemplate: {{ title: "TX House District {{{{DISTRICT}}}}", content: "Texas House of Representatives District {{{{DISTRICT}}}}" }},
+      labelsVisible: false,
+      labelingInfo: [{{
+        labelExpressionInfo: {{ expression: "'HD ' + $feature.DISTRICT" }},
+        symbol: {{ type: "text", color: [90, 180, 130, 0.70], haloColor: [13, 23, 36, 0.75], haloSize: 0.6,
+          font: {{ size: 8, family: "Avenir Next LT Pro", weight: "600" }} }}
+      }}],
+      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [40, 180, 100, 0.03], outline: {{ color: [40, 180, 100, 0.30], width: 0.8 }} }} }},
+      opacity: 0.30, visible: false
+    }});
+
+    const senateLayer = new FeatureLayer({{
+      url: "{TEXAS_SENATE_DISTRICTS_LAYER_URL}",
+      outFields: ["*"],
+      popupEnabled: true,
+      popupTemplate: {{ title: "TX Senate District {{{{DISTRICT}}}}", content: "Texas Senate District {{{{DISTRICT}}}}" }},
+      labelsVisible: false,
+      labelingInfo: [{{
+        labelExpressionInfo: {{ expression: "'SD ' + $feature.DISTRICT" }},
+        symbol: {{ type: "text", color: [180, 130, 90, 0.70], haloColor: [13, 23, 36, 0.75], haloSize: 0.6,
+          font: {{ size: 9, family: "Avenir Next LT Pro", weight: "600" }} }}
+      }}],
+      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [200, 140, 60, 0.03], outline: {{ color: [200, 140, 60, 0.30], width: 0.8 }} }} }},
+      opacity: 0.30, visible: false
+    }});
+
+    map.add(countyLayer);
+    map.add(districtLayer);
+    map.add(houseLayer);
+    map.add(senateLayer);
+    map.add(cityLayer);
+
     const overlapLayer = new GraphicsLayer();
     const addressLayer = new GraphicsLayer();
+    const sketchLayer = new GraphicsLayer();
     map.add(overlapLayer);
     map.add(addressLayer);
+    map.add(sketchLayer);
 
     const view = new MapView({{
       container: "tfl-address-overlap-map",
       map,
       center: [addressPoint.lon, addressPoint.lat],
-      zoom: 10,
-      constraints: {{ minZoom: 5 }}
+      zoom: 11,
+      constraints: {{ minZoom: 5 }},
+      popup: {{ dockEnabled: true, dockOptions: {{ position: "bottom-right", breakpoint: false }} }},
+      ui: {{ padding: {{ top: 10, right: 10, bottom: 30, left: 10 }} }}
     }});
 
-    const formatUsd = (value) => {{
-      const numeric = Number(value || 0);
-      return numeric.toLocaleString("en-US", {{
-        style: "currency",
-        currency: "USD",
-        maximumFractionDigits: 0
-      }});
-    }};
-    const maxHigh = overlapPoints.reduce(
-      (acc, row) => Math.max(acc, Number(row.high_total || 0)),
-      0
-    );
-    const markerSizeFromHigh = (value) => {{
-      if (maxHigh <= 0) return 9;
-      const numeric = Math.max(0, Number(value || 0));
-      const ratio = Math.log10(numeric + 1) / Math.log10(maxHigh + 1);
-      return Math.max(8, Math.min(28, 8 + ratio * 20));
+    const formatUsd = (v) => Number(v||0).toLocaleString("en-US",{{style:"currency",currency:"USD",maximumFractionDigits:0}});
+    const maxHigh = overlapPoints.reduce((a,r) => Math.max(a, Number(r.high_total||0)), 0);
+    const sz = (v) => {{ if(maxHigh<=0) return 10; const n=Math.max(0,Number(v||0)); return Math.max(9,Math.min(28,9+(Math.log10(n+1)/Math.log10(maxHigh+1))*19)); }};
+    const badge = (m) => {{
+      const l=(m||"").toLowerCase();
+      if(l.includes("spatial")||l.includes("boundary")) return '<span style="display:inline-block;padding:1px 6px;border-radius:5px;font-size:9.5px;font-weight:600;background:rgba(0,200,140,0.18);color:#00c88c;">Spatial</span>';
+      if(l.includes("name")||l.includes("anchor")) return '<span style="display:inline-block;padding:1px 6px;border-radius:5px;font-size:9.5px;font-weight:600;background:rgba(255,180,40,0.18);color:#ffb428;">Name-anchored</span>';
+      return '<span style="display:inline-block;padding:1px 6px;border-radius:5px;font-size:9.5px;font-weight:600;background:rgba(130,145,160,0.18);color:#8291a0;">Unknown</span>';
     }};
 
     for (const row of overlapPoints) {{
-      const markerSize = markerSizeFromHigh(row.high_total);
-      const pointGraphic = new Graphic({{
-        geometry: {{
-          type: "point",
-          longitude: row.lon,
-          latitude: row.lat
-        }},
+      const g = new Graphic({{
+        geometry: {{ type: "point", longitude: row.lon, latitude: row.lat }},
         symbol: {{
-          type: "simple-marker",
-          size: markerSize,
-          color: row.color || [113, 129, 145, 0.88],
-          outline: {{
-            color: [255, 255, 255, 0.82],
-            width: 1.1
-          }}
+          type: "simple-marker", size: sz(row.high_total),
+          color: row.color || [113,129,145,0.85],
+          outline: {{ color: [255,255,255,0.70], width: 1 }}
         }},
+        attributes: row,
         popupTemplate: {{
           title: row.subdivision_name || "Overlapping subdivision",
-          content: `<div><strong>Type:</strong> ${{row.subdivision_type || "N/A"}}</div>
-                    <div><strong>Code:</strong> ${{row.subdivision_code || "N/A"}}</div>
-                    <div><strong>Matched clients:</strong> ${{row.match_count || 0}}</div>
-                    <div><strong>Matched TFL high estimate:</strong> ${{formatUsd(row.high_total)}}</div>
-                    <div><strong>Match method:</strong> ${{row.match_method || "N/A"}}</div>
-                    <div><strong>Source:</strong> ${{row.source_name || "N/A"}}</div>`
+          content: `<div style="font-family:'Avenir Next LT Pro',system-ui,sans-serif;font-size:12px;line-height:1.5;">
+            <div style="margin-bottom:5px;">${{badge(row.match_method)}}</div>
+            <table style="border-collapse:collapse;width:100%;">
+              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">Type</td><td style="font-weight:600;">${{row.subdivision_type||"N/A"}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">Code</td><td>${{row.subdivision_code||"N/A"}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">Matched clients</td><td style="font-weight:600;">${{row.match_count||0}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">TFL high est.</td><td style="font-weight:600;">${{formatUsd(row.high_total)}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">Method</td><td>${{row.match_method||"N/A"}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">Source</td><td>${{row.source_name||"N/A"}}</td></tr>
+            </table>
+          </div>`
         }}
       }});
-      overlapLayer.add(pointGraphic);
+      overlapLayer.add(g);
     }}
 
-    const addressGraphic = new Graphic({{
-      geometry: {{
-        type: "point",
-        longitude: addressPoint.lon,
-        latitude: addressPoint.lat
-      }},
-      symbol: {{
-        type: "simple-marker",
-        style: "diamond",
-        size: 14,
-        color: [201, 34, 52, 0.95],
-        outline: {{
-          color: [255, 255, 255, 0.95],
-          width: 1.5
-        }}
-      }},
+    /* Address marker with pulse */
+    addressLayer.add(new Graphic({{
+      geometry: {{ type: "point", longitude: addressPoint.lon, latitude: addressPoint.lat }},
+      symbol: {{ type: "simple-marker", style: "circle", size: 24, color: [201,34,52,0.0], outline: {{ color: [201,34,52,0.50], width: 2 }} }}
+    }}));
+    addressLayer.add(new Graphic({{
+      geometry: {{ type: "point", longitude: addressPoint.lon, latitude: addressPoint.lat }},
+      symbol: {{ type: "simple-marker", style: "diamond", size: 14, color: [201,34,52,0.95], outline: {{ color: [255,255,255,0.90], width: 1.8 }} }},
       popupTemplate: {{
         title: "Queried Address",
-        content: `<div>${{addressPoint.matched_address || "Address point"}}</div>`
+        content: `<div style="font-family:'Avenir Next LT Pro',system-ui,sans-serif;font-size:12px;">
+          <div style="font-weight:600;margin-bottom:3px;">${{addressPoint.matched_address||"Address point"}}</div>
+          <div style="color:#7a94ab;font-size:10.5px;">Lat ${{Number(addressPoint.lat).toFixed(5)}}, Lon ${{Number(addressPoint.lon).toFixed(5)}}</div>
+        </div>`
       }}
-    }});
-    addressLayer.add(addressGraphic);
+    }}));
 
+    /* ── Zoom-dependent label visibility ── */
+    const updateLabels = () => {{
+      const z = Number(view.zoom || 0);
+      countyLayer.labelsVisible = z >= 6;
+      cityLayer.labelsVisible = z >= 7;
+      districtLayer.labelsVisible = z >= 9;
+      houseLayer.labelsVisible = z >= 8;
+      senateLayer.labelsVisible = z >= 7;
+    }};
+    view.watch("zoom", updateLabels);
+
+    /* ── Widgets ── */
     const home = new Home({{ view }});
-    const basemapToggle = new BasemapToggle({{
-      view,
-      nextBasemap: baseMapId === "hybrid" ? "gray-vector" : "hybrid"
-    }});
+    const basemapToggle = new BasemapToggle({{ view, nextBasemap: baseMapId === "hybrid" ? "gray-vector" : "hybrid" }});
     const scaleBar = new ScaleBar({{ view, unit: "dual" }});
     const compass = new Compass({{ view }});
     const fullscreen = new Fullscreen({{ view }});
+    const locate = new Locate({{ view }});
+
+    /* Search widget — integrated with address forensics */
+    const search = new Search({{
+      view,
+      popupEnabled: true,
+      resultGraphicEnabled: true,
+      goToOverride: (view, opts) => view.goTo(opts.target, {{ duration: 800, easing: "ease-in-out" }})
+    }});
+    search.on("select-result", (evt) => {{
+      if (evt.result && evt.result.name) {{
+        try {{ window.parent.postMessage({{ type: "tfl-map-address-search", address: evt.result.name }}, "*"); }} catch(e) {{}}
+      }}
+    }});
+
+    /* Sketch tool for encircling areas */
+    const sketch = new Sketch({{
+      view,
+      layer: sketchLayer,
+      creationMode: "single",
+      availableCreateTools: ["polygon", "circle", "rectangle"],
+      defaultCreateOptions: {{ mode: "freehand" }},
+      visibleElements: {{ selectionTools: {{ "lasso-selection": false, "rectangle-selection": false }}, settingsMenu: false, undoRedoMenu: true }},
+      defaultUpdateOptions: {{ tool: "reshape" }}
+    }});
+    const sketchExpand = new Expand({{
+      view,
+      content: sketch,
+      expandIconClass: "esri-icon-polygon",
+      expandTooltip: "Draw area for batch analysis",
+      group: "tools"
+    }});
+
+    /* House/Senate layer toggle in Expand */
+    const layerDiv = document.createElement("div");
+    layerDiv.style.cssText = "background:rgba(13,23,36,0.94);border-radius:8px;padding:10px;font-family:'Avenir Next LT Pro',system-ui,sans-serif;font-size:12px;color:rgba(210,225,240,0.90);min-width:160px;";
+    layerDiv.innerHTML = '<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:rgba(150,175,200,0.65);font-weight:700;margin-bottom:6px;">Legislative Districts</div>'
+      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;"><input type="checkbox" id="tfl-toggle-house" style="accent-color:#28b464;"><span>TX House Districts</span></label>'
+      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;"><input type="checkbox" id="tfl-toggle-senate" style="accent-color:#c88c3c;"><span>TX Senate Districts</span></label>';
+    const layerExpand = new Expand({{
+      view,
+      content: layerDiv,
+      expandIconClass: "esri-icon-layer-list",
+      expandTooltip: "Toggle legislative districts",
+      group: "tools"
+    }});
 
     view.ui.add(home, "top-left");
     view.ui.add(compass, "top-left");
     view.ui.add(fullscreen, "top-left");
+    view.ui.add(locate, "top-left");
+    view.ui.add(sketchExpand, "top-left");
+    view.ui.add(layerExpand, "top-left");
+    view.ui.add(search, "top-right");
     view.ui.add(basemapToggle, "top-right");
     view.ui.add(scaleBar, "bottom-left");
-    view.popup.dockEnabled = true;
+
+    /* Wire layer toggles */
+    view.when(() => {{
+      const hBox = document.getElementById("tfl-toggle-house");
+      const sBox = document.getElementById("tfl-toggle-senate");
+      if (hBox) hBox.addEventListener("change", () => {{ houseLayer.visible = hBox.checked; }});
+      if (sBox) sBox.addEventListener("change", () => {{ senateLayer.visible = sBox.checked; }});
+    }});
+
+    /* Sketch complete → batch analysis info */
+    sketch.on("create", (evt) => {{
+      if (evt.state !== "complete") return;
+      const drawn = evt.graphic.geometry;
+      const selInfo = document.getElementById("tfl-addr-sel-info");
+      const contained = [];
+      overlapLayer.graphics.forEach((g) => {{
+        if (g.geometry && geometryEngine.contains(drawn, g.geometry)) {{
+          contained.push(g.attributes || {{}});
+        }}
+      }});
+      if (selInfo && contained.length > 0) {{
+        const total = contained.reduce((a,r) => a + Number(r.high_total||0), 0);
+        const types = [...new Set(contained.map(r => r.subdivision_type).filter(Boolean))];
+        selInfo.style.display = "block";
+        selInfo.innerHTML = '<div class="sel-title">Area Selection</div>'
+          + '<div><strong>' + contained.length + '</strong> subdivision(s) in area</div>'
+          + '<div>Combined TFL est.: <strong>' + formatUsd(total) + '</strong></div>'
+          + '<div style="font-size:10px;color:rgba(180,200,220,0.65);margin-top:3px;">' + types.join(", ") + '</div>';
+        /* Post results to parent for batch processing */
+        try {{
+          const names = contained.map(r => r.subdivision_name).filter(Boolean);
+          window.parent.postMessage({{ type: "tfl-map-area-select", count: contained.length, totalHigh: total, names: names, types: types }}, "*");
+        }} catch(e) {{}}
+      }} else if (selInfo) {{
+        selInfo.style.display = "block";
+        selInfo.innerHTML = '<div class="sel-title">Area Selection</div><div>No subdivisions in drawn area.</div>';
+        setTimeout(() => {{ selInfo.style.display = "none"; }}, 3000);
+      }}
+    }});
+
+    /* Coordinate readout */
+    view.on("pointer-move", (evt) => {{
+      const pt = view.toMap(evt);
+      const el = document.getElementById("tfl-addr-coord");
+      if (pt && el) el.textContent = pt.latitude.toFixed(5) + "\u00b0 N, " + Math.abs(pt.longitude).toFixed(5) + "\u00b0 W";
+    }});
+
+    /* Hover highlight */
+    let hoverHL = null;
+    view.on("pointer-move", (evt) => {{
+      view.hitTest(evt, {{ include: [overlapLayer] }}).then((r) => {{
+        const hit = r.results && r.results.find(x => x.graphic);
+        document.getElementById("tfl-address-overlap-map").style.cursor = hit ? "pointer" : "default";
+        if (hoverHL) {{ overlapLayer.remove(hoverHL); hoverHL = null; }}
+        if (hit && hit.graphic && hit.graphic.geometry) {{
+          hoverHL = new Graphic({{
+            geometry: hit.graphic.geometry,
+            symbol: {{ type: "simple-marker", style: "circle", size: 32, color: [255,255,255,0.0], outline: {{ color: [255,255,255,0.55], width: 2 }} }}
+          }});
+          overlapLayer.add(hoverHL);
+        }}
+      }});
+    }});
 
     view.when(() => {{
-      const allGraphics = [...overlapLayer.graphics.toArray(), ...addressLayer.graphics.toArray()];
-      if (allGraphics.length > 0) {{
-        view.goTo(allGraphics, {{ padding: {{ top: 40, right: 30, bottom: 40, left: 30 }} }}).catch(() => {{}});
+      const loader = document.getElementById("tfl-addr-loading");
+      if (loader) {{ loader.style.opacity = "0"; setTimeout(() => loader.remove(), 600); }}
+      updateLabels();
+      const all = [...overlapLayer.graphics.toArray(), ...addressLayer.graphics.toArray()];
+      if (all.length > 0) {{
+        view.goTo(all, {{ padding: {{ top: 50, right: 50, bottom: 50, left: 50 }}, duration: 1000, easing: "ease-in-out" }}).catch(() => {{}});
       }}
     }});
   }});
@@ -11780,7 +15062,7 @@ def render_address_overlap_arcgis_map(
 """
     components.html(arcgis_html, height=height + 8, scrolling=False)
 
-def render_tfl_school_district_arcgis_map(matches: pd.DataFrame, height: int = 620) -> None:
+def render_tfl_school_district_arcgis_map(matches: pd.DataFrame, height: int = 620, basemap: str = "gray-vector") -> None:
     if matches.empty:
         st.info("No matching school-district clients to plot on the map.")
         return
@@ -11804,115 +15086,340 @@ def render_tfl_school_district_arcgis_map(matches: pd.DataFrame, height: int = 6
             }
         )
     payload_json = json.dumps(payload_rows, ensure_ascii=True)
+    basemap_safe = json.dumps(str(basemap).strip() or "gray-vector")
 
+    total_districts = len(payload_rows)
+    total_high = sum(r["high_total"] for r in payload_rows)
+    total_high_fmt = f"${total_high:,.0f}"
     arcgis_html = f"""
-<div style="width:100%;height:{height}px;">
+<link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/dark/main.css"/>
+<style>
+  /* ── Dark popup theme ── */
+  .esri-popup__main-container {{
+    background: rgba(13,23,36,0.96) !important;
+    color: rgba(220,230,240,0.95) !important;
+    border: 1px solid rgba(100,140,180,0.22) !important;
+    border-radius: 10px !important;
+    backdrop-filter: blur(10px) !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45) !important;
+  }}
+  .esri-popup__header-title {{ color: rgba(235,242,250,0.97) !important; font-weight: 600 !important; }}
+  .esri-popup__content {{ color: rgba(200,215,230,0.92) !important; }}
+  .esri-popup__button {{ color: rgba(180,200,220,0.85) !important; }}
+  .esri-popup__button:hover {{ color: #fff !important; background: rgba(0,224,184,0.18) !important; }}
+  .esri-popup__pointer-direction {{ background: rgba(13,23,36,0.96) !important; }}
+
+  .esri-sketch {{ background: rgba(13,23,36,0.92) !important; border-radius: 8px !important; border: 1px solid rgba(100,140,180,0.22) !important; }}
+
+  #tfl-sd-loading {{
+    position:absolute; top:0; left:0; width:100%; height:100%;
+    background:rgba(10,16,26,0.92); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:10px;
+    z-index:100; border-radius:14px; transition:opacity 0.6s ease;
+  }}
+  #tfl-sd-loading .ld-spinner {{
+    width:30px; height:30px; border:2.5px solid rgba(100,140,180,0.18);
+    border-top:2.5px solid rgba(0,224,184,0.80); border-radius:50%;
+    animation: tfl-sd-spin 0.8s linear infinite;
+  }}
+  #tfl-sd-loading .ld-label {{
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:10px;
+    color:rgba(160,185,210,0.65); letter-spacing:0.06em;
+  }}
+  @keyframes tfl-sd-spin {{ 0%{{transform:rotate(0deg)}} 100%{{transform:rotate(360deg)}} }}
+  #tfl-sd-coord {{
+    position:absolute; bottom:10px; left:50%; transform:translateX(-50%); z-index:90;
+    background:rgba(10,16,26,0.85); border:1px solid rgba(100,140,180,0.15);
+    border-radius:6px; padding:2px 10px;
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:10px;
+    color:rgba(180,200,220,0.75); pointer-events:none; backdrop-filter:blur(6px);
+    white-space:nowrap; letter-spacing:0.04em;
+  }}
+  #tfl-sd-legend {{
+    position:absolute; bottom:36px; right:12px; z-index:90;
+    background:rgba(10,20,32,0.92); border:1px solid rgba(100,140,180,0.18);
+    border-radius:10px; padding:6px 10px; max-width:210px;
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:10.5px;
+    color:rgba(210,225,240,0.90); backdrop-filter:blur(8px);
+  }}
+  #tfl-sd-legend .leg-title {{
+    text-transform:uppercase; letter-spacing:0.14em; font-size:8px;
+    color:rgba(150,175,200,0.70); margin-bottom:3px; font-weight:700;
+  }}
+  #tfl-sd-legend .leg-row {{ display:flex; align-items:center; gap:5px; padding:1.5px 0; }}
+  #tfl-sd-legend .leg-chip {{
+    width:9px; height:9px; border-radius:50%; flex-shrink:0;
+    border:1px solid rgba(255,255,255,0.18);
+  }}
+  #tfl-sd-sel-info {{
+    position:absolute; bottom:36px; left:12px; z-index:90;
+    background:rgba(10,16,26,0.92); border:1px solid rgba(0,224,184,0.25);
+    border-radius:8px; padding:6px 12px; backdrop-filter:blur(6px);
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:11px;
+    color:rgba(200,220,240,0.90); display:none; max-width:280px;
+  }}
+  #tfl-sd-sel-info .sel-title {{
+    font-weight:700; color:rgba(0,224,184,0.95); font-size:10px;
+    text-transform:uppercase; letter-spacing:0.08em; margin-bottom:3px;
+  }}
+</style>
+<div style="width:100%;height:{height}px;position:relative;">
   <div id="tfl-arcgis-map" style="width:100%;height:100%;border-radius:14px;overflow:hidden;"></div>
+  <div id="tfl-sd-legend">
+    <div class="leg-title">Legend</div>
+    <div class="leg-row"><span class="leg-chip" style="background:#00e0b8;"></span><span>School District ({total_districts})</span></div>
+    <div class="leg-row"><span class="leg-chip" style="background:rgba(145,111,63,0.5);border-color:rgba(145,111,63,0.6);"></span><span style="font-size:10px;color:rgba(180,195,210,0.70);">County boundary</span></div>
+    <div class="leg-row"><span class="leg-chip" style="background:rgba(30,144,255,0.3);border-color:rgba(30,144,255,0.5);"></span><span style="font-size:10px;color:rgba(180,195,210,0.70);">District boundary</span></div>
+  </div>
+  <div id="tfl-sd-loading"><div class="ld-spinner"></div><div class="ld-label">Loading map layers&hellip;</div></div>
+  <div id="tfl-sd-coord">&ndash;</div>
+  <div id="tfl-sd-sel-info"></div>
 </div>
 <script src="https://js.arcgis.com/4.30/"></script>
 <script>
   const tflPoints = {payload_json};
+  const baseMapId = {basemap_safe};
   require([
     "esri/Map",
     "esri/views/MapView",
     "esri/layers/FeatureLayer",
     "esri/layers/GraphicsLayer",
-    "esri/Graphic"
-  ], function(Map, MapView, FeatureLayer, GraphicsLayer, Graphic) {{
-    const map = new Map({{ basemap: "gray-vector" }});
+    "esri/Graphic",
+    "esri/widgets/Home",
+    "esri/widgets/ScaleBar",
+    "esri/widgets/BasemapToggle",
+    "esri/widgets/Compass",
+    "esri/widgets/Fullscreen",
+    "esri/widgets/Search",
+    "esri/widgets/Locate",
+    "esri/widgets/Sketch",
+    "esri/widgets/Expand",
+    "esri/geometry/geometryEngine"
+  ], function(Map, MapView, FeatureLayer, GraphicsLayer, Graphic, Home, ScaleBar, BasemapToggle, Compass, Fullscreen, Search, Locate, Sketch, Expand, geometryEngine) {{
+    const map = new Map({{ basemap: baseMapId }});
+
+    const countyLayer = new FeatureLayer({{
+      url: "{TEA_ARCGIS_COUNTY_LAYER_URL}",
+      outFields: ["FENAME", "FIPS"],
+      popupEnabled: false, labelsVisible: false,
+      labelingInfo: [{{
+        labelExpressionInfo: {{ expression: "$feature.FENAME + ' County'" }},
+        symbol: {{ type: "text", color: [160, 140, 110, 0.75], haloColor: [13, 23, 36, 0.80], haloSize: 0.8,
+          font: {{ size: 11, family: "Avenir Next LT Pro", weight: "600" }} }}
+      }}],
+      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [0,0,0,0], outline: {{ color: [145, 111, 63, 0.22], width: 0.6 }} }} }},
+      opacity: 0.35
+    }});
+
     const districtLayer = new FeatureLayer({{
       url: "{TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL}",
       outFields: ["FID", "NAME20", "DISTRICT"],
-      popupEnabled: false,
-      labelsVisible: false,
+      popupEnabled: false, labelsVisible: false,
       labelingInfo: [{{
         labelExpressionInfo: {{ expression: "$feature.NAME20" }},
-        symbol: {{
-          type: "text",
-          color: [73, 112, 150, 0.84],
-          haloColor: [255, 255, 255, 0.92],
-          haloSize: 0.8,
-          font: {{
-            size: 8,
-            family: "Avenir Next LT Pro",
-            weight: "normal"
-          }}
-        }}
+        symbol: {{ type: "text", color: [73, 112, 150, 0.65], haloColor: [13, 23, 36, 0.8], haloSize: 0.6,
+          font: {{ size: 8, family: "Avenir Next LT Pro", weight: "normal" }} }}
       }}],
-      renderer: {{
-        type: "simple",
-        symbol: {{
-          type: "simple-fill",
-          color: [30, 144, 255, 0.05],
-          outline: {{ color: [30, 144, 255, 0.35], width: 0.7 }}
-        }}
-      }},
-      opacity: 0.5
+      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [0,0,0,0], outline: {{ color: [30, 144, 255, 0.25], width: 0.6 }} }} }},
+      opacity: 0.40
     }});
+
+    /* TX House & Senate district boundaries */
+    const houseLayer = new FeatureLayer({{
+      url: "{TEXAS_HOUSE_DISTRICTS_LAYER_URL}",
+      outFields: ["*"], popupEnabled: true,
+      popupTemplate: {{ title: "TX House District {{{{DISTRICT}}}}", content: "Texas House of Representatives District {{{{DISTRICT}}}}" }},
+      labelsVisible: false,
+      labelingInfo: [{{ labelExpressionInfo: {{ expression: "'HD ' + $feature.DISTRICT" }},
+        symbol: {{ type: "text", color: [90, 180, 130, 0.70], haloColor: [13, 23, 36, 0.75], haloSize: 0.6,
+          font: {{ size: 8, family: "Avenir Next LT Pro", weight: "600" }} }} }}],
+      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [40, 180, 100, 0.03], outline: {{ color: [40, 180, 100, 0.30], width: 0.8 }} }} }},
+      opacity: 0.30, visible: false
+    }});
+    const senateLayer = new FeatureLayer({{
+      url: "{TEXAS_SENATE_DISTRICTS_LAYER_URL}",
+      outFields: ["*"], popupEnabled: true,
+      popupTemplate: {{ title: "TX Senate District {{{{DISTRICT}}}}", content: "Texas Senate District {{{{DISTRICT}}}}" }},
+      labelsVisible: false,
+      labelingInfo: [{{ labelExpressionInfo: {{ expression: "'SD ' + $feature.DISTRICT" }},
+        symbol: {{ type: "text", color: [180, 130, 90, 0.70], haloColor: [13, 23, 36, 0.75], haloSize: 0.6,
+          font: {{ size: 9, family: "Avenir Next LT Pro", weight: "600" }} }} }}],
+      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [200, 140, 60, 0.03], outline: {{ color: [200, 140, 60, 0.30], width: 0.8 }} }} }},
+      opacity: 0.30, visible: false
+    }});
+
+    map.add(countyLayer);
     map.add(districtLayer);
+    map.add(houseLayer);
+    map.add(senateLayer);
 
     const graphics = new GraphicsLayer();
+    const sketchLayer = new GraphicsLayer();
     map.add(graphics);
+    map.add(sketchLayer);
 
     const view = new MapView({{
       container: "tfl-arcgis-map",
       map,
       center: [-99.3, 31.1],
-      zoom: 5
+      zoom: 5,
+      constraints: {{ minZoom: 4 }},
+      popup: {{ dockEnabled: true, dockOptions: {{ position: "bottom-right", breakpoint: false }} }},
+      ui: {{ padding: {{ top: 10, right: 10, bottom: 30, left: 10 }} }}
     }});
-    const maxHigh = tflPoints.reduce(
-      (acc, row) => Math.max(acc, Number(row.high_total || 0)),
-      0
-    );
-    const markerSizeFromRow = (row) => {{
+
+    const formatUsd = (v) => Number(v||0).toLocaleString("en-US",{{style:"currency",currency:"USD",maximumFractionDigits:0}});
+    const maxHigh = tflPoints.reduce((a, r) => Math.max(a, Number(r.high_total || 0)), 0);
+    const sz = (row) => {{
       if (maxHigh > 0) {{
-        const numeric = Math.max(0, Number(row.high_total || 0));
-        const ratio = Math.log10(numeric + 1) / Math.log10(maxHigh + 1);
-        return Math.max(8, Math.min(30, 8 + ratio * 22));
+        const n = Math.max(0, Number(row.high_total || 0));
+        return Math.max(8, Math.min(28, 8 + (Math.log10(n+1)/Math.log10(maxHigh+1))*20));
       }}
-      return Math.min(28, 8 + Math.log2((row.match_count || 1) + 1) * 5);
+      return Math.min(26, 8 + Math.log2((row.match_count || 1) + 1) * 5);
     }};
 
     for (const row of tflPoints) {{
-      const markerSize = markerSizeFromRow(row);
       const clientsHtml = (row.match_clients || []).join(", ");
       const extraHtml = row.extra_count > 0 ? `, +${{row.extra_count}} more` : "";
-      const content = `<div><strong>District code:</strong> ${{row.district_code || "N/A"}}</div>
-        <div><strong>Matched TFL high estimate:</strong> ${{Number(row.high_total || 0).toLocaleString("en-US", {{ style: "currency", currency: "USD", maximumFractionDigits: 0 }})}}</div>
-        <div style="margin-top:6px;"><strong>Matched TFL clients (${{row.match_count}}):</strong><br/>${{clientsHtml}}${{extraHtml}}</div>`;
-      const pointGraphic = new Graphic({{
-        geometry: {{
-          type: "point",
-          longitude: row.lon,
-          latitude: row.lat
-        }},
+      const g = new Graphic({{
+        geometry: {{ type: "point", longitude: row.lon, latitude: row.lat }},
         symbol: {{
-          type: "simple-marker",
-          size: markerSize,
+          type: "simple-marker", size: sz(row),
           color: [0, 224, 184, 0.85],
-          outline: {{
-            color: [7, 22, 39, 0.95],
-            width: 1
-          }}
+          outline: {{ color: [7, 22, 39, 0.95], width: 1 }}
         }},
         attributes: row,
         popupTemplate: {{
           title: row.district_name || "School District",
-          content
+          content: `<div style="font-family:'Avenir Next LT Pro',system-ui,sans-serif;font-size:12px;line-height:1.5;">
+            <table style="border-collapse:collapse;width:100%;">
+              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">District code</td><td style="font-weight:600;">${{row.district_code || "N/A"}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">TFL high est.</td><td style="font-weight:600;">${{formatUsd(row.high_total)}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">Matched clients</td><td style="font-weight:600;">${{row.match_count}}</td></tr>
+            </table>
+            <div style="margin-top:5px;padding-top:4px;border-top:1px solid rgba(140,160,180,0.20);font-size:11px;">${{clientsHtml}}${{extraHtml}}</div>
+          </div>`
         }}
       }});
-      graphics.add(pointGraphic);
+      graphics.add(g);
     }}
 
-    const updateDistrictLabelVisibility = () => {{
-      districtLayer.labelsVisible = Number(view.zoom || 0) >= 8.5;
+    const updateLabels = () => {{
+      const z = Number(view.zoom || 0);
+      countyLayer.labelsVisible = z >= 6;
+      districtLayer.labelsVisible = z >= 8.5;
+      houseLayer.labelsVisible = z >= 8;
+      senateLayer.labelsVisible = z >= 7;
     }};
-    view.watch("zoom", updateDistrictLabelVisibility);
+    view.watch("zoom", updateLabels);
+
+    /* ── Widgets ── */
+    const home = new Home({{ view }});
+    const basemapToggle = new BasemapToggle({{ view, nextBasemap: baseMapId === "hybrid" ? "gray-vector" : "hybrid" }});
+    const scaleBar = new ScaleBar({{ view, unit: "dual" }});
+    const compass = new Compass({{ view }});
+    const fullscreen = new Fullscreen({{ view }});
+    const locate = new Locate({{ view }});
+    const search = new Search({{
+      view, popupEnabled: true, resultGraphicEnabled: true,
+      goToOverride: (view, opts) => view.goTo(opts.target, {{ duration: 800, easing: "ease-in-out" }})
+    }});
+
+    /* Sketch tool for encircling areas */
+    const sketch = new Sketch({{
+      view, layer: sketchLayer, creationMode: "single",
+      availableCreateTools: ["polygon", "circle", "rectangle"],
+      defaultCreateOptions: {{ mode: "freehand" }},
+      visibleElements: {{ selectionTools: {{ "lasso-selection": false, "rectangle-selection": false }}, settingsMenu: false, undoRedoMenu: true }},
+      defaultUpdateOptions: {{ tool: "reshape" }}
+    }});
+    const sketchExpand = new Expand({{
+      view, content: sketch, expandIconClass: "esri-icon-polygon",
+      expandTooltip: "Draw area for batch analysis", group: "tools"
+    }});
+
+    /* House/Senate layer toggle */
+    const layerDiv = document.createElement("div");
+    layerDiv.style.cssText = "background:rgba(13,23,36,0.94);border-radius:8px;padding:10px;font-family:'Avenir Next LT Pro',system-ui,sans-serif;font-size:12px;color:rgba(210,225,240,0.90);min-width:160px;";
+    layerDiv.innerHTML = '<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:rgba(150,175,200,0.65);font-weight:700;margin-bottom:6px;">Legislative Districts</div>'
+      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;"><input type="checkbox" id="tfl-sd-toggle-house" style="accent-color:#28b464;"><span>TX House Districts</span></label>'
+      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;"><input type="checkbox" id="tfl-sd-toggle-senate" style="accent-color:#c88c3c;"><span>TX Senate Districts</span></label>';
+    const layerExpand = new Expand({{
+      view, content: layerDiv, expandIconClass: "esri-icon-layer-list",
+      expandTooltip: "Toggle legislative districts", group: "tools"
+    }});
+
+    view.ui.add(home, "top-left");
+    view.ui.add(compass, "top-left");
+    view.ui.add(fullscreen, "top-left");
+    view.ui.add(locate, "top-left");
+    view.ui.add(sketchExpand, "top-left");
+    view.ui.add(layerExpand, "top-left");
+    view.ui.add(search, "top-right");
+    view.ui.add(basemapToggle, "top-right");
+    view.ui.add(scaleBar, "bottom-left");
+
+    /* Wire layer toggles */
+    view.when(() => {{
+      const hBox = document.getElementById("tfl-sd-toggle-house");
+      const sBox = document.getElementById("tfl-sd-toggle-senate");
+      if (hBox) hBox.addEventListener("change", () => {{ houseLayer.visible = hBox.checked; }});
+      if (sBox) sBox.addEventListener("change", () => {{ senateLayer.visible = sBox.checked; }});
+    }});
+
+    /* Sketch complete → batch analysis info */
+    sketch.on("create", (evt) => {{
+      if (evt.state !== "complete") return;
+      const drawn = evt.graphic.geometry;
+      const selInfo = document.getElementById("tfl-sd-sel-info");
+      const contained = [];
+      graphics.graphics.forEach((g) => {{
+        if (g.geometry && geometryEngine.contains(drawn, g.geometry)) contained.push(g.attributes || {{}});
+      }});
+      if (selInfo && contained.length > 0) {{
+        const total = contained.reduce((a,r) => a + Number(r.high_total||0), 0);
+        selInfo.style.display = "block";
+        selInfo.innerHTML = '<div class="sel-title">Area Selection</div>'
+          + '<div><strong>' + contained.length + '</strong> district(s) in area</div>'
+          + '<div>Combined TFL est.: <strong>' + formatUsd(total) + '</strong></div>';
+        try {{ window.parent.postMessage({{ type: "tfl-map-area-select", count: contained.length, totalHigh: total }}, "*"); }} catch(e) {{}}
+      }} else if (selInfo) {{
+        selInfo.style.display = "block";
+        selInfo.innerHTML = '<div class="sel-title">Area Selection</div><div>No districts in drawn area.</div>';
+        setTimeout(() => {{ selInfo.style.display = "none"; }}, 3000);
+      }}
+    }});
+
+    /* Coordinate readout */
+    view.on("pointer-move", (evt) => {{
+      const pt = view.toMap(evt);
+      const el = document.getElementById("tfl-sd-coord");
+      if (pt && el) el.textContent = pt.latitude.toFixed(5) + "\u00b0 N, " + Math.abs(pt.longitude).toFixed(5) + "\u00b0 W";
+    }});
+
+    /* Hover highlight */
+    let hoverHL = null;
+    view.on("pointer-move", (evt) => {{
+      view.hitTest(evt, {{ include: [graphics] }}).then((r) => {{
+        const hit = r.results && r.results.find(x => x.graphic);
+        document.getElementById("tfl-arcgis-map").style.cursor = hit ? "pointer" : "default";
+        if (hoverHL) {{ graphics.remove(hoverHL); hoverHL = null; }}
+        if (hit && hit.graphic && hit.graphic.geometry) {{
+          hoverHL = new Graphic({{
+            geometry: hit.graphic.geometry,
+            symbol: {{ type: "simple-marker", style: "circle", size: 30, color: [255,255,255,0.0], outline: {{ color: [0,224,184,0.55], width: 2 }} }}
+          }});
+          graphics.add(hoverHL);
+        }}
+      }});
+    }});
 
     view.when(() => {{
-      updateDistrictLabelVisibility();
+      const loader = document.getElementById("tfl-sd-loading");
+      if (loader) {{ loader.style.opacity = "0"; setTimeout(() => loader.remove(), 600); }}
+      updateLabels();
       if (graphics.graphics.length > 0) {{
-        view.goTo(graphics.graphics.toArray(), {{ padding: 40 }}).catch(() => {{}});
+        view.goTo(graphics.graphics.toArray(), {{ padding: {{ top: 50, right: 50, bottom: 50, left: 50 }}, duration: 1000, easing: "ease-in-out" }}).catch(() => {{}});
       }}
     }});
   }});
@@ -11934,6 +15441,13 @@ def render_tfl_subdivision_arcgis_map(
         for subtype, color_hex in SUBDIVISION_TYPE_COLORS.items()
     }
     type_colors_json = json.dumps(type_colors, ensure_ascii=True)
+
+    # Build hex color map for the on-map legend
+    type_hex_colors = {
+        subtype: color_hex
+        for subtype, color_hex in SUBDIVISION_TYPE_COLORS.items()
+    }
+
     payload_rows = []
     for row in matches.itertuples(index=False):
         clients = row.match_clients if isinstance(row.match_clients, list) else []
@@ -11955,15 +15469,161 @@ def render_tfl_subdivision_arcgis_map(
     payload_json = json.dumps(payload_rows, ensure_ascii=True)
     basemap_safe = json.dumps(str(basemap).strip() or "gray-vector")
 
+    # Determine which subdivision types are actually present for the legend
+    present_types: dict[str, tuple[str, int]] = {}
+    for pr in payload_rows:
+        st_key = pr["subdivision_type"]
+        if st_key:
+            if st_key not in present_types:
+                present_types[st_key] = (type_hex_colors.get(st_key, "#718191"), 0)
+            present_types[st_key] = (present_types[st_key][0], present_types[st_key][1] + 1)
+    legend_items_json = json.dumps(
+        [{"type": t, "color": c, "count": n} for t, (c, n) in sorted(present_types.items(), key=lambda x: -x[1][1])],
+        ensure_ascii=True,
+    )
+
+    total_sub = len(payload_rows)
+    total_sub_high = sum(r["high_total"] for r in payload_rows)
+    total_sub_high_fmt = f"${total_sub_high:,.0f}"
+
     arcgis_html = f"""
-<div style="width:100%;height:{height}px;">
+<link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/dark/main.css"/>
+<style>
+  /* ── Dark popup theme ── */
+  .esri-popup__main-container {{
+    background: rgba(13,23,36,0.96) !important;
+    color: rgba(220,230,240,0.95) !important;
+    border: 1px solid rgba(100,140,180,0.22) !important;
+    border-radius: 10px !important;
+    backdrop-filter: blur(10px) !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45) !important;
+  }}
+  .esri-popup__header-title {{ color: rgba(235,242,250,0.97) !important; font-weight: 600 !important; }}
+  .esri-popup__content {{ color: rgba(200,215,230,0.92) !important; }}
+  .esri-popup__button {{ color: rgba(180,200,220,0.85) !important; }}
+  .esri-popup__button:hover {{ color: #fff !important; background: rgba(100,180,255,0.18) !important; }}
+  .esri-popup__pointer-direction {{ background: rgba(13,23,36,0.96) !important; }}
+
+  .esri-sketch {{ background: rgba(13,23,36,0.92) !important; border-radius: 8px !important; border: 1px solid rgba(100,140,180,0.22) !important; }}
+
+  #tfl-sub-legend {{
+    position: absolute; bottom: 36px; right: 12px; z-index: 90;
+    background: rgba(10,20,32,0.92); border: 1px solid rgba(100,140,180,0.18);
+    border-radius: 11px; padding: 0; max-width: 220px; overflow: hidden;
+    font-family: 'Avenir Next LT Pro', system-ui, sans-serif; font-size: 10.5px;
+    color: rgba(210,225,240,0.90); backdrop-filter: blur(8px);
+    transition: max-height 0.3s ease;
+  }}
+  #tfl-sub-legend .leg-hdr {{
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px 4px 10px; cursor: pointer; user-select: none;
+  }}
+  #tfl-sub-legend .leg-title {{
+    text-transform: uppercase; letter-spacing: 0.14em; font-size: 8px;
+    color: rgba(150,175,200,0.70); font-weight: 700;
+  }}
+  #tfl-sub-legend .leg-toggle {{
+    font-size: 12px; color: rgba(150,175,200,0.60); transition: transform 0.25s;
+  }}
+  #tfl-sub-legend .leg-body {{
+    padding: 0 10px 6px 10px; max-height: 220px; overflow-y: auto;
+  }}
+  #tfl-sub-legend .leg-row {{
+    display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 2px 0;
+    cursor: pointer; border-radius: 4px; padding-left: 3px; padding-right: 3px;
+    transition: background 0.15s, opacity 0.25s;
+  }}
+  #tfl-sub-legend .leg-row:hover {{ background: rgba(255,255,255,0.06); }}
+  #tfl-sub-legend .leg-row.dimmed {{ opacity: 0.28; }}
+  #tfl-sub-legend .leg-left {{ display: flex; align-items: center; gap: 5px; min-width: 0; }}
+  #tfl-sub-legend .leg-chip {{
+    width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.18);
+  }}
+  #tfl-sub-legend .leg-label {{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+  #tfl-sub-legend .leg-count {{ font-weight: 600; flex-shrink: 0; color: rgba(200,215,230,0.75); font-size: 9.5px; }}
+  #tfl-sub-legend.collapsed .leg-body {{ display: none; }}
+  #tfl-sub-legend.collapsed .leg-toggle {{ transform: rotate(180deg); }}
+
+  #tfl-sub-loading {{
+    position:absolute; top:0; left:0; width:100%; height:100%;
+    background:rgba(10,16,26,0.92); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:10px;
+    z-index:100; border-radius:14px; transition:opacity 0.6s ease;
+  }}
+  #tfl-sub-loading .ld-spinner {{
+    width:30px; height:30px; border:2.5px solid rgba(100,140,180,0.18);
+    border-top:2.5px solid rgba(100,180,255,0.80); border-radius:50%;
+    animation: tfl-sub-spin 0.8s linear infinite;
+  }}
+  #tfl-sub-loading .ld-label {{
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:10px;
+    color:rgba(160,185,210,0.65); letter-spacing:0.06em;
+  }}
+  @keyframes tfl-sub-spin {{ 0%{{transform:rotate(0deg)}} 100%{{transform:rotate(360deg)}} }}
+  #tfl-sub-coord {{
+    position:absolute; bottom:10px; left:50%; transform:translateX(-50%); z-index:90;
+    background:rgba(10,16,26,0.85); border:1px solid rgba(100,140,180,0.15);
+    border-radius:6px; padding:2px 10px;
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:10px;
+    color:rgba(180,200,220,0.75); pointer-events:none; backdrop-filter:blur(6px);
+    white-space:nowrap; letter-spacing:0.04em;
+  }}
+  #tfl-sub-sel-info {{
+    position:absolute; bottom:36px; left:12px; z-index:90;
+    background:rgba(10,16,26,0.92); border:1px solid rgba(0,180,255,0.25);
+    border-radius:8px; padding:6px 12px; backdrop-filter:blur(6px);
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:11px;
+    color:rgba(200,220,240,0.90); display:none; max-width:280px;
+  }}
+  #tfl-sub-sel-info .sel-title {{
+    font-weight:700; color:rgba(100,200,255,0.95); font-size:10px;
+    text-transform:uppercase; letter-spacing:0.08em; margin-bottom:3px;
+  }}
+</style>
+<div style="width:100%;height:{height}px;position:relative;">
   <div id="tfl-subdivision-map" style="width:100%;height:100%;border-radius:14px;overflow:hidden;"></div>
+  <div id="tfl-sub-legend">
+    <div class="leg-hdr" onclick="this.parentElement.classList.toggle('collapsed')">
+      <span class="leg-title">Subdivisions &middot; click to filter</span>
+      <span class="leg-toggle">&#9650;</span>
+    </div>
+    <div class="leg-body" id="tfl-sub-legend-body"></div>
+  </div>
+  <div id="tfl-sub-loading"><div class="ld-spinner"></div><div class="ld-label">Loading map layers&hellip;</div></div>
+  <div id="tfl-sub-coord">&ndash;</div>
+  <div id="tfl-sub-sel-info"></div>
 </div>
 <script src="https://js.arcgis.com/4.30/"></script>
 <script>
   const tflPoints = {payload_json};
   const baseMapId = {basemap_safe};
   const typeColors = {type_colors_json};
+  const legendItems = {legend_items_json};
+
+  /* Track hidden types for interactive legend filtering */
+  const hiddenTypes = new Set();
+
+  /* Build interactive legend */
+  let filterCallback = null;
+  (function() {{
+    const body = document.getElementById("tfl-sub-legend-body");
+    if (!body || legendItems.length === 0) return;
+    let h = "";
+    for (const e of legendItems) {{
+      h += '<div class="leg-row" data-type="' + e.type + '"><div class="leg-left"><span class="leg-chip" style="background:' + e.color + ';"></span><span class="leg-label">' + e.type + '</span></div><span class="leg-count">' + e.count + '</span></div>';
+    }}
+    body.innerHTML = h;
+    body.querySelectorAll(".leg-row").forEach(row => {{
+      row.addEventListener("click", () => {{
+        const t = row.getAttribute("data-type");
+        if (hiddenTypes.has(t)) {{ hiddenTypes.delete(t); row.classList.remove("dimmed"); }}
+        else {{ hiddenTypes.add(t); row.classList.add("dimmed"); }}
+        if (filterCallback) filterCallback();
+      }});
+    }});
+  }})();
+
   require([
     "esri/Map",
     "esri/views/MapView",
@@ -11974,195 +15634,264 @@ def render_tfl_subdivision_arcgis_map(
     "esri/widgets/ScaleBar",
     "esri/widgets/BasemapToggle",
     "esri/widgets/Compass",
-    "esri/widgets/Fullscreen"
-  ], function(Map, MapView, FeatureLayer, GraphicsLayer, Graphic, Home, ScaleBar, BasemapToggle, Compass, Fullscreen) {{
+    "esri/widgets/Fullscreen",
+    "esri/widgets/Search",
+    "esri/widgets/Locate",
+    "esri/widgets/Sketch",
+    "esri/widgets/Expand",
+    "esri/geometry/geometryEngine"
+  ], function(Map, MapView, FeatureLayer, GraphicsLayer, Graphic, Home, ScaleBar, BasemapToggle, Compass, Fullscreen, Search, Locate, Sketch, Expand, geometryEngine) {{
     const map = new Map({{ basemap: baseMapId }});
 
     const districtLayer = new FeatureLayer({{
       url: "{TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL}",
       outFields: ["FID", "NAME20", "DISTRICT"],
-      popupEnabled: false,
-      labelsVisible: false,
+      popupEnabled: false, labelsVisible: false,
       labelingInfo: [{{
         labelExpressionInfo: {{ expression: "$feature.NAME20" }},
-        symbol: {{
-          type: "text",
-          color: [73, 112, 150, 0.82],
-          haloColor: [255, 255, 255, 0.90],
-          haloSize: 0.8,
-          font: {{
-            size: 8,
-            family: "Avenir Next LT Pro",
-            weight: "normal"
-          }}
-        }}
+        symbol: {{ type: "text", color: [73, 112, 150, 0.65], haloColor: [13, 23, 36, 0.80], haloSize: 0.6,
+          font: {{ size: 8, family: "Avenir Next LT Pro", weight: "normal" }} }}
       }}],
-      renderer: {{
-        type: "simple",
-        symbol: {{
-          type: "simple-fill",
-          color: [73, 112, 150, 0.04],
-          outline: {{ color: [73, 112, 150, 0.32], width: 0.8 }}
-        }}
-      }},
-      opacity: 0.45
+      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [0,0,0,0], outline: {{ color: [73, 112, 150, 0.25], width: 0.6 }} }} }},
+      opacity: 0.40
     }});
-    map.add(districtLayer);
 
     const countyLayer = new FeatureLayer({{
       url: "{TEA_ARCGIS_COUNTY_LAYER_URL}",
       outFields: ["FENAME", "FIPS"],
-      popupEnabled: false,
-      labelsVisible: true,
+      popupEnabled: false, labelsVisible: false,
       labelingInfo: [{{
         labelExpressionInfo: {{ expression: "$feature.FENAME + ' County'" }},
-        symbol: {{
-          type: "text",
-          color: [196, 166, 125, 0.94],
-          haloColor: [13, 23, 36, 0.86],
-          haloSize: 1.0,
-          font: {{
-            size: 13,
-            family: "Avenir Next LT Pro",
-            weight: "600"
-          }}
-        }}
+        symbol: {{ type: "text", color: [160, 140, 110, 0.80], haloColor: [13, 23, 36, 0.82], haloSize: 0.9,
+          font: {{ size: 12, family: "Avenir Next LT Pro", weight: "600" }} }}
       }}],
-      renderer: {{
-        type: "simple",
-        symbol: {{
-          type: "simple-fill",
-          color: [145, 111, 63, 0.03],
-          outline: {{ color: [145, 111, 63, 0.28], width: 0.8 }}
-        }}
-      }},
-      opacity: 0.30
+      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [0,0,0,0], outline: {{ color: [145, 111, 63, 0.22], width: 0.6 }} }} }},
+      opacity: 0.35
     }});
-    map.add(countyLayer);
 
     const cityLayer = new FeatureLayer({{
       url: "{CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL}",
       outFields: ["NAME", "BASENAME", "GEOID", "STATE"],
       definitionExpression: "STATE = '48'",
-      popupEnabled: false,
-      labelsVisible: true,
+      popupEnabled: false, labelsVisible: false,
       labelingInfo: [{{
         labelExpressionInfo: {{ expression: "DefaultValue($feature.BASENAME, $feature.NAME)" }},
-        symbol: {{
-          type: "text",
-          color: [183, 104, 110, 0.94],
-          haloColor: [13, 23, 36, 0.80],
-          haloSize: 0.9,
-          font: {{
-            size: 11,
-            family: "Avenir Next LT Pro",
-            weight: "500"
-          }}
-        }}
+        symbol: {{ type: "text", color: [165, 100, 105, 0.80], haloColor: [13, 23, 36, 0.76], haloSize: 0.7,
+          font: {{ size: 9, family: "Avenir Next LT Pro", weight: "500" }} }}
       }}],
-      renderer: {{
-        type: "simple",
-        symbol: {{
-          type: "simple-fill",
-          color: [158, 42, 43, 0.02],
-          outline: {{ color: [158, 42, 43, 0.16], width: 0.55 }}
-        }}
-      }},
-      opacity: 0.22
+      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [0,0,0,0], outline: {{ color: [158, 42, 43, 0.12], width: 0.4 }} }} }},
+      opacity: 0.20
     }});
+
+    /* TX House & Senate district boundaries */
+    const houseLayer = new FeatureLayer({{
+      url: "{TEXAS_HOUSE_DISTRICTS_LAYER_URL}",
+      outFields: ["*"], popupEnabled: true,
+      popupTemplate: {{ title: "TX House District {{{{DISTRICT}}}}", content: "Texas House of Representatives District {{{{DISTRICT}}}}" }},
+      labelsVisible: false,
+      labelingInfo: [{{ labelExpressionInfo: {{ expression: "'HD ' + $feature.DISTRICT" }},
+        symbol: {{ type: "text", color: [90, 180, 130, 0.70], haloColor: [13, 23, 36, 0.75], haloSize: 0.6,
+          font: {{ size: 8, family: "Avenir Next LT Pro", weight: "600" }} }} }}],
+      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [40, 180, 100, 0.03], outline: {{ color: [40, 180, 100, 0.30], width: 0.8 }} }} }},
+      opacity: 0.30, visible: false
+    }});
+    const senateLayer = new FeatureLayer({{
+      url: "{TEXAS_SENATE_DISTRICTS_LAYER_URL}",
+      outFields: ["*"], popupEnabled: true,
+      popupTemplate: {{ title: "TX Senate District {{{{DISTRICT}}}}", content: "Texas Senate District {{{{DISTRICT}}}}" }},
+      labelsVisible: false,
+      labelingInfo: [{{ labelExpressionInfo: {{ expression: "'SD ' + $feature.DISTRICT" }},
+        symbol: {{ type: "text", color: [180, 130, 90, 0.70], haloColor: [13, 23, 36, 0.75], haloSize: 0.6,
+          font: {{ size: 9, family: "Avenir Next LT Pro", weight: "600" }} }} }}],
+      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [200, 140, 60, 0.03], outline: {{ color: [200, 140, 60, 0.30], width: 0.8 }} }} }},
+      opacity: 0.30, visible: false
+    }});
+
+    map.add(districtLayer);
+    map.add(countyLayer);
+    map.add(houseLayer);
+    map.add(senateLayer);
     map.add(cityLayer);
 
     const graphics = new GraphicsLayer();
+    const sketchLayer = new GraphicsLayer();
     map.add(graphics);
+    map.add(sketchLayer);
 
     const view = new MapView({{
       container: "tfl-subdivision-map",
       map,
       center: [-99.3, 31.1],
       zoom: 5,
-      constraints: {{ minZoom: 5 }}
+      constraints: {{ minZoom: 5 }},
+      popup: {{ dockEnabled: true, dockOptions: {{ position: "bottom-right", breakpoint: false }} }},
+      ui: {{ padding: {{ top: 10, right: 10, bottom: 30, left: 10 }} }}
     }});
 
-    const formatUsd = (value) => {{
-      const numeric = Number(value || 0);
-      return numeric.toLocaleString("en-US", {{
-        style: "currency",
-        currency: "USD",
-        maximumFractionDigits: 0
-      }});
-    }};
-    const maxHigh = tflPoints.reduce(
-      (acc, row) => Math.max(acc, Number(row.high_total || 0)),
-      0
-    );
-    const markerSizeFromHigh = (value) => {{
+    const formatUsd = (v) => Number(v||0).toLocaleString("en-US",{{style:"currency",currency:"USD",maximumFractionDigits:0}});
+    const maxHigh = tflPoints.reduce((a, r) => Math.max(a, Number(r.high_total || 0)), 0);
+    const sz = (v) => {{
       if (maxHigh <= 0) return 9;
-      const numeric = Math.max(0, Number(value || 0));
-      const ratio = Math.log10(numeric + 1) / Math.log10(maxHigh + 1);
-      return Math.max(8, Math.min(34, 8 + ratio * 26));
+      const n = Math.max(0, Number(v || 0));
+      return Math.max(8, Math.min(30, 8 + (Math.log10(n+1)/Math.log10(maxHigh+1))*22));
     }};
 
     for (const row of tflPoints) {{
-      const markerSize = markerSizeFromHigh(row.high_total);
       const clientsHtml = (row.match_clients || []).join(", ");
       const extraHtml = row.extra_count > 0 ? `, +${{row.extra_count}} more` : "";
-      const content = `<div><strong>Type:</strong> ${{row.subdivision_type}}</div>
-        <div><strong>Code:</strong> ${{row.subdivision_code || "N/A"}}</div>
-        <div><strong>Matched TFL high estimate:</strong> ${{formatUsd(row.high_total)}}</div>
-        <div><strong>Source:</strong> ${{row.source_name || "N/A"}}</div>
-        <div style="margin-top:6px;"><strong>Matched TFL clients (${{row.match_count}}):</strong><br/>${{clientsHtml}}${{extraHtml}}</div>`;
-      const pointGraphic = new Graphic({{
-        geometry: {{
-          type: "point",
-          longitude: row.lon,
-          latitude: row.lat
-        }},
+      const g = new Graphic({{
+        geometry: {{ type: "point", longitude: row.lon, latitude: row.lat }},
         symbol: {{
-          type: "simple-marker",
-          size: markerSize,
+          type: "simple-marker", size: sz(row.high_total),
           color: typeColors[row.subdivision_type] || [113, 129, 145, 0.9],
-          outline: {{
-            color: [255, 255, 255, 0.88],
-            width: 1.1
-          }}
+          outline: {{ color: [255, 255, 255, 0.70], width: 1 }}
         }},
         attributes: row,
         popupTemplate: {{
           title: row.subdivision_name || "Political Subdivision",
-          content
+          content: `<div style="font-family:'Avenir Next LT Pro',system-ui,sans-serif;font-size:12px;line-height:1.5;">
+            <table style="border-collapse:collapse;width:100%;">
+              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">Type</td><td style="font-weight:600;">${{row.subdivision_type}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">Code</td><td>${{row.subdivision_code || "N/A"}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">TFL high est.</td><td style="font-weight:600;">${{formatUsd(row.high_total)}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">Source</td><td>${{row.source_name || "N/A"}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">Matched clients</td><td style="font-weight:600;">${{row.match_count}}</td></tr>
+            </table>
+            <div style="margin-top:5px;padding-top:4px;border-top:1px solid rgba(140,160,180,0.20);font-size:11px;">${{clientsHtml}}${{extraHtml}}</div>
+          </div>`
         }}
       }});
-      graphics.add(pointGraphic);
+      graphics.add(g);
     }}
 
-    const updateLabelVisibility = () => {{
-      const zoom = Number(view.zoom || 0);
-      countyLayer.labelsVisible = zoom >= 5;
-      cityLayer.labelsVisible = zoom >= 6.2;
-      districtLayer.labelsVisible = zoom >= 8.5;
+    /* Interactive legend filtering callback */
+    filterCallback = () => {{
+      graphics.graphics.forEach(g => {{
+        if (g.attributes && g.attributes.subdivision_type) {{
+          g.visible = !hiddenTypes.has(g.attributes.subdivision_type);
+        }}
+      }});
     }};
-    view.watch("zoom", updateLabelVisibility);
 
+    const updateLabels = () => {{
+      const z = Number(view.zoom || 0);
+      countyLayer.labelsVisible = z >= 5;
+      cityLayer.labelsVisible = z >= 6.2;
+      districtLayer.labelsVisible = z >= 8.5;
+      houseLayer.labelsVisible = z >= 8;
+      senateLayer.labelsVisible = z >= 7;
+    }};
+    view.watch("zoom", updateLabels);
+
+    /* ── Widgets ── */
     const home = new Home({{ view }});
-    const basemapToggle = new BasemapToggle({{
-      view,
-      nextBasemap: baseMapId === "hybrid" ? "gray-vector" : "hybrid"
-    }});
+    const basemapToggle = new BasemapToggle({{ view, nextBasemap: baseMapId === "hybrid" ? "gray-vector" : "hybrid" }});
     const scaleBar = new ScaleBar({{ view, unit: "dual" }});
     const compass = new Compass({{ view }});
     const fullscreen = new Fullscreen({{ view }});
+    const locate = new Locate({{ view }});
+    const search = new Search({{
+      view, popupEnabled: true, resultGraphicEnabled: true,
+      goToOverride: (view, opts) => view.goTo(opts.target, {{ duration: 800, easing: "ease-in-out" }})
+    }});
+
+    /* Sketch tool for encircling areas */
+    const sketch = new Sketch({{
+      view, layer: sketchLayer, creationMode: "single",
+      availableCreateTools: ["polygon", "circle", "rectangle"],
+      defaultCreateOptions: {{ mode: "freehand" }},
+      visibleElements: {{ selectionTools: {{ "lasso-selection": false, "rectangle-selection": false }}, settingsMenu: false, undoRedoMenu: true }},
+      defaultUpdateOptions: {{ tool: "reshape" }}
+    }});
+    const sketchExpand = new Expand({{
+      view, content: sketch, expandIconClass: "esri-icon-polygon",
+      expandTooltip: "Draw area for batch analysis", group: "tools"
+    }});
+
+    /* House/Senate layer toggle */
+    const layerDiv = document.createElement("div");
+    layerDiv.style.cssText = "background:rgba(13,23,36,0.94);border-radius:8px;padding:10px;font-family:'Avenir Next LT Pro',system-ui,sans-serif;font-size:12px;color:rgba(210,225,240,0.90);min-width:160px;";
+    layerDiv.innerHTML = '<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:rgba(150,175,200,0.65);font-weight:700;margin-bottom:6px;">Legislative Districts</div>'
+      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;"><input type="checkbox" id="tfl-sub-toggle-house" style="accent-color:#28b464;"><span>TX House Districts</span></label>'
+      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;"><input type="checkbox" id="tfl-sub-toggle-senate" style="accent-color:#c88c3c;"><span>TX Senate Districts</span></label>';
+    const layerExpand = new Expand({{
+      view, content: layerDiv, expandIconClass: "esri-icon-layer-list",
+      expandTooltip: "Toggle legislative districts", group: "tools"
+    }});
 
     view.ui.add(home, "top-left");
     view.ui.add(compass, "top-left");
     view.ui.add(fullscreen, "top-left");
+    view.ui.add(locate, "top-left");
+    view.ui.add(sketchExpand, "top-left");
+    view.ui.add(layerExpand, "top-left");
+    view.ui.add(search, "top-right");
     view.ui.add(basemapToggle, "top-right");
     view.ui.add(scaleBar, "bottom-left");
-    view.popup.dockEnabled = true;
+
+    /* Wire layer toggles */
+    view.when(() => {{
+      const hBox = document.getElementById("tfl-sub-toggle-house");
+      const sBox = document.getElementById("tfl-sub-toggle-senate");
+      if (hBox) hBox.addEventListener("change", () => {{ houseLayer.visible = hBox.checked; }});
+      if (sBox) sBox.addEventListener("change", () => {{ senateLayer.visible = sBox.checked; }});
+    }});
+
+    /* Sketch complete → batch analysis info */
+    sketch.on("create", (evt) => {{
+      if (evt.state !== "complete") return;
+      const drawn = evt.graphic.geometry;
+      const selInfo = document.getElementById("tfl-sub-sel-info");
+      const contained = [];
+      graphics.graphics.forEach((g) => {{
+        if (g.visible !== false && g.geometry && geometryEngine.contains(drawn, g.geometry)) contained.push(g.attributes || {{}});
+      }});
+      if (selInfo && contained.length > 0) {{
+        const total = contained.reduce((a,r) => a + Number(r.high_total||0), 0);
+        const types = [...new Set(contained.map(r => r.subdivision_type).filter(Boolean))];
+        selInfo.style.display = "block";
+        selInfo.innerHTML = '<div class="sel-title">Area Selection</div>'
+          + '<div><strong>' + contained.length + '</strong> subdivision(s) in area</div>'
+          + '<div>Combined TFL est.: <strong>' + formatUsd(total) + '</strong></div>'
+          + '<div style="font-size:10px;color:rgba(180,200,220,0.65);margin-top:3px;">' + types.join(", ") + '</div>';
+        try {{ window.parent.postMessage({{ type: "tfl-map-area-select", count: contained.length, totalHigh: total, types: types }}, "*"); }} catch(e) {{}}
+      }} else if (selInfo) {{
+        selInfo.style.display = "block";
+        selInfo.innerHTML = '<div class="sel-title">Area Selection</div><div>No subdivisions in drawn area.</div>';
+        setTimeout(() => {{ selInfo.style.display = "none"; }}, 3000);
+      }}
+    }});
+
+    /* Coordinate readout */
+    view.on("pointer-move", (evt) => {{
+      const pt = view.toMap(evt);
+      const el = document.getElementById("tfl-sub-coord");
+      if (pt && el) el.textContent = pt.latitude.toFixed(5) + "\u00b0 N, " + Math.abs(pt.longitude).toFixed(5) + "\u00b0 W";
+    }});
+
+    /* Hover highlight */
+    let hoverHL = null;
+    view.on("pointer-move", (evt) => {{
+      view.hitTest(evt, {{ include: [graphics] }}).then((r) => {{
+        const hit = r.results && r.results.find(x => x.graphic);
+        document.getElementById("tfl-subdivision-map").style.cursor = hit ? "pointer" : "default";
+        if (hoverHL) {{ graphics.remove(hoverHL); hoverHL = null; }}
+        if (hit && hit.graphic && hit.graphic.geometry) {{
+          hoverHL = new Graphic({{
+            geometry: hit.graphic.geometry,
+            symbol: {{ type: "simple-marker", style: "circle", size: 30, color: [255,255,255,0.0], outline: {{ color: [255,255,255,0.55], width: 2 }} }}
+          }});
+          graphics.add(hoverHL);
+        }}
+      }});
+    }});
 
     view.when(() => {{
-      updateLabelVisibility();
+      const loader = document.getElementById("tfl-sub-loading");
+      if (loader) {{ loader.style.opacity = "0"; setTimeout(() => loader.remove(), 600); }}
+      updateLabels();
       if (graphics.graphics.length > 0) {{
-        view.goTo(graphics.graphics.toArray(), {{ padding: {{ top: 44, right: 30, bottom: 44, left: 30 }} }}).catch(() => {{}});
+        view.goTo(graphics.graphics.toArray(), {{ padding: {{ top: 50, right: 50, bottom: 50, left: 50 }}, duration: 1000, easing: "ease-in-out" }}).catch(() => {{}});
       }}
     }});
   }});
@@ -15486,7 +19215,20 @@ def _render_pdf_report_section(
                 width="stretch",
             )
 
-PLOTLY_CONFIG = {"displayModeBar": False, "responsive": True, "displaylogo": False}
+PLOTLY_CONFIG = {
+    "displayModeBar": "hover",
+    "responsive": True,
+    "displaylogo": False,
+    "modeBarButtonsToRemove": ["select2d", "lasso2d", "autoScale2d"],
+    "modeBarButtonsToAdd": ["toggleSpikelines"],
+    "toImageButtonOptions": {
+        "format": "png",
+        "filename": "tfl-chart-export",
+        "height": 600,
+        "width": 1000,
+        "scale": 2,
+    },
+}
 CHART_COLORS = [
     "#8caed3",
     "#6f92b9",
@@ -15537,11 +19279,13 @@ def _apply_plotly_layout(
             x=0,
             font=dict(size=11, color="rgba(223,234,247,0.78)"),
         ),
+        hovermode="x unified",
         hoverlabel=dict(
             bgcolor="rgba(16,27,41,0.96)",
             bordercolor="rgba(255,255,255,0.10)",
             font=dict(color="rgba(237,245,255,0.95)", size=12),
         ),
+        transition=dict(duration=300, easing="cubic-in-out"),
     )
     if height:
         fig.update_layout(height=height)
@@ -15551,6 +19295,11 @@ def _apply_plotly_layout(
         showline=False,
         ticks="outside",
         tickfont=dict(color="rgba(223,234,247,0.78)"),
+        showspikes=True,
+        spikecolor="rgba(134,167,198,0.3)",
+        spikethickness=1,
+        spikedash="dot",
+        spikemode="across",
     )
     fig.update_yaxes(
         showgrid=False,
@@ -15558,6 +19307,11 @@ def _apply_plotly_layout(
         showline=False,
         ticks="outside",
         tickfont=dict(color="rgba(223,234,247,0.78)"),
+        showspikes=True,
+        spikecolor="rgba(134,167,198,0.3)",
+        spikethickness=1,
+        spikedash="dot",
+        spikemode="across",
     )
     return fig
 
@@ -20429,6 +24183,38 @@ st.markdown(
 footer {visibility: hidden;}
 [data-testid="stToolbar"] {visibility: hidden;}
 </style>
+""",
+    unsafe_allow_html=True,
+)
+
+# =========================================================
+# KEYBOARD SHORTCUTS & SCROLL-TO-TOP ON PAGE LOAD
+# =========================================================
+st.markdown(
+    """
+<script>
+(function(){
+  /* Ctrl+K or / to focus nav search bar */
+  document.addEventListener('keydown', function(e){
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      var navInput = document.querySelector('input[aria-label="Nav search"]');
+      if (navInput) navInput.focus();
+    }
+    if (e.key === '/' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) {
+      e.preventDefault();
+      var navInput = document.querySelector('input[aria-label="Nav search"]');
+      if (navInput) navInput.focus();
+    }
+  });
+
+  /* Scroll to top on fresh page load */
+  if (!window.__tflScrollInit) {
+    window.__tflScrollInit = true;
+    window.scrollTo({top: 0, behavior: 'instant'});
+  }
+})();
+</script>
 """,
     unsafe_allow_html=True,
 )
