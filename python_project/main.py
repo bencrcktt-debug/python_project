@@ -3,9 +3,12 @@ import re
 import difflib
 import html
 import json
+import logging
 import math
+import time
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -39,6 +42,10 @@ MAP_BASEMAP_OPTIONS = {
     "Street Detail": "streets-vector",
     "Satellite": "hybrid",
 }
+
+# ── Atlas → Forensics / Batch bridge (invisible component relay) ──
+_TFL_BRIDGE_DIR = Path(__file__).parent / "_atlas_bridge"
+_atlas_bridge = components.declare_component("atlas_bridge", path=str(_TFL_BRIDGE_DIR))
 SUBDIVISION_TYPE_COLORS = {
     "School District": "#1769AA",
     "County": "#7A3E00",
@@ -1435,84 +1442,6 @@ div[data-testid="stPlotlyChart"]{
     line-height: 1.2;
 }
 
-.journey-grid{
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(182px, 1fr));
-    gap: 10px;
-    margin: 10px 0 15px 0;
-}
-.journey-step{
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    text-decoration: none;
-    border: 1px solid rgba(171, 191, 212, 0.26);
-    border-radius: 12px;
-    padding: 10px 11px;
-    background: linear-gradient(180deg, rgba(31, 48, 68, 0.62), rgba(15, 27, 41, 0.88));
-    transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
-}
-.journey-step:hover{
-    border-color: rgba(166, 192, 219, 0.58);
-    background: linear-gradient(180deg, rgba(44, 65, 89, 0.68), rgba(20, 33, 48, 0.90));
-    transform: translateY(-1px);
-}
-.journey-step.is-active{
-    border-color: rgba(173, 198, 223, 0.78);
-    background: linear-gradient(180deg, rgba(69, 97, 126, 0.64), rgba(23, 39, 57, 0.92));
-    box-shadow: inset 0 0 0 1px rgba(176, 200, 225, 0.24);
-}
-.journey-step-num{
-    font-size: 0.62rem;
-    text-transform: uppercase;
-    letter-spacing: 0.15em;
-    color: var(--muted);
-}
-.journey-step-title{
-    font-size: 0.94rem;
-    font-weight: 600;
-    color: var(--text);
-}
-.journey-step-desc{
-    font-size: 0.79rem;
-    line-height: 1.42;
-    color: var(--muted);
-}
-
-.workspace-note{
-    border: 1px solid rgba(170, 190, 211, 0.32);
-    border-radius: 12px;
-    border-left: 3px solid var(--accent);
-    background: linear-gradient(180deg, rgba(32, 49, 70, 0.63), rgba(15, 27, 41, 0.88));
-    padding: 13px 14px 12px 14px;
-    margin: 9px 0 10px 0;
-}
-.workspace-note-head{
-    margin: 0 0 5px 0;
-    font-size: 0.7rem;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-weight: 700;
-}
-.workspace-note p{
-    margin: 0;
-    color: var(--muted);
-    line-height: 1.5;
-}
-.workspace-note strong{
-    color: var(--text);
-}
-.workspace-note ol{
-    margin: 0.4rem 0 0.2rem 1.05rem;
-    padding: 0;
-}
-.workspace-note li{
-    margin: 0.2rem 0;
-    color: var(--text);
-    line-height: 1.45;
-}
-
 .workspace-links-heading{
     margin: 0.15rem 0 0.35rem 0;
     font-size: 0.72rem;
@@ -1691,69 +1620,6 @@ div[data-testid="stPlotlyChart"]{
     line-height: 1.45;
 }
 .app-note strong{
-    color: var(--text);
-}
-
-.quickstart-box{
-    border: 1px solid rgba(157, 179, 202, 0.36);
-    border-radius: 12px;
-    background: linear-gradient(180deg, rgba(26, 42, 60, 0.68), rgba(13, 24, 37, 0.90));
-    padding: 11px 12px;
-}
-.quickstart-box p{
-    margin: 0 0 0.45rem 0;
-    color: var(--muted);
-    line-height: 1.45;
-}
-.quickstart-box ol{
-    margin: 0.2rem 0 0.32rem 1.05rem;
-    padding: 0;
-}
-.quickstart-box li{
-    margin: 0.22rem 0;
-    line-height: 1.45;
-    color: var(--text);
-}
-
-.evidence-grid{
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 10px;
-    margin: 0.25rem 0 0.95rem 0;
-}
-.evidence-card{
-    border: 1px solid rgba(167, 188, 210, 0.32);
-    border-radius: 12px;
-    padding: 11px 12px;
-    background: linear-gradient(180deg, rgba(30, 47, 66, 0.62), rgba(14, 26, 39, 0.88));
-}
-.evidence-card.is-limit{
-    border-color: rgba(203, 170, 150, 0.34);
-    background: linear-gradient(180deg, rgba(54, 42, 33, 0.58), rgba(22, 28, 36, 0.88));
-}
-.evidence-kicker{
-    font-size: 0.64rem;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 5px;
-    font-weight: 700;
-}
-.evidence-title{
-    font-size: 0.93rem;
-    font-weight: 700;
-    margin-bottom: 0.3rem;
-}
-.evidence-list{
-    margin: 0.2rem 0 0.05rem 1rem;
-    padding: 0;
-}
-.evidence-list li{
-    margin: 0.2rem 0;
-    line-height: 1.4;
-    color: var(--muted);
-}
-.evidence-list li strong{
     color: var(--text);
 }
 
@@ -2468,9 +2334,6 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input{
     .map-overview-grid{
         grid-template-columns: 1fr;
     }
-    .journey-grid{
-        grid-template-columns: 1fr;
-    }
     .policy-hero{
         padding: 16px 14px 14px 14px;
     }
@@ -2484,9 +2347,6 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input{
         min-height: 0;
     }
     .mini-kpi-grid{
-        grid-template-columns: 1fr;
-    }
-    .evidence-grid{
         grid-template-columns: 1fr;
     }
 }
@@ -4482,7 +4342,7 @@ def _page_client_lookup():
             export_ctx = [f"Bills-tab focus: {len(focus_bill_ids):,} bill(s)"] if focus_active else None
             _ = export_dataframe(m2, "client_policy_areas.csv", context=export_ctx)
 
-            top_policy_subject = str(top_mentions.iloc[0].get("Subject", "")).strip()
+            top_policy_subject = str(top_mentions.iloc[0].get("Subject", "")).strip() if not top_mentions.empty else ""
             if top_policy_subject:
                 st.markdown(
                     f"""
@@ -8898,6 +8758,72 @@ def _page_map_address_full_pass():
   margin-top:1px;
 }
 
+/* ── cross-tab navigation strips ──────────────────────── */
+.mp5-crosslink{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:10px;
+  padding:10px 14px;
+  border-radius:14px;
+  border:1px solid rgba(30,144,255,.18);
+  background:linear-gradient(135deg,rgba(30,144,255,.08),rgba(0,224,184,.06));
+  margin:10px 0;
+  backdrop-filter:blur(2px);
+}
+.mp5-crosslink-title{
+  font-size:.7rem;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  font-weight:700;
+  color:rgba(30,144,255,.82);
+  flex-shrink:0;
+}
+.mp5-crosslink-sep{
+  width:1px;
+  height:18px;
+  background:rgba(255,255,255,.12);
+  flex-shrink:0;
+}
+.mp5-crosslink-hint{
+  font-size:.72rem;
+  color:rgba(210,230,245,.52);
+  margin-left:auto;
+}
+.mp5-context-strip{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+  padding:8px 12px;
+  border-radius:12px;
+  border:1px solid rgba(0,224,184,.18);
+  background:linear-gradient(135deg,rgba(0,224,184,.06),rgba(30,144,255,.04));
+  margin:4px 0 10px 0;
+}
+.mp5-context-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:3px 10px;
+  border-radius:8px;
+  font-size:.7rem;
+  font-weight:600;
+  background:rgba(0,224,184,.12);
+  border:1px solid rgba(0,224,184,.22);
+  color:rgba(210,240,230,.88);
+}
+.mp5-context-badge.docket{
+  background:rgba(30,144,255,.12);
+  border-color:rgba(30,144,255,.22);
+  color:rgba(200,225,255,.88);
+}
+.mp5-context-badge.empty{
+  background:rgba(255,255,255,.04);
+  border-color:rgba(255,255,255,.10);
+  color:rgba(210,230,245,.45);
+}
+
 /* ── responsive refinements ────────────────────────────── */
 @media (max-width:768px){
   .mp5-metrics{ grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -8905,6 +8831,7 @@ def _page_map_address_full_pass():
   .mp5-preset-btn{ font-size:.66rem; padding:4px 8px; }
   .mp5-meter{ flex-direction:column; text-align:center; }
   .mp5-snapshot-grid{ grid-template-columns:1fr 1fr; }
+  .mp5-crosslink{ flex-direction:column; align-items:flex-start; }
 }
 </style>
 """,
@@ -8963,6 +8890,9 @@ def _page_map_address_full_pass():
         "map_queue_priority_filter_v4": [],
         "map_queue_search_v4": "",
         "map_queue_sort_v4": "Lead Score",
+        "map_draw_addresses": [],
+        "map_draw_last_click_lat": None,
+        "map_draw_last_click_lon": None,
     }
     for key, default in defaults.items():
         if key not in st.session_state:
@@ -9014,6 +8944,37 @@ def _page_map_address_full_pass():
         st.session_state.client_session = st.session_state.map_session
         st.session_state.client_scope = st.session_state.map_scope
         st.switch_page(_client_page)
+
+    def _render_cross_context_banner(tab_origin: str) -> None:
+        """Render a shared context strip showing current subdivision context and docket count.
+        Provides quick cross-navigation between Coverage Atlas, Address Forensics, and Case Docket."""
+        ctx = st.session_state.get("map_selected_subdivision_context", {})
+        docket = st.session_state.get("map_watchlist", [])
+        docket_count = len(docket) if isinstance(docket, list) else 0
+        recent = st.session_state.get("map_recent_addresses", [])
+        last_query = str(recent[0]).strip() if isinstance(recent, list) and recent else ""
+        has_ctx = isinstance(ctx, dict) and str(ctx.get("subdivision_name", "")).strip()
+        ctx_name = html.escape(str(ctx.get("subdivision_name", "")).strip(), quote=True) if has_ctx else ""
+        ctx_type = html.escape(str(ctx.get("subdivision_type", "")).strip(), quote=True) if has_ctx else ""
+        ctx_badge = (
+            f'<span class="mp5-context-badge">\U0001F4CD {ctx_type} · {ctx_name}</span>'
+            if has_ctx
+            else '<span class="mp5-context-badge empty">No subdivision context</span>'
+        )
+        docket_badge = (
+            f'<span class="mp5-context-badge docket">\U0001F4CB {docket_count:,} in docket</span>'
+            if docket_count
+            else '<span class="mp5-context-badge empty">\U0001F4CB Docket empty</span>'
+        )
+        query_badge = (
+            f'<span class="mp5-context-badge">\U0001F50D {html.escape(last_query[:40], quote=True)}</span>'
+            if last_query
+            else ""
+        )
+        st.markdown(
+            f'<div class="mp5-context-strip">{ctx_badge}{docket_badge}{query_badge}</div>',
+            unsafe_allow_html=True,
+        )
 
     def _miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         try:
@@ -9463,6 +9424,8 @@ def _page_map_address_full_pass():
     # TAB 1 — COVERAGE ATLAS
     # ══════════════════════════════════════════════════════════════════
     with tab_cov:
+        # ── cross-context banner ─────────────────────────────────────
+        _render_cross_context_banner("atlas")
         # ── section hero ─────────────────────────────────────────────
         st.markdown(
             f"""
@@ -9634,6 +9597,36 @@ def _page_map_address_full_pass():
                     render_tfl_subdivision_arcgis_map(
                         filtered_cov.head(cap), height=630, basemap=active_basemap,
                     )
+                    # ── Invisible bridge: receives addresses from map and routes to session state ──
+                    _bridge_result = _atlas_bridge(default=None, key="_tfl_atlas_bridge_v2")
+                    if _bridge_result and isinstance(_bridge_result, dict):
+                        _br_nonce = _bridge_result.get("nonce", 0)
+                        if _br_nonce != st.session_state.get("_tfl_bridge_last_nonce"):
+                            st.session_state["_tfl_bridge_last_nonce"] = _br_nonce
+                            _br_action = _bridge_result.get("action", "")
+                            if _br_action == "forensics":
+                                _br_addr = str(_bridge_result.get("address", "")).strip()
+                                if _br_addr:
+                                    st.session_state.map_overlap_input_mode = "Street Address"
+                                    st.session_state.map_overlap_address_input = _br_addr
+                                    st.session_state.map_overlap_address_query = _br_addr
+                                    recent = [_br_addr] + [
+                                        str(v).strip()
+                                        for v in st.session_state.get("map_recent_addresses", [])
+                                        if str(v).strip() and str(v).strip().lower() != _br_addr.lower()
+                                    ]
+                                    st.session_state.map_recent_addresses = recent[:10]
+                                    st.rerun()
+                            elif _br_action == "batch":
+                                _br_addrs = _bridge_result.get("addresses", [])
+                                if _br_addrs:
+                                    _new_batch = "\n".join(str(a).strip() for a in _br_addrs if str(a).strip())
+                                    existing_batch = str(st.session_state.get("map_batch_input_v4", "")).strip()
+                                    st.session_state.map_batch_input_v4 = (
+                                        f"{existing_batch}\n{_new_batch}" if existing_batch else _new_batch
+                                    )
+                                    st.rerun()
+
             with right:
                 st.markdown(
                     '<div class="mp5-kicker" style="margin-bottom:6px">'
@@ -9715,6 +9708,50 @@ def _page_map_address_full_pass():
                         unsafe_allow_html=True,
                     )
                     st.caption("Context is active. Switch to Address Forensics to investigate this subdivision's overlap.")
+                    _ctxlink1, _ctxlink2 = st.columns(2, gap="small")
+                    with _ctxlink1:
+                        if st.button("\U0001F50D Investigate in Forensics", key="atlas_ctx_to_forensics_inline", use_container_width=True):
+                            st.info("Switch to the **Address Forensics** tab — your context is loaded.")
+                    with _ctxlink2:
+                        _ctx_client_list = ctx.get("clients", [])
+                        if st.button(
+                            f"\U0001F4CB Promote {len(_ctx_client_list):,} Entities to Docket",
+                            key="atlas_ctx_promote_inline",
+                            use_container_width=True,
+                            disabled=not _ctx_client_list,
+                        ):
+                            _watch = st.session_state.get("map_watchlist", [])
+                            if not isinstance(_watch, list):
+                                _watch = []
+                            _existing_keys = {str(r.get("TFL Entity", "")).strip().lower() for r in _watch if isinstance(r, dict)}
+                            _stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                            _added_n = 0
+                            for _ent in _ctx_client_list:
+                                _ek = str(_ent).strip().lower()
+                                if not _ek or _ek in _existing_keys:
+                                    continue
+                                _watch.append({
+                                    "Added": _stamp,
+                                    "TFL Entity": str(_ent).strip(),
+                                    "Priority": "Tier 2",
+                                    "Lead Score": 0.0,
+                                    "Signal Score": 0.0,
+                                    "High": float(ctx.get("high_total", 0.0) or 0.0),
+                                    "High Confidence Share": 0.0,
+                                    "Boundary Share": 0.0,
+                                    "Avg Distance (mi)": float("nan"),
+                                    "Overlap Rows": 0,
+                                    "Source Query": f"Coverage Atlas: {str(ctx.get('subdivision_type', '')).strip()} · {str(ctx.get('subdivision_name', '')).strip()}",
+                                    "Status": "New",
+                                    "Notes": "",
+                                })
+                                _existing_keys.add(_ek)
+                                _added_n += 1
+                            st.session_state.map_watchlist = _watch
+                            if _added_n:
+                                st.success(f"Promoted {_added_n:,} entities to Case Docket.")
+                            else:
+                                st.info("All context entities already in docket.")
                 else:
                     st.markdown(
                         '<div class="mp5-anchor-empty">No context anchor. '
@@ -9816,10 +9853,86 @@ def _page_map_address_full_pass():
             st.dataframe(cov_view, use_container_width=True, height=300, hide_index=True)
             _ = export_dataframe(cov_view, "coverage_atlas.csv", label="Download Coverage Atlas CSV")
 
+            # ── atlas cross-navigation strip ─────────────────────────
+            st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="mp5-crosslink">'
+                '<span class="mp5-crosslink-title">Cross-Navigation</span>'
+                '<span class="mp5-crosslink-sep"></span>'
+                '<span class="mp5-crosslink-hint">Continue investigation in Address Forensics or promote to Case Docket</span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            _atlas_ctx = st.session_state.get("map_selected_subdivision_context", {})
+            _atlas_has_ctx = isinstance(_atlas_ctx, dict) and str(_atlas_ctx.get("subdivision_name", "")).strip()
+            _ax1, _ax2, _ax3 = st.columns([1.2, 1.2, 1.0], gap="small")
+            with _ax1:
+                if st.button(
+                    "\U0001F50D Investigate in Address Forensics" if _atlas_has_ctx else "\U0001F50D Open Address Forensics",
+                    key="atlas_to_forensics_btn",
+                    use_container_width=True,
+                    help="Switch to Address Forensics with the current subdivision context loaded." if _atlas_has_ctx else "Switch to Address Forensics tab.",
+                ):
+                    st.info("Switch to the **Address Forensics** tab above. Your subdivision context is active and will scope the forensic analysis.")
+            with _ax2:
+                _atlas_promote_available = _atlas_has_ctx and isinstance(_atlas_ctx.get("clients"), list) and len(_atlas_ctx.get("clients", [])) > 0
+                if st.button(
+                    f"\U0001F4CB Promote Context Entities to Docket ({len(_atlas_ctx.get('clients', [])):,})" if _atlas_promote_available else "\U0001F4CB Promote to Docket",
+                    key="atlas_promote_to_docket_btn",
+                    use_container_width=True,
+                    disabled=not _atlas_promote_available,
+                    help="Add all matched entities from the current subdivision context directly to the Case Docket for tracking." if _atlas_promote_available else "Set a subdivision context first to promote its entities.",
+                ):
+                    watch = st.session_state.get("map_watchlist", [])
+                    if not isinstance(watch, list):
+                        watch = []
+                    existing = {str(r.get("TFL Entity", "")).strip().lower() for r in watch if isinstance(r, dict)}
+                    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    ctx_name = str(_atlas_ctx.get("subdivision_name", "")).strip()
+                    ctx_type = str(_atlas_ctx.get("subdivision_type", "")).strip()
+                    added = 0
+                    for entity in _atlas_ctx.get("clients", []):
+                        k = str(entity).strip().lower()
+                        if not k or k in existing:
+                            continue
+                        watch.append({
+                            "Added": stamp,
+                            "TFL Entity": str(entity).strip(),
+                            "Priority": "Tier 2",
+                            "Lead Score": 0.0,
+                            "Signal Score": 0.0,
+                            "High": float(_atlas_ctx.get("high_total", 0.0) or 0.0),
+                            "High Confidence Share": 0.0,
+                            "Boundary Share": 0.0,
+                            "Avg Distance (mi)": float("nan"),
+                            "Overlap Rows": 0,
+                            "Source Query": f"Coverage Atlas: {ctx_type} · {ctx_name}",
+                            "Status": "New",
+                            "Notes": f"Promoted from Coverage Atlas ({ctx_type} · {ctx_name})",
+                        })
+                        existing.add(k)
+                        added += 1
+                    st.session_state.map_watchlist = watch
+                    if added:
+                        st.success(f"Promoted {added:,} entities to Case Docket from {ctx_type} · {ctx_name}.")
+                    else:
+                        st.info("All entities from this context are already in the docket.")
+            with _ax3:
+                _docket_n = len(st.session_state.get("map_watchlist", []))
+                if st.button(
+                    f"\U0001F4CB View Case Docket ({_docket_n:,})" if _docket_n else "\U0001F4CB View Case Docket",
+                    key="atlas_to_docket_btn",
+                    use_container_width=True,
+                    help="Switch to the Case Docket tab to review promoted entities.",
+                ):
+                    st.info("Switch to the **Case Docket** tab above to review and manage your queued entities.")
+
     # ══════════════════════════════════════════════════════════════════
     # TAB 2 — ADDRESS FORENSICS
     # ══════════════════════════════════════════════════════════════════
     with tab_forensics:
+        # ── cross-context banner ─────────────────────────────────────
+        _render_cross_context_banner("forensics")
         # ── section hero ─────────────────────────────────────────────
         st.markdown(
             f"""
@@ -9875,6 +9988,8 @@ def _page_map_address_full_pass():
                     'Set context in Coverage Atlas for focused filtering.</div>',
                     unsafe_allow_html=True,
                 )
+                if st.button("\U0001F5FA Set Context in Coverage Atlas", key="forensics_set_ctx_atlas_btn", use_container_width=True):
+                    st.info("Switch to the **Coverage Atlas** tab above to select a subdivision context.")
 
             mode = st.radio(
                 "Lookup mode",
@@ -10299,7 +10414,7 @@ def _page_map_address_full_pass():
                                 .size()
                                 .reset_index(name="Count")
                             )
-                            heat_df.columns = ["Confidence", "Method", "Count"]
+                            heat_df = heat_df.set_axis(["Confidence", "Method", "Count"], axis=1)
                             if len(heat_df) > 1:
                                 heat_pivot = heat_df.pivot_table(
                                     index="Confidence", columns="Method", values="Count", fill_value=0,
@@ -10326,10 +10441,11 @@ def _page_map_address_full_pass():
                         with _fc_right:
                             # Grouped bar — spend by entity type
                             etype_df = (
-                                filtered.groupby(filtered["Entity Type"].astype(str).str.strip(), as_index=False)
+                                filtered.groupby(filtered["Entity Type"].astype(str).str.strip())
                                 .agg(Low=("Low", "sum"), High=("High", "sum"))
+                                .reset_index()
                             )
-                            etype_df.columns = ["Entity Type", "Low", "High"]
+                            etype_df = etype_df.set_axis(["Entity Type", "Low", "High"], axis=1)
                             etype_df = etype_df[etype_df["Entity Type"] != ""].sort_values("High", ascending=False).head(15)
                             if not etype_df.empty and len(etype_df) > 1:
                                 etype_melt = etype_df.melt(
@@ -10556,6 +10672,11 @@ def _page_map_address_full_pass():
 
         # ── batch triage ─────────────────────────────────────────────
         with st.expander("Batch Address Triage", expanded=False):
+            st.markdown(
+                '<div style="font-size:.72rem;color:rgba(210,230,245,.45);margin-bottom:6px">'
+                'Use <strong>Send to Batch</strong> on the Coverage Atlas map to auto-populate addresses here, or enter them manually below.</div>',
+                unsafe_allow_html=True,
+            )
             st.text_area(
                 "Street addresses (one per line)",
                 key="map_batch_input_v4",
@@ -10676,10 +10797,67 @@ def _page_map_address_full_pass():
                     st.session_state.map_overlap_address_query = str(top.get("Input", "")).strip()
                     st.rerun()
 
+        # ── forensics cross-navigation strip ─────────────────────────
+        st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="mp5-crosslink">'
+            '<span class="mp5-crosslink-title">Cross-Navigation</span>'
+            '<span class="mp5-crosslink-sep"></span>'
+            '<span class="mp5-crosslink-hint">Return to Coverage Atlas to refine context, or review queued entities in the Case Docket</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        _fx_ctx = st.session_state.get("map_selected_subdivision_context", {})
+        _fx_has_ctx = isinstance(_fx_ctx, dict) and str(_fx_ctx.get("subdivision_name", "")).strip()
+        _fx_docket_n = len(st.session_state.get("map_watchlist", []))
+        _fx1, _fx2, _fx3 = st.columns(3, gap="small")
+        with _fx1:
+            _fx_atlas_label = (
+                f"\U0001F5FA Refine in Atlas ({html.escape(str(_fx_ctx.get('subdivision_type', '')).strip()[:20], quote=True)})"
+                if _fx_has_ctx
+                else "\U0001F5FA Open Coverage Atlas"
+            )
+            if st.button(
+                _fx_atlas_label,
+                key="forensics_to_atlas_btn",
+                use_container_width=True,
+                help="Switch to Coverage Atlas to adjust the subdivision context or explore other subdivisions.",
+            ):
+                st.info("Switch to the **Coverage Atlas** tab above to refine your subdivision context and filters.")
+        with _fx2:
+            if st.button(
+                f"\U0001F4CB View Case Docket ({_fx_docket_n:,})" if _fx_docket_n else "\U0001F4CB Open Case Docket",
+                key="forensics_to_docket_btn",
+                use_container_width=True,
+                help="Switch to the Case Docket tab to manage promoted entities.",
+            ):
+                st.info("Switch to the **Case Docket** tab above to review and manage your queued entities.")
+        with _fx3:
+            _fx_last_query = ""
+            _fx_recent = st.session_state.get("map_recent_addresses", [])
+            if isinstance(_fx_recent, list) and _fx_recent:
+                _fx_last_query = str(_fx_recent[0]).strip()
+            if st.button(
+                "\U0001F4E4 Send Query to Batch Triage" if _fx_last_query else "\U0001F4E4 Open Batch Triage",
+                key="forensics_to_batch_btn",
+                use_container_width=True,
+                help="Initialize the Batch Address Triage with your most recent query address.",
+                disabled=not _fx_last_query,
+            ):
+                if _fx_last_query:
+                    current_batch = str(st.session_state.get("map_batch_input_v4", "")).strip()
+                    if _fx_last_query.lower() not in current_batch.lower():
+                        st.session_state.map_batch_input_v4 = (
+                            f"{_fx_last_query}\n{current_batch}" if current_batch else _fx_last_query
+                        )
+                    st.info("Your last query has been added to Batch Triage. Expand the section above to run it.")
+
     # ══════════════════════════════════════════════════════════════════
     # TAB 3 — CASE DOCKET
     # ══════════════════════════════════════════════════════════════════
     with tab_docket:
+        # ── cross-context banner ─────────────────────────────────────
+        _render_cross_context_banner("docket")
         st.markdown(
             '<div class="mp5-section-hero">'
             '<span class="mp5-section-num">3</span>'
@@ -10693,13 +10871,20 @@ def _page_map_address_full_pass():
         if not isinstance(watch, list) or not watch:
             st.markdown(
                 '<div class="mp5-anchor-empty" style="text-align:center;padding:30px 16px">'
-                '<div style="font-size:1.3rem;margin-bottom:8px;">📋</div>'
-                "Case Docket is empty. Promote entities from Address Forensics to begin."
+                '<div style="font-size:1.3rem;margin-bottom:8px;">\U0001F4CB</div>'
+                "Case Docket is empty. Promote entities from Address Forensics or Coverage Atlas to begin."
                 '<div style="font-size:.72rem;color:rgba(210,230,245,.45);margin-top:6px">'
-                "Use the Ranked Leads section in Address Forensics to promote high-signal entities here.</div>"
+                "Use the Ranked Leads section in Address Forensics, or promote context entities from Coverage Atlas.</div>"
                 "</div>",
                 unsafe_allow_html=True,
             )
+            _empty_dkt1, _empty_dkt2 = st.columns(2, gap="small")
+            with _empty_dkt1:
+                if st.button("\U0001F50D Open Address Forensics", key="docket_empty_to_forensics_btn", use_container_width=True):
+                    st.info("Switch to the **Address Forensics** tab to resolve addresses and promote ranked leads.")
+            with _empty_dkt2:
+                if st.button("\U0001F5FA Open Coverage Atlas", key="docket_empty_to_atlas_btn", use_container_width=True):
+                    st.info("Switch to the **Coverage Atlas** tab to explore subdivisions and promote context entities.")
         else:
             wd = pd.DataFrame(watch).copy()
             defaults_queue = {
@@ -10812,7 +10997,7 @@ def _page_map_address_full_pass():
             # ── docket priority distribution chart ───────────────────
             if not qv.empty and len(qv) > 1:
                 tier_counts = qv["Priority"].value_counts().reset_index()
-                tier_counts.columns = ["Priority", "Count"]
+                tier_counts = tier_counts.set_axis(["Priority", "Count"], axis=1)
                 fig_tier = px.pie(
                     tier_counts,
                     names="Priority",
@@ -10884,10 +11069,11 @@ def _page_map_address_full_pass():
                 with _dq_right:
                     # Bar — spend by source query
                     src_df = (
-                        qv.groupby(qv["Source Query"].astype(str).str.strip(), as_index=False)
+                        qv.groupby(qv["Source Query"].astype(str).str.strip())
                         .agg(Entities=("TFL Entity", "nunique"), High=("High", "sum"))
+                        .reset_index()
                     )
-                    src_df.columns = ["Source Query", "Entities", "High"]
+                    src_df = src_df.set_axis(["Source Query", "Entities", "High"], axis=1)
                     src_df = src_df[src_df["Source Query"] != ""].sort_values("High", ascending=False).head(10)
                     if not src_df.empty and len(src_df) > 0:
                         fig_src = px.bar(
@@ -11032,6 +11218,173 @@ def _page_map_address_full_pass():
                 if st.button("Clear Docket", key="map_watch_clear_btn_v4", use_container_width=True):
                     st.session_state.map_watchlist = []
                     st.rerun()
+
+            # ── draw area & search map for docket ────────────────────
+            st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
+            with st.expander("\U0001F5FA Draw Area & Search — Investigate Docket Addresses", expanded=False):
+                st.markdown(
+                    '<div style="font-size:.78rem;color:rgba(210,230,245,.55);margin-bottom:6px">'
+                    '<strong>Geographic investigation:</strong> Docket source addresses are shown as markers. '
+                    'Click, search, or draw new areas to discover additional addresses for re-investigation. '
+                    'Use <strong>Copy All</strong> to capture addresses for Address Forensics or Batch Triage.</div>',
+                    unsafe_allow_html=True,
+                )
+                # Build markers from docket source queries (extract addresses from non-Atlas sources)
+                _dkt_markers: list[dict] = []
+                for _rec in watch:
+                    if not isinstance(_rec, dict):
+                        continue
+                    _sq = str(_rec.get("Source Query", "")).strip()
+                    _ent = str(_rec.get("TFL Entity", "")).strip()
+                    if _sq and not _sq.startswith("Coverage Atlas:"):
+                        _geo_dkt = geocode_address_arcgis(_sq)
+                        if _geo_dkt and _geo_dkt.get("lat") and _geo_dkt.get("lon"):
+                            _dkt_markers.append({
+                                "lat": float(_geo_dkt["lat"]),
+                                "lon": float(_geo_dkt["lon"]),
+                                "label": f"{_ent} ({_sq[:40]})",
+                            })
+                _dkt_basemap = MAP_BASEMAP_OPTIONS.get(
+                    st.session_state.get("map_basemap_label", ""), "gray-vector",
+                )
+                render_draw_area_search_map(
+                    height=440,
+                    basemap=_dkt_basemap,
+                    map_id="tfl-draw-docket",
+                    markers=_dkt_markers if _dkt_markers else None,
+                )
+                _dkt_draw_col1, _dkt_draw_col2 = st.columns(2, gap="small")
+                with _dkt_draw_col1:
+                    _dkt_draw_paste = st.text_input(
+                        "Paste address from map",
+                        key="map_draw_paste_docket",
+                        placeholder="Paste a collected address here...",
+                    )
+                with _dkt_draw_col2:
+                    if st.button(
+                        "\U0001F50D Send to Address Forensics",
+                        key="map_draw_docket_to_forensics_btn",
+                        use_container_width=True,
+                        disabled=not str(_dkt_draw_paste).strip(),
+                    ):
+                        st.session_state.map_overlap_input_mode = "Street Address"
+                        st.session_state.map_overlap_address_input = str(_dkt_draw_paste).strip()
+                        st.session_state.map_overlap_address_query = str(_dkt_draw_paste).strip()
+                        recent = [str(_dkt_draw_paste).strip()] + [
+                            str(v).strip()
+                            for v in st.session_state.get("map_recent_addresses", [])
+                            if str(v).strip() and str(v).strip().lower() != str(_dkt_draw_paste).strip().lower()
+                        ]
+                        st.session_state.map_recent_addresses = recent[:10]
+                        st.info("Address loaded into Address Forensics. Switch to the **Address Forensics** tab to run the analysis.")
+                _dkt_draw_b1, _dkt_draw_b2 = st.columns(2, gap="small")
+                with _dkt_draw_b1:
+                    _dkt_batch_paste = st.text_area(
+                        "Paste addresses for batch (one per line)",
+                        key="map_draw_paste_docket_batch",
+                        height=60,
+                        placeholder="Paste addresses from map's Copy All...",
+                    )
+                with _dkt_draw_b2:
+                    if st.button(
+                        "\U0001F4E5 Send to Batch Triage",
+                        key="map_draw_docket_to_batch_btn",
+                        use_container_width=True,
+                        disabled=not str(_dkt_batch_paste).strip(),
+                    ):
+                        existing_batch = str(st.session_state.get("map_batch_input_v4", "")).strip()
+                        new_lines = str(_dkt_batch_paste).strip()
+                        if existing_batch:
+                            st.session_state.map_batch_input_v4 = f"{existing_batch}\n{new_lines}"
+                        else:
+                            st.session_state.map_batch_input_v4 = new_lines
+                        st.info("Addresses added to Batch Triage. Switch to the **Address Forensics** tab and expand Batch Address Triage.")
+
+            # ── docket cross-navigation strip ────────────────────────
+            st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="mp5-crosslink">'
+                '<span class="mp5-crosslink-title">Cross-Navigation</span>'
+                '<span class="mp5-crosslink-sep"></span>'
+                '<span class="mp5-crosslink-hint">Re-investigate entities in Address Forensics or refine context in the Atlas</span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            # build source query options from docket entries
+            _dkt_source_queries = sorted({
+                str(r.get("Source Query", "")).strip()
+                for r in watch if isinstance(r, dict) and str(r.get("Source Query", "")).strip()
+            })
+            _dkt_reinv_entities = remove_opts  # reuse existing entity list
+
+            _dk1, _dk2, _dk3 = st.columns([1.5, 1.0, 1.0], gap="small")
+            with _dk1:
+                _reinv_pick = st.selectbox(
+                    "Re-investigate entity in Address Forensics",
+                    [""] + _dkt_reinv_entities,
+                    key="docket_reinvestigate_pick",
+                    help="Select an entity to look up its source query address in Address Forensics.",
+                )
+                if st.button(
+                    "\U0001F50D Re-investigate in Forensics",
+                    key="docket_to_forensics_btn",
+                    use_container_width=True,
+                    disabled=not _reinv_pick,
+                    help="Pre-fill Address Forensics with the source query from this entity and switch tabs.",
+                ):
+                    if _reinv_pick:
+                        # Find the source query for this entity
+                        source_q = ""
+                        for rec in watch:
+                            if isinstance(rec, dict) and str(rec.get("TFL Entity", "")).strip() == str(_reinv_pick).strip():
+                                source_q = str(rec.get("Source Query", "")).strip()
+                                break
+                        # Strip "Coverage Atlas: " prefix if present
+                        if source_q.startswith("Coverage Atlas:"):
+                            st.info(f"**{_reinv_pick}** was promoted from the Coverage Atlas, not from an address query. Set a subdivision context in the Atlas and then use Address Forensics.")
+                        else:
+                            if source_q:
+                                st.session_state.map_overlap_input_mode = "Street Address"
+                                st.session_state.map_overlap_address_input = source_q
+                                st.session_state.map_overlap_address_query = source_q
+                                st.session_state.map_overlap_entity_filter = str(_reinv_pick).strip()
+                            st.info(f"Switch to the **Address Forensics** tab. The address **{source_q or 'N/A'}** and entity filter **{_reinv_pick}** have been pre-loaded.")
+            with _dk2:
+                _dkt_ctx = st.session_state.get("map_selected_subdivision_context", {})
+                _dkt_has_ctx = isinstance(_dkt_ctx, dict) and str(_dkt_ctx.get("subdivision_name", "")).strip()
+                _dkt_atlas_label = (
+                    f"\U0001F5FA View Atlas ({str(_dkt_ctx.get('subdivision_name', '')).strip()[:25]})"
+                    if _dkt_has_ctx
+                    else "\U0001F5FA Open Coverage Atlas"
+                )
+                if st.button(
+                    _dkt_atlas_label,
+                    key="docket_to_atlas_btn",
+                    use_container_width=True,
+                    help="Switch to the Coverage Atlas to view or adjust the subdivision context.",
+                ):
+                    st.info("Switch to the **Coverage Atlas** tab above to explore subdivision coverage and set investigation context.")
+            with _dk3:
+                # Quick summary of docket → source query distribution
+                if _dkt_source_queries:
+                    st.markdown(
+                        '<div style="font-size:.72rem;color:rgba(210,230,245,.55);margin-bottom:4px">'
+                        f'<strong>{len(_dkt_source_queries)}</strong> unique source quer{"y" if len(_dkt_source_queries) == 1 else "ies"} in docket'
+                        '</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for sq in _dkt_source_queries[:5]:
+                        sq_count = sum(1 for r in watch if isinstance(r, dict) and str(r.get("Source Query", "")).strip() == sq)
+                        st.markdown(
+                            f'<div style="font-size:.68rem;color:rgba(210,230,245,.42);padding:1px 0">'
+                            f'\U0001F4CD {html.escape(sq[:50], quote=True)} ({sq_count})</div>',
+                            unsafe_allow_html=True,
+                        )
+                    if len(_dkt_source_queries) > 5:
+                        st.markdown(
+                            f'<div style="font-size:.66rem;color:rgba(210,230,245,.35)">+{len(_dkt_source_queries) - 5} more</div>',
+                            unsafe_allow_html=True,
+                        )
 
     # ── workspace links ──────────────────────────────────────────────
     _render_workspace_links(
@@ -11525,15 +11878,7 @@ def _nav_href(page) -> str:
     return "./" if url_path == "" else f"./{url_path}"
 
 def _journey_steps() -> list[tuple[str, str, str, object]]:
-    return [
-        ("about", "Start Here", "Purpose, data limits, and interpretation rules", _about_page),
-        ("lobby", "Lobbyists", "Statewide baseline and individual profiles", _lobby_page),
-        ("client", "Clients", "Entity-level contracts, filings, and bill activity", _client_page),
-        ("map", "Map & Address", "Jurisdiction overlap and local exposure", _map_page),
-        ("member", "Legislators", "Authorship, witnesses, and staff context", _member_page),
-        ("solutions", "Policy Context", "Policy design checklist anchored to records", _solutions_page),
-        ("multimedia", "Media Briefings", "External context to verify with data", _tap_page),
-    ]
+    return []
 
 def _render_page_intro(kicker: str, title: str, subtitle: str, pills: list[str] | None = None) -> None:
     kicker_safe = html.escape(kicker or "", quote=True)
@@ -11557,144 +11902,31 @@ def _render_page_intro(kicker: str, title: str, subtitle: str, pills: list[str] 
     )
 
 def _is_guided_mode() -> bool:
-    return str(st.session_state.get("experience_mode", "Guided")).strip().lower() != "expert"
+    return False
 
 def _render_journey(current_key: str) -> None:
-    cards = []
-    for idx, (key, label, desc, page) in enumerate(_journey_steps(), start=1):
-        active = " is-active" if key == current_key else ""
-        cards.append(
-            f"""
-<a class="journey-step{active}" href="{_nav_href(page)}" target="_self">
-  <span class="journey-step-num">Step {idx}</span>
-  <span class="journey-step-title">{html.escape(label, quote=True)}</span>
-  <span class="journey-step-desc">{html.escape(desc, quote=True)}</span>
-</a>
-"""
-        )
-    st.markdown(f'<div class="journey-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
+    return
 
 def _render_workspace_guide(
     question: str,
     steps: list[str] | None = None,
     method_note: str | None = None,
 ) -> None:
-    if not _is_guided_mode():
-        quick_note = html.escape(question.strip(), quote=True)
-        method_html = ""
-        if method_note and str(method_note).strip():
-            method_html = f" | {html.escape(str(method_note).strip(), quote=True)}"
-        st.caption(f"Investigation question: {quick_note}{method_html}")
-        return
-
-    q_safe = html.escape(question.strip(), quote=True)
-    step_html = ""
-    if steps:
-        items = [
-            f"<li>{html.escape(str(step).strip(), quote=True)}</li>"
-            for step in steps
-            if str(step).strip()
-        ]
-        if items:
-            step_html = (
-                "<p style='margin-top:0.55rem; margin-bottom:0.2rem;'><strong>Recommended sequence:</strong></p>"
-                f"<ol>{''.join(items)}</ol>"
-            )
-    note_html = ""
-    if method_note and str(method_note).strip():
-        note_html = (
-            f"<p style='margin-top:0.45rem;'><strong>Evidence standard:</strong> {html.escape(str(method_note).strip(), quote=True)}</p>"
-        )
-    st.markdown(
-        f"""
-<div class="workspace-note">
-  <div class="workspace-note-head">Investigation Question</div>
-  <p><strong>{q_safe}</strong></p>
-  {step_html}
-  {note_html}
-</div>
-""",
-        unsafe_allow_html=True,
-    )
+    return
 
 def _render_quickstart(
     page_key: str,
     steps: list[str],
     note: str | None = None,
 ) -> None:
-    if not _is_guided_mode():
-        return
-
-    seen_key = f"quickstart_seen_{page_key}"
-    expanded = not bool(st.session_state.get(seen_key, False))
-    with st.expander("First time on this page? 60-second setup", expanded=expanded):
-        items = [
-            f"<li>{html.escape(str(step).strip(), quote=True)}</li>"
-            for step in steps
-            if str(step).strip()
-        ]
-        note_html = (
-            f"<p><strong>Guardrail:</strong> {html.escape(str(note).strip(), quote=True)}</p>"
-            if note and str(note).strip()
-            else ""
-        )
-        st.markdown(
-            f"""
-<div class="quickstart-box">
-  <p>Use this checklist before sharing conclusions from this page.</p>
-  <ol>{''.join(items)}</ol>
-  {note_html}
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-    st.session_state[seen_key] = True
+    return
 
 def _render_evidence_guardrails(
     can_answer: list[str] | None = None,
     cannot_answer: list[str] | None = None,
     next_checks: list[str] | None = None,
 ) -> None:
-    if not _is_guided_mode():
-        return
-
-    def _list_html(items: list[str] | None) -> str:
-        entries = [str(x).strip() for x in (items or []) if str(x).strip()]
-        if not entries:
-            return "<li>Not specified.</li>"
-        return "".join([f"<li>{html.escape(x, quote=True)}</li>" for x in entries])
-
-    can_html = _list_html(can_answer)
-    limit_html = _list_html(cannot_answer)
-    next_html = _list_html(next_checks) if next_checks else ""
-    next_card = ""
-    if next_checks:
-        next_card = (
-            '<div class="evidence-card">'
-            '<div class="evidence-kicker">Publication Check</div>'
-            '<div class="evidence-title">Before Sharing Findings</div>'
-            f'<ul class="evidence-list">{next_html}</ul>'
-            "</div>"
-        )
-
-    st.markdown(
-        f"""
-<div class="evidence-grid">
-  <div class="evidence-card">
-    <div class="evidence-kicker">Can Answer</div>
-    <div class="evidence-title">Supported By This Page</div>
-    <ul class="evidence-list">{can_html}</ul>
-  </div>
-  <div class="evidence-card is-limit">
-    <div class="evidence-kicker">Cannot Answer Alone</div>
-    <div class="evidence-title">Requires Additional Validation</div>
-    <ul class="evidence-list">{limit_html}</ul>
-  </div>
-  {next_card}
-</div>
-""",
-        unsafe_allow_html=True,
-    )
+    return
 
 def _render_workspace_links(
     key_prefix: str,
@@ -11763,9 +11995,6 @@ if "nav_search_last" not in st.session_state:
     st.session_state.nav_search_last = ""
 if "nav_search_trigger" not in st.session_state:
     st.session_state.nav_search_trigger = False
-if "experience_mode" not in st.session_state:
-    st.session_state.experience_mode = "Guided"
-
 def _nav_submit() -> None:
     st.session_state.nav_search_trigger = True
 
@@ -11777,19 +12006,6 @@ nav_query_raw = st.text_input(
     on_change=_nav_submit,
     help="Routes to the best workspace and carries your query forward.",
 )
-mode_cols = st.columns([4.8, 1.2])
-with mode_cols[0]:
-    st.caption("Mode: Guided includes onboarding guardrails; Expert reduces instructional density.")
-with mode_cols[1]:
-    st.session_state.experience_mode = st.radio(
-        "Workspace mode",
-        ["Guided", "Expert"],
-        index=0 if st.session_state.experience_mode == "Guided" else 1,
-        horizontal=True,
-        key="workspace_mode_radio",
-        label_visibility="collapsed",
-        help="Guided shows onboarding aids; Expert reduces instructional density.",
-    )
 nav_query = nav_query_raw.strip()
 nav_search_submitted = False
 if nav_query and st.session_state.nav_search_trigger:
@@ -11846,13 +12062,22 @@ def clean_person_name(name: str) -> str:
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
-def _arcgis_get_json(url: str, params: dict | None = None, timeout: int = 30) -> dict:
+def _arcgis_get_json(url: str, params: dict | None = None, timeout: int = 30, _retries: int = 3) -> dict:
     target = url
     if params:
         target = f"{url}?{urllib.parse.urlencode(params)}"
-    req = urllib.request.Request(target, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    last_exc: Exception | None = None
+    for attempt in range(_retries):
+        try:
+            req = urllib.request.Request(target, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:
+            last_exc = exc
+            if attempt < _retries - 1:
+                time.sleep(min(2 ** attempt, 4))
+    logging.warning("ArcGIS request failed after %d attempts: %s — %s", _retries, target[:120], last_exc)
+    raise last_exc  # type: ignore[misc]
 
 def _canonical_school_district_name(value: str) -> str:
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -13659,10 +13884,12 @@ def geocode_address_arcgis(address: str) -> dict:
         if not candidates:
             return {}
         best = candidates[0]
-        location = best.get("location", {}) or {}
-        lon = float(location.get("x"))
-        lat = float(location.get("y"))
-        attrs = best.get("attributes", {}) or {}
+        location = best.get("location") or {}
+        raw_x, raw_y = location.get("x"), location.get("y")
+        if raw_x is None or raw_y is None:
+            return {}
+        lon, lat = float(raw_x), float(raw_y)
+        attrs = best.get("attributes") or {}
         return {
             "input": q,
             "matched_address": str(best.get("address", "")).strip(),
@@ -13675,6 +13902,8 @@ def geocode_address_arcgis(address: str) -> dict:
             "postal": str(attrs.get("Postal", "")).strip(),
         }
     except Exception:
+        # Don't cache network failures for 24 h — clear this entry so it retries.
+        geocode_address_arcgis.clear()
         return {}
 
 @st.cache_data(show_spinner=False, ttl=604800, max_entries=4096)
@@ -13683,6 +13912,7 @@ def geocode_texas_entity_arcgis(entity_name: str) -> dict:
     if not q:
         return {}
     candidates_to_try = [f"{q}, Texas", q]
+    network_error = False
     for candidate_query in candidates_to_try:
         try:
             payload = _arcgis_get_json(
@@ -13700,10 +13930,12 @@ def geocode_texas_entity_arcgis(entity_name: str) -> dict:
             if not candidates:
                 continue
             best = candidates[0]
-            location = best.get("location", {}) or {}
-            lon = float(location.get("x"))
-            lat = float(location.get("y"))
-            attrs = best.get("attributes", {}) or {}
+            location = best.get("location") or {}
+            raw_x, raw_y = location.get("x"), location.get("y")
+            if raw_x is None or raw_y is None:
+                continue
+            lon, lat = float(raw_x), float(raw_y)
+            attrs = best.get("attributes") or {}
             region_abbr = str(attrs.get("RegionAbbr", "")).strip().upper()
             if region_abbr and region_abbr != "TX":
                 continue
@@ -13718,7 +13950,11 @@ def geocode_texas_entity_arcgis(entity_name: str) -> dict:
                 "postal": str(attrs.get("Postal", "")).strip(),
             }
         except Exception:
+            network_error = True
             continue
+    if network_error:
+        # Don't persist transient failures for 7 days — clear cache entry.
+        geocode_texas_entity_arcgis.clear()
     return {}
 
 @st.cache_data(show_spinner=False, ttl=604800, max_entries=8192)
@@ -13748,313 +13984,237 @@ def query_texas_county_for_point(lon: float, lat: float) -> dict:
 
 @st.cache_data(show_spinner=False, ttl=86400, max_entries=512)
 def query_texas_subdivisions_for_point(lon: float, lat: float) -> pd.DataFrame:
+    """Query 10 ArcGIS layers in parallel for subdivisions overlapping a point."""
     cols = ["subdivision_type", "subdivision_name", "subdivision_code", "source_name", "source_url"]
+
+    geo_point = f"{lon},{lat}"
+    _base_params: dict = {
+        "geometry": geo_point,
+        "geometryType": "esriGeometryPoint",
+        "inSR": "4326",
+        "spatialRel": "esriSpatialRelIntersects",
+        "returnGeometry": "false",
+        "f": "json",
+    }
+
+    # ── Helper closures (one per layer) ──────────────────────────
+    def _fetch_school_districts() -> list[dict]:
+        result: list[dict] = []
+        try:
+            payload = _arcgis_get_json(
+                f"{TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL}/query",
+                params={**_base_params, "outFields": "NAME,NAME20,DISTRICT,DISTRICT_C"},
+            )
+            for feat in payload.get("features", []):
+                attrs = feat.get("attributes", {}) or {}
+                name = str(attrs.get("NAME20", "")).strip() or str(attrs.get("NAME", "")).strip()
+                code = str(attrs.get("DISTRICT", "")).strip() or str(attrs.get("DISTRICT_C", "")).strip()
+                if name:
+                    result.append({"subdivision_type": "School District", "subdivision_name": name,
+                                   "subdivision_code": code, "source_name": "TEA School District boundaries (FeatureServer/0)",
+                                   "source_url": TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL})
+        except Exception:
+            pass
+        return result
+
+    def _fetch_counties() -> list[dict]:
+        result: list[dict] = []
+        try:
+            payload = _arcgis_get_json(
+                f"{TEA_ARCGIS_COUNTY_LAYER_URL}/query",
+                params={**_base_params, "outFields": "FENAME,FIPS"},
+            )
+            for feat in payload.get("features", []):
+                attrs = feat.get("attributes", {}) or {}
+                county_name = str(attrs.get("FENAME", "")).strip()
+                if county_name:
+                    result.append({"subdivision_type": "County", "subdivision_name": f"{county_name} County",
+                                   "subdivision_code": str(attrs.get("FIPS", "")).strip(),
+                                   "source_name": "TEA County boundaries (FeatureServer/0)",
+                                   "source_url": TEA_ARCGIS_COUNTY_LAYER_URL})
+        except Exception:
+            pass
+        return result
+
+    def _fetch_cities() -> list[dict]:
+        result: list[dict] = []
+        try:
+            payload = _arcgis_get_json(
+                f"{CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL}/query",
+                params={**_base_params, "where": "STATE='48'", "outFields": "NAME,BASENAME,GEOID"},
+            )
+            for feat in payload.get("features", []):
+                attrs = feat.get("attributes", {}) or {}
+                name = str(attrs.get("NAME", "")).strip()
+                base = str(attrs.get("BASENAME", "")).strip() or re.sub(
+                    r"\s+(city|town|village)\s*$", "", name, flags=re.IGNORECASE
+                ).strip()
+                if base:
+                    display = base
+                    if not re.search(r"\b(CITY|TOWN|VILLAGE)\b$", display, flags=re.IGNORECASE):
+                        display = f"{display} City"
+                    result.append({"subdivision_type": "City", "subdivision_name": display,
+                                   "subdivision_code": str(attrs.get("GEOID", "")).strip(),
+                                   "source_name": "U.S. Census TIGERweb Texas Places (MapServer/25)",
+                                   "source_url": CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL})
+        except Exception:
+            pass
+        return result
+
+    def _fetch_water_districts() -> list[dict]:
+        result: list[dict] = []
+        try:
+            payload = _arcgis_get_json(
+                f"{TCEQ_WATER_DISTRICTS_LAYER_URL}/query",
+                params={**_base_params, "outFields": "NAME,DISTRICT_ID,TYPE,TYPE_DESCRIPTION"},
+            )
+            for feat in payload.get("features", []):
+                attrs = feat.get("attributes", {}) or {}
+                mapped_type = _canonical_water_district_type(str(attrs.get("TYPE_DESCRIPTION", "")).strip())
+                if mapped_type == "Navigation District":
+                    mapped_type = ""
+                if not mapped_type:
+                    continue
+                name = str(attrs.get("NAME", "")).strip()
+                if name:
+                    result.append({"subdivision_type": mapped_type, "subdivision_name": name,
+                                   "subdivision_code": str(attrs.get("DISTRICT_ID", "")).strip(),
+                                   "source_name": "TCEQ Water Districts (FeatureServer/0)",
+                                   "source_url": TCEQ_WATER_DISTRICTS_LAYER_URL})
+        except Exception:
+            pass
+        return result
+
+    def _fetch_groundwater() -> list[dict]:
+        result: list[dict] = []
+        try:
+            payload = _arcgis_get_json(
+                f"{TCEQ_GROUNDWATER_DISTRICTS_LAYER_URL}/query",
+                params={**_base_params, "outFields": "DISTNAME,DIST_NUM,SHORTNAM"},
+            )
+            for feat in payload.get("features", []):
+                attrs = feat.get("attributes", {}) or {}
+                name = str(attrs.get("DISTNAME", "")).strip() or str(attrs.get("SHORTNAM", "")).strip()
+                if name:
+                    result.append({"subdivision_type": "Groundwater Conservation District", "subdivision_name": name,
+                                   "subdivision_code": str(attrs.get("DIST_NUM", "")).strip(),
+                                   "source_name": "TCEQ Groundwater Conservation Districts (FeatureServer/0)",
+                                   "source_url": TCEQ_GROUNDWATER_DISTRICTS_LAYER_URL})
+        except Exception:
+            pass
+        return result
+
+    def _fetch_rma() -> list[dict]:
+        result: list[dict] = []
+        try:
+            payload = _arcgis_get_json(
+                f"{TEXAS_RMA_LAYER_URL}/query",
+                params={**_base_params, "outFields": "OBJECTID,RMA,Label"},
+            )
+            for feat in payload.get("features", []):
+                attrs = feat.get("attributes", {}) or {}
+                name = str(attrs.get("Label", "")).strip() or str(attrs.get("RMA", "")).strip()
+                if name:
+                    result.append({"subdivision_type": "Regional Mobility Authority", "subdivision_name": name,
+                                   "subdivision_code": str(attrs.get("OBJECTID", "")).strip(),
+                                   "source_name": "Texas Regional Mobility Authorities (FeatureServer/0)",
+                                   "source_url": TEXAS_RMA_LAYER_URL})
+        except Exception:
+            pass
+        return result
+
+    def _fetch_junior_colleges() -> list[dict]:
+        result: list[dict] = []
+        try:
+            payload = _arcgis_get_json(
+                f"{TEXAS_JUNIOR_COLLEGE_LAYER_URL}/query",
+                params={**_base_params, "outFields": "DISTRICT,NAME1,NAME2"},
+            )
+            for feat in payload.get("features", []):
+                attrs = feat.get("attributes", {}) or {}
+                name = str(attrs.get("NAME1", "")).strip() or str(attrs.get("NAME2", "")).strip()
+                if name:
+                    result.append({"subdivision_type": "Junior College District", "subdivision_name": name,
+                                   "subdivision_code": str(attrs.get("DISTRICT", "")).strip(),
+                                   "source_name": "Texas Junior College Service Areas (FeatureServer/0)",
+                                   "source_url": TEXAS_JUNIOR_COLLEGE_LAYER_URL})
+        except Exception:
+            pass
+        return result
+
+    def _fetch_navigation() -> list[dict]:
+        result: list[dict] = []
+        try:
+            payload = _arcgis_get_json(
+                f"{TEXAS_NAVIGATION_DISTRICT_LAYER_URL}/query",
+                params={**_base_params, "outFields": "OBJECTID,DISTRICT_N"},
+            )
+            for feat in payload.get("features", []):
+                attrs = feat.get("attributes", {}) or {}
+                name = str(attrs.get("DISTRICT_N", "")).strip()
+                if name:
+                    result.append({"subdivision_type": "Navigation District", "subdivision_name": name,
+                                   "subdivision_code": str(attrs.get("OBJECTID", "")).strip(),
+                                   "source_name": "Texas Navigation Districts (FeatureServer/29)",
+                                   "source_url": TEXAS_NAVIGATION_DISTRICT_LAYER_URL})
+        except Exception:
+            pass
+        return result
+
+    def _fetch_transit() -> list[dict]:
+        result: list[dict] = []
+        try:
+            payload = _arcgis_get_json(
+                f"{NCTCOG_TRANSIT_PROVIDERS_LAYER_URL}/query",
+                params={**_base_params, "outFields": "OBJECTID,Name,Classification"},
+            )
+            for feat in payload.get("features", []):
+                attrs = feat.get("attributes", {}) or {}
+                name = str(attrs.get("Name", "")).strip()
+                if name:
+                    result.append({"subdivision_type": "Transit Authority", "subdivision_name": name,
+                                   "subdivision_code": str(attrs.get("OBJECTID", "")).strip(),
+                                   "source_name": "NCTCOG Transit Providers (MapServer/10)",
+                                   "source_url": NCTCOG_TRANSIT_PROVIDERS_LAYER_URL})
+        except Exception:
+            pass
+        return result
+
+    def _fetch_seaports() -> list[dict]:
+        result: list[dict] = []
+        try:
+            payload = _arcgis_get_json(
+                f"{TXDOT_SEAPORTS_LAYER_URL}/query",
+                params={**_base_params, "distance": 25, "units": "esriSRUnit_StatuteMile",
+                        "outFields": "OBJECTID,PORT_NM"},
+            )
+            for feat in payload.get("features", []):
+                attrs = feat.get("attributes", {}) or {}
+                name = str(attrs.get("PORT_NM", "")).strip()
+                if name:
+                    result.append({"subdivision_type": "Port Authority", "subdivision_name": name,
+                                   "subdivision_code": str(attrs.get("OBJECTID", "")).strip(),
+                                   "source_name": "TxDOT Seaports (FeatureServer/0)",
+                                   "source_url": TXDOT_SEAPORTS_LAYER_URL})
+        except Exception:
+            pass
+        return result
+
+    # ── Fire all queries concurrently ────────────────────────────
+    fetchers = [
+        _fetch_school_districts, _fetch_counties, _fetch_cities,
+        _fetch_water_districts, _fetch_groundwater, _fetch_rma,
+        _fetch_junior_colleges, _fetch_navigation, _fetch_transit,
+        _fetch_seaports,
+    ]
     rows: list[dict] = []
-    try:
-        district_payload = _arcgis_get_json(
-            f"{TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL}/query",
-            params={
-                "geometry": f"{lon},{lat}",
-                "geometryType": "esriGeometryPoint",
-                "inSR": "4326",
-                "spatialRel": "esriSpatialRelIntersects",
-                "outFields": "NAME,NAME20,DISTRICT,DISTRICT_C",
-                "returnGeometry": "false",
-                "f": "json",
-            },
-        )
-        for feat in district_payload.get("features", []):
-            attrs = feat.get("attributes", {}) or {}
-            name = str(attrs.get("NAME20", "")).strip() or str(attrs.get("NAME", "")).strip()
-            code = str(attrs.get("DISTRICT", "")).strip() or str(attrs.get("DISTRICT_C", "")).strip()
-            if name:
-                rows.append(
-                    {
-                        "subdivision_type": "School District",
-                        "subdivision_name": name,
-                        "subdivision_code": code,
-                        "source_name": "TEA School District boundaries (FeatureServer/0)",
-                        "source_url": TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL,
-                    }
-                )
-    except Exception:
-        pass
-
-    try:
-        county_payload = _arcgis_get_json(
-            f"{TEA_ARCGIS_COUNTY_LAYER_URL}/query",
-            params={
-                "geometry": f"{lon},{lat}",
-                "geometryType": "esriGeometryPoint",
-                "inSR": "4326",
-                "spatialRel": "esriSpatialRelIntersects",
-                "outFields": "FENAME,FIPS",
-                "returnGeometry": "false",
-                "f": "json",
-            },
-        )
-        for feat in county_payload.get("features", []):
-            attrs = feat.get("attributes", {}) or {}
-            county_name = str(attrs.get("FENAME", "")).strip()
-            if county_name:
-                rows.append(
-                    {
-                        "subdivision_type": "County",
-                        "subdivision_name": f"{county_name} County",
-                        "subdivision_code": str(attrs.get("FIPS", "")).strip(),
-                        "source_name": "TEA County boundaries (FeatureServer/0)",
-                        "source_url": TEA_ARCGIS_COUNTY_LAYER_URL,
-                    }
-                )
-    except Exception:
-        pass
-
-    try:
-        city_payload = _arcgis_get_json(
-            f"{CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL}/query",
-            params={
-                "where": "STATE='48'",
-                "geometry": f"{lon},{lat}",
-                "geometryType": "esriGeometryPoint",
-                "inSR": "4326",
-                "spatialRel": "esriSpatialRelIntersects",
-                "outFields": "NAME,BASENAME,GEOID",
-                "returnGeometry": "false",
-                "f": "json",
-            },
-        )
-        for feat in city_payload.get("features", []):
-            attrs = feat.get("attributes", {}) or {}
-            name = str(attrs.get("NAME", "")).strip()
-            base = str(attrs.get("BASENAME", "")).strip() or re.sub(
-                r"\s+(city|town|village)\s*$", "", name, flags=re.IGNORECASE
-            ).strip()
-            if base:
-                display = base
-                if not re.search(r"\b(CITY|TOWN|VILLAGE)\b$", display, flags=re.IGNORECASE):
-                    display = f"{display} City"
-                rows.append(
-                    {
-                        "subdivision_type": "City",
-                        "subdivision_name": display,
-                        "subdivision_code": str(attrs.get("GEOID", "")).strip(),
-                        "source_name": "U.S. Census TIGERweb Texas Places (MapServer/25)",
-                        "source_url": CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL,
-                    }
-                )
-    except Exception:
-        pass
-
-    try:
-        water_payload = _arcgis_get_json(
-            f"{TCEQ_WATER_DISTRICTS_LAYER_URL}/query",
-            params={
-                "geometry": f"{lon},{lat}",
-                "geometryType": "esriGeometryPoint",
-                "inSR": "4326",
-                "spatialRel": "esriSpatialRelIntersects",
-                "outFields": "NAME,DISTRICT_ID,TYPE,TYPE_DESCRIPTION",
-                "returnGeometry": "false",
-                "f": "json",
-            },
-        )
-        for feat in water_payload.get("features", []):
-            attrs = feat.get("attributes", {}) or {}
-            mapped_type = _canonical_water_district_type(str(attrs.get("TYPE_DESCRIPTION", "")).strip())
-            if mapped_type == "Navigation District":
-                # Use the dedicated statewide navigation-district layer for this type.
-                mapped_type = ""
-            if not mapped_type:
-                continue
-            name = str(attrs.get("NAME", "")).strip()
-            if name:
-                rows.append(
-                    {
-                        "subdivision_type": mapped_type,
-                        "subdivision_name": name,
-                        "subdivision_code": str(attrs.get("DISTRICT_ID", "")).strip(),
-                        "source_name": "TCEQ Water Districts (FeatureServer/0)",
-                        "source_url": TCEQ_WATER_DISTRICTS_LAYER_URL,
-                    }
-                )
-    except Exception:
-        pass
-
-    try:
-        groundwater_payload = _arcgis_get_json(
-            f"{TCEQ_GROUNDWATER_DISTRICTS_LAYER_URL}/query",
-            params={
-                "geometry": f"{lon},{lat}",
-                "geometryType": "esriGeometryPoint",
-                "inSR": "4326",
-                "spatialRel": "esriSpatialRelIntersects",
-                "outFields": "DISTNAME,DIST_NUM,SHORTNAM",
-                "returnGeometry": "false",
-                "f": "json",
-            },
-        )
-        for feat in groundwater_payload.get("features", []):
-            attrs = feat.get("attributes", {}) or {}
-            name = str(attrs.get("DISTNAME", "")).strip() or str(attrs.get("SHORTNAM", "")).strip()
-            if name:
-                rows.append(
-                    {
-                        "subdivision_type": "Groundwater Conservation District",
-                        "subdivision_name": name,
-                        "subdivision_code": str(attrs.get("DIST_NUM", "")).strip(),
-                        "source_name": "TCEQ Groundwater Conservation Districts (FeatureServer/0)",
-                        "source_url": TCEQ_GROUNDWATER_DISTRICTS_LAYER_URL,
-                    }
-                )
-    except Exception:
-        pass
-
-    try:
-        rma_payload = _arcgis_get_json(
-            f"{TEXAS_RMA_LAYER_URL}/query",
-            params={
-                "geometry": f"{lon},{lat}",
-                "geometryType": "esriGeometryPoint",
-                "inSR": "4326",
-                "spatialRel": "esriSpatialRelIntersects",
-                "outFields": "OBJECTID,RMA,Label",
-                "returnGeometry": "false",
-                "f": "json",
-            },
-        )
-        for feat in rma_payload.get("features", []):
-            attrs = feat.get("attributes", {}) or {}
-            name = str(attrs.get("Label", "")).strip() or str(attrs.get("RMA", "")).strip()
-            if name:
-                rows.append(
-                    {
-                        "subdivision_type": "Regional Mobility Authority",
-                        "subdivision_name": name,
-                        "subdivision_code": str(attrs.get("OBJECTID", "")).strip(),
-                        "source_name": "Texas Regional Mobility Authorities (FeatureServer/0)",
-                        "source_url": TEXAS_RMA_LAYER_URL,
-                    }
-                )
-    except Exception:
-        pass
-
-    try:
-        jc_payload = _arcgis_get_json(
-            f"{TEXAS_JUNIOR_COLLEGE_LAYER_URL}/query",
-            params={
-                "geometry": f"{lon},{lat}",
-                "geometryType": "esriGeometryPoint",
-                "inSR": "4326",
-                "spatialRel": "esriSpatialRelIntersects",
-                "outFields": "DISTRICT,NAME1,NAME2",
-                "returnGeometry": "false",
-                "f": "json",
-            },
-        )
-        for feat in jc_payload.get("features", []):
-            attrs = feat.get("attributes", {}) or {}
-            name = str(attrs.get("NAME1", "")).strip() or str(attrs.get("NAME2", "")).strip()
-            if name:
-                rows.append(
-                    {
-                        "subdivision_type": "Junior College District",
-                        "subdivision_name": name,
-                        "subdivision_code": str(attrs.get("DISTRICT", "")).strip(),
-                        "source_name": "Texas Junior College Service Areas (FeatureServer/0)",
-                        "source_url": TEXAS_JUNIOR_COLLEGE_LAYER_URL,
-                    }
-                )
-    except Exception:
-        pass
-
-    try:
-        nav_payload = _arcgis_get_json(
-            f"{TEXAS_NAVIGATION_DISTRICT_LAYER_URL}/query",
-            params={
-                "geometry": f"{lon},{lat}",
-                "geometryType": "esriGeometryPoint",
-                "inSR": "4326",
-                "spatialRel": "esriSpatialRelIntersects",
-                "outFields": "OBJECTID,DISTRICT_N",
-                "returnGeometry": "false",
-                "f": "json",
-            },
-        )
-        for feat in nav_payload.get("features", []):
-            attrs = feat.get("attributes", {}) or {}
-            name = str(attrs.get("DISTRICT_N", "")).strip()
-            if name:
-                rows.append(
-                    {
-                        "subdivision_type": "Navigation District",
-                        "subdivision_name": name,
-                        "subdivision_code": str(attrs.get("OBJECTID", "")).strip(),
-                        "source_name": "Texas Navigation Districts (FeatureServer/29)",
-                        "source_url": TEXAS_NAVIGATION_DISTRICT_LAYER_URL,
-                    }
-                )
-    except Exception:
-        pass
-
-    try:
-        transit_payload = _arcgis_get_json(
-            f"{NCTCOG_TRANSIT_PROVIDERS_LAYER_URL}/query",
-            params={
-                "geometry": f"{lon},{lat}",
-                "geometryType": "esriGeometryPoint",
-                "inSR": "4326",
-                "spatialRel": "esriSpatialRelIntersects",
-                "outFields": "OBJECTID,Name,Classification",
-                "returnGeometry": "false",
-                "f": "json",
-            },
-        )
-        for feat in transit_payload.get("features", []):
-            attrs = feat.get("attributes", {}) or {}
-            name = str(attrs.get("Name", "")).strip()
-            if name:
-                rows.append(
-                    {
-                        "subdivision_type": "Transit Authority",
-                        "subdivision_name": name,
-                        "subdivision_code": str(attrs.get("OBJECTID", "")).strip(),
-                        "source_name": "NCTCOG Transit Providers (MapServer/10)",
-                        "source_url": NCTCOG_TRANSIT_PROVIDERS_LAYER_URL,
-                    }
-                )
-    except Exception:
-        pass
-
-    try:
-        seaport_payload = _arcgis_get_json(
-            f"{TXDOT_SEAPORTS_LAYER_URL}/query",
-            params={
-                "geometry": f"{lon},{lat}",
-                "geometryType": "esriGeometryPoint",
-                "inSR": "4326",
-                "spatialRel": "esriSpatialRelIntersects",
-                "distance": 25,
-                "units": "esriSRUnit_StatuteMile",
-                "outFields": "OBJECTID,PORT_NM",
-                "returnGeometry": "false",
-                "f": "json",
-            },
-        )
-        for feat in seaport_payload.get("features", []):
-            attrs = feat.get("attributes", {}) or {}
-            name = str(attrs.get("PORT_NM", "")).strip()
-            if name:
-                rows.append(
-                    {
-                        "subdivision_type": "Port Authority",
-                        "subdivision_name": name,
-                        "subdivision_code": str(attrs.get("OBJECTID", "")).strip(),
-                        "source_name": "TxDOT Seaports (FeatureServer/0)",
-                        "source_url": TXDOT_SEAPORTS_LAYER_URL,
-                    }
-                )
-    except Exception:
-        pass
+    with ThreadPoolExecutor(max_workers=len(fetchers)) as pool:
+        futures = {pool.submit(fn): fn.__name__ for fn in fetchers}
+        for future in as_completed(futures):
+            try:
+                rows.extend(future.result())
+            except Exception:
+                pass
 
     if not rows:
         return pd.DataFrame(columns=cols)
@@ -14578,6 +14738,447 @@ def build_overlap_map_points(
         ["subdivision_type", "subdivision_name", "subdivision_code"]
     )
     return out.sort_values(["subdivision_type", "subdivision_name"], ascending=[True, True])
+
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    out = pd.DataFrame(rows, columns=cols).drop_duplicates(
+        ["subdivision_type", "subdivision_name", "subdivision_code"]
+    )
+    return out.sort_values(["subdivision_type", "subdivision_name"], ascending=[True, True])
+
+
+# =================================================================
+# DRAW AREA & SEARCH ADDRESS MAP COMPONENT
+# =================================================================
+def render_draw_area_search_map(
+    height: int = 520,
+    basemap: str = "gray-vector",
+    map_id: str = "tfl-draw-area-map",
+    markers: list[dict] | None = None,
+) -> None:
+    """Render an ArcGIS JS 4.30 map with drawing tools, address search,
+    click-to-reverse-geocode, and an address collector panel.
+
+    Users can:
+    * Click anywhere on the map to reverse-geocode that point
+    * Use the Search widget to find an address
+    * Draw polygon / circle / rectangle areas; all click-points within
+      the area are collected
+    * Copy discovered addresses from the in-map panel
+
+    The map posts messages (``tfl-draw-address-found``, ``tfl-draw-area-addresses``)
+    via ``window.parent.postMessage`` so that the Python layer can listen
+    for them (via adjacent Streamlit widgets that manually capture the data).
+
+    Parameters
+    ----------
+    height : int
+        Map container height in pixels.
+    basemap : str
+        ArcGIS basemap identifier (``"gray-vector"``, ``"streets-vector"``, ``"hybrid"``).
+    map_id : str
+        HTML element id for the map container (must be unique per page render).
+    markers : list[dict] | None
+        Optional list of ``{"lat": float, "lon": float, "label": str}`` dicts
+        to render pre-existing pins on the map (e.g. docket entity addresses).
+    """
+    basemap_safe = json.dumps(str(basemap).strip() or "gray-vector")
+    markers_json = json.dumps(markers or [], ensure_ascii=True)
+
+    arcgis_html = f"""
+<link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/dark/main.css"/>
+<style>
+  #{map_id} {{ width:100%; height:{height}px; border-radius:14px; overflow:hidden; position:relative; }}
+
+  /* Dark popup */
+  .esri-popup__main-container {{
+    background:rgba(13,23,36,0.96) !important; color:rgba(220,230,240,0.95) !important;
+    border:1px solid rgba(100,140,180,0.22) !important; border-radius:10px !important;
+    backdrop-filter:blur(10px) !important; box-shadow:0 8px 32px rgba(0,0,0,0.45) !important;
+  }}
+  .esri-popup__header-title {{ color:rgba(235,242,250,0.97) !important; font-weight:600 !important; }}
+  .esri-popup__content {{ color:rgba(200,215,230,0.92) !important; }}
+  .esri-popup__button {{ color:rgba(180,200,220,0.85) !important; }}
+  .esri-popup__button:hover {{ color:#fff !important; background:rgba(100,180,255,0.18) !important; }}
+  .esri-sketch {{ background:rgba(13,23,36,0.92) !important; border-radius:8px !important; border:1px solid rgba(100,140,180,0.22) !important; }}
+
+  /* Coordinate bar */
+  #tfl-draw-coord {{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%); z-index:90;
+    background:rgba(10,20,32,0.88); border:1px solid rgba(100,140,180,0.15);
+    border-radius:8px; padding:3px 10px; font-family:'Avenir Next LT Pro',system-ui,sans-serif;
+    font-size:10.5px; color:rgba(180,200,220,0.75); white-space:nowrap;
+    backdrop-filter:blur(6px); pointer-events:none;
+  }}
+
+  /* Address collector panel */
+  #tfl-draw-collector {{
+    position:absolute; top:12px; right:12px; z-index:95;
+    background:rgba(10,20,32,0.94); border:1px solid rgba(30,144,255,0.22);
+    border-radius:12px; padding:10px 12px; min-width:240px; max-width:300px;
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:11.5px;
+    color:rgba(210,225,240,0.90); backdrop-filter:blur(10px);
+    max-height:{height - 40}px; overflow-y:auto;
+    box-shadow:0 8px 28px rgba(0,0,0,0.40);
+  }}
+  #tfl-draw-collector .dc-title {{
+    text-transform:uppercase; letter-spacing:0.14em; font-size:8.5px;
+    color:rgba(30,144,255,0.82); font-weight:700; margin-bottom:6px;
+    display:flex; align-items:center; justify-content:space-between;
+  }}
+  #tfl-draw-collector .dc-item {{
+    display:flex; align-items:flex-start; gap:6px; padding:5px 0;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+  }}
+  #tfl-draw-collector .dc-item:last-child {{ border-bottom:none; }}
+  #tfl-draw-collector .dc-num {{
+    flex-shrink:0; width:18px; height:18px; border-radius:50%;
+    background:rgba(30,144,255,0.18); border:1px solid rgba(30,144,255,0.30);
+    display:flex; align-items:center; justify-content:center;
+    font-size:9px; font-weight:700; color:rgba(30,144,255,0.90);
+  }}
+  #tfl-draw-collector .dc-addr {{
+    font-size:11px; line-height:1.35; color:rgba(210,230,245,0.85);
+  }}
+  #tfl-draw-collector .dc-coord {{
+    font-size:9px; color:rgba(160,185,210,0.55); margin-top:1px;
+  }}
+  #tfl-draw-collector .dc-empty {{
+    text-align:center; padding:10px 0; color:rgba(180,200,220,0.45); font-size:10.5px;
+  }}
+  #tfl-draw-collector .dc-actions {{
+    display:flex; gap:6px; margin-top:6px;
+  }}
+  #tfl-draw-collector .dc-btn {{
+    flex:1; padding:5px 8px; border-radius:8px; border:1px solid rgba(30,144,255,0.25);
+    background:rgba(30,144,255,0.10); color:rgba(30,144,255,0.90); cursor:pointer;
+    font-size:10px; font-weight:600; text-align:center; transition:all 0.2s;
+  }}
+  #tfl-draw-collector .dc-btn:hover {{ background:rgba(30,144,255,0.22); border-color:rgba(30,144,255,0.40); }}
+  #tfl-draw-collector .dc-btn.clear {{ background:rgba(255,80,80,0.08); border-color:rgba(255,80,80,0.20); color:rgba(255,120,120,0.85); }}
+  #tfl-draw-collector .dc-btn.clear:hover {{ background:rgba(255,80,80,0.18); }}
+  #tfl-draw-badge {{
+    position:absolute; top:12px; left:12px; z-index:95;
+    background:rgba(10,20,32,0.90); border:1px solid rgba(0,224,184,0.22);
+    border-radius:10px; padding:6px 12px; font-family:'Avenir Next LT Pro',system-ui,sans-serif;
+    font-size:10.5px; color:rgba(0,224,184,0.85); backdrop-filter:blur(8px);
+  }}
+
+  /* Loading overlay */
+  @keyframes tfl-draw-pulse {{ 0%,100%{{transform:scale(1);opacity:0.92;}} 50%{{transform:scale(1.35);opacity:0.45;}} }}
+  #tfl-draw-loading {{
+    position:absolute; top:0; left:0; width:100%; height:100%;
+    background:rgba(10,16,26,0.92); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; z-index:100;
+    transition:opacity 0.5s ease;
+  }}
+  #tfl-draw-loading .ld-dot {{
+    width:10px; height:10px; border-radius:50%; background:rgba(30,144,255,0.82);
+    animation:tfl-draw-pulse 1.2s ease-in-out infinite;
+  }}
+  #tfl-draw-loading .ld-text {{
+    margin-top:8px; font-family:'Avenir Next LT Pro',system-ui,sans-serif;
+    font-size:11px; color:rgba(180,200,220,0.65);
+  }}
+
+  /* Pin markers */
+  .tfl-pin-marker {{
+    width:10px; height:10px; border-radius:50%;
+    background:rgba(0,224,184,0.85); border:2px solid rgba(255,255,255,0.70);
+    box-shadow:0 2px 8px rgba(0,0,0,0.35);
+  }}
+</style>
+
+<div id="{map_id}" style="position:relative;">
+  <div id="tfl-draw-loading"><div class="ld-dot"></div><div class="ld-text">Initializing map\u2026</div></div>
+  <div id="tfl-draw-coord">\u2014</div>
+  <div id="tfl-draw-badge">Click map or search to collect addresses</div>
+  <div id="tfl-draw-collector">
+    <div class="dc-title"><span>&#x1F4CD; Collected Addresses</span><span id="tfl-draw-count">0</span></div>
+    <div id="tfl-draw-list"><div class="dc-empty">Click on the map, use Search, or draw an area to collect addresses.</div></div>
+    <div class="dc-actions">
+      <div class="dc-btn" id="tfl-draw-copy-btn">Copy All</div>
+      <div class="dc-btn clear" id="tfl-draw-clear-btn">Clear</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://js.arcgis.com/4.30/"></script>
+<script>
+  require([
+    "esri/Map", "esri/views/MapView", "esri/layers/GraphicsLayer",
+    "esri/Graphic", "esri/widgets/Home", "esri/widgets/BasemapToggle",
+    "esri/widgets/ScaleBar", "esri/widgets/Compass", "esri/widgets/Fullscreen",
+    "esri/widgets/Locate", "esri/widgets/Search", "esri/widgets/Sketch",
+    "esri/widgets/Expand", "esri/geometry/geometryEngine",
+    "esri/layers/FeatureLayer", "esri/rest/locator"
+  ], (Map, MapView, GraphicsLayer, Graphic, Home, BasemapToggle, ScaleBar,
+      Compass, Fullscreen, Locate, Search, Sketch, Expand, geometryEngine,
+      FeatureLayer, locator) => {{
+
+    const collectedAddresses = [];
+    const markersLayer = new GraphicsLayer();
+    const sketchLayer = new GraphicsLayer();
+    const pinsLayer = new GraphicsLayer();
+
+    /* Reference layers */
+    const countyLayer = new FeatureLayer({{
+      url: "{TEA_ARCGIS_COUNTY_LAYER_URL}",
+      opacity: 0.35, labelsVisible: false, popupEnabled: false,
+      renderer: {{ type:"simple", symbol:{{ type:"simple-fill", color:[0,0,0,0], outline:{{ color:[180,200,220,0.3], width:0.6 }} }} }}
+    }});
+    const cityLayer = new FeatureLayer({{
+      url: "{CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL}",
+      definitionExpression: "STATE='48'", opacity: 0.30, labelsVisible: false, visible: false, popupEnabled: false,
+      renderer: {{ type:"simple", symbol:{{ type:"simple-fill", color:[0,0,0,0], outline:{{ color:[150,190,210,0.25], width:0.5 }} }} }}
+    }});
+    const districtLayer = new FeatureLayer({{
+      url: "{TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL}",
+      opacity: 0.25, labelsVisible: false, visible: false, popupEnabled: false,
+      renderer: {{ type:"simple", symbol:{{ type:"simple-fill", color:[0,0,0,0], outline:{{ color:[100,160,200,0.22], width:0.4 }} }} }}
+    }});
+
+    const map = new Map({{
+      basemap: {basemap_safe},
+      layers: [countyLayer, cityLayer, districtLayer, markersLayer, pinsLayer, sketchLayer]
+    }});
+
+    const view = new MapView({{
+      container: "{map_id}",
+      map, center: [-99.0, 31.2], zoom: 6,
+      constraints: {{ minZoom: 4, maxZoom: 18 }},
+      popup: {{ dockEnabled: true, dockOptions: {{ breakpoint: false, position: "bottom-left" }} }}
+    }});
+
+    /* Pre-existing markers */
+    const preMarkers = {markers_json};
+    preMarkers.forEach((m, i) => {{
+      markersLayer.add(new Graphic({{
+        geometry: {{ type: "point", longitude: m.lon, latitude: m.lat }},
+        symbol: {{ type: "simple-marker", style: "diamond", size: 11, color: [0,224,184,0.85], outline: {{ color: [255,255,255,0.75], width: 1.5 }} }},
+        attributes: {{ label: m.label || "", lat: m.lat, lon: m.lon }},
+        popupTemplate: {{ title: m.label || "Marker " + (i+1), content: "Lat: " + m.lat.toFixed(5) + ", Lon: " + m.lon.toFixed(5) }}
+      }}));
+    }});
+
+    /* Geocoder URL */
+    const geocodeUrl = "{ARCGIS_GEOCODER_URL}";
+
+    /* Helpers */
+    function updateCollectorUI() {{
+      const listEl = document.getElementById("tfl-draw-list");
+      const countEl = document.getElementById("tfl-draw-count");
+      if (countEl) countEl.textContent = collectedAddresses.length;
+      if (!listEl) return;
+      if (collectedAddresses.length === 0) {{
+        listEl.innerHTML = '<div class="dc-empty">Click on the map, use Search, or draw an area to collect addresses.</div>';
+        return;
+      }}
+      listEl.innerHTML = collectedAddresses.map((a, i) =>
+        '<div class="dc-item">'
+        + '<div class="dc-num">' + (i + 1) + '</div>'
+        + '<div><div class="dc-addr">' + (a.address || "Unknown") + '</div>'
+        + '<div class="dc-coord">' + Number(a.lat).toFixed(5) + '\\u00b0 N, ' + Math.abs(a.lon).toFixed(5) + '\\u00b0 W</div>'
+        + '</div></div>'
+      ).join("");
+    }}
+
+    function addAddress(address, lat, lon) {{
+      const exists = collectedAddresses.some(a =>
+        Math.abs(a.lat - lat) < 0.0001 && Math.abs(a.lon - lon) < 0.0001
+      );
+      if (exists) return;
+      collectedAddresses.push({{ address, lat, lon }});
+
+      /* Drop a pin */
+      pinsLayer.add(new Graphic({{
+        geometry: {{ type: "point", longitude: lon, latitude: lat }},
+        symbol: {{ type: "simple-marker", style: "circle", size: 10, color: [30,144,255,0.85], outline: {{ color: [255,255,255,0.80], width: 1.5 }} }},
+        attributes: {{ address, lat, lon }},
+        popupTemplate: {{ title: address || "Point", content: "Lat: " + lat.toFixed(5) + ", Lon: " + lon.toFixed(5) }}
+      }}));
+
+      updateCollectorUI();
+
+      /* Notify parent */
+      try {{
+        window.parent.postMessage({{
+          type: "tfl-draw-address-found",
+          address: address, lat: lat, lon: lon,
+          allAddresses: collectedAddresses.slice()
+        }}, "*");
+      }} catch(e) {{}}
+    }}
+
+    function reverseGeocode(lat, lon) {{
+      const url = geocodeUrl.replace("findAddressCandidates", "reverseGeocode")
+        + "?location=" + lon + "," + lat
+        + "&outSR=4326&langCode=en&f=json";
+      fetch(url).then(r => r.json()).then(data => {{
+        const addr = (data.address && data.address.LongLabel) || (data.address && data.address.ShortLabel) || ("Point: " + lat.toFixed(5) + ", " + lon.toFixed(5));
+        addAddress(addr, lat, lon);
+      }}).catch(() => {{
+        addAddress("Point: " + lat.toFixed(5) + ", " + lon.toFixed(5), lat, lon);
+      }});
+    }}
+
+    /* Click → reverse geocode */
+    view.on("click", (evt) => {{
+      if (evt.mapPoint) {{
+        reverseGeocode(evt.mapPoint.latitude, evt.mapPoint.longitude);
+      }}
+    }});
+
+    /* Coordinate readout */
+    view.on("pointer-move", (evt) => {{
+      const pt = view.toMap(evt);
+      const el = document.getElementById("tfl-draw-coord");
+      if (pt && el) el.textContent = pt.latitude.toFixed(5) + "\\u00b0 N, " + Math.abs(pt.longitude).toFixed(5) + "\\u00b0 W";
+    }});
+
+    /* Widgets */
+    const home = new Home({{ view }});
+    const basemapToggle = new BasemapToggle({{ view, nextBasemap: {basemap_safe} === "hybrid" ? "gray-vector" : "hybrid" }});
+    const scaleBar = new ScaleBar({{ view, unit: "dual" }});
+    const compass = new Compass({{ view }});
+    const fullscreen = new Fullscreen({{ view }});
+    const locate = new Locate({{ view }});
+
+    const search = new Search({{
+      view, popupEnabled: true, resultGraphicEnabled: true,
+      goToOverride: (view, opts) => view.goTo(opts.target, {{ duration: 800, easing: "ease-in-out" }})
+    }});
+    search.on("select-result", (evt) => {{
+      if (evt.result && evt.result.feature && evt.result.feature.geometry) {{
+        const geom = evt.result.feature.geometry;
+        addAddress(evt.result.name || "", geom.latitude, geom.longitude);
+      }}
+    }});
+
+    const sketch = new Sketch({{
+      view, layer: sketchLayer, creationMode: "single",
+      availableCreateTools: ["polygon", "circle", "rectangle"],
+      defaultCreateOptions: {{ mode: "freehand" }},
+      visibleElements: {{ selectionTools: {{ "lasso-selection": false, "rectangle-selection": false }}, settingsMenu: false, undoRedoMenu: true }},
+      defaultUpdateOptions: {{ tool: "reshape" }}
+    }});
+    const sketchExpand = new Expand({{
+      view, content: sketch, expandIconClass: "esri-icon-polygon",
+      expandTooltip: "Draw area to collect addresses", group: "tools"
+    }});
+
+    /* Layer toggle */
+    const layerDiv = document.createElement("div");
+    layerDiv.style.cssText = "background:rgba(13,23,36,0.94);border-radius:8px;padding:10px;font-family:'Avenir Next LT Pro',system-ui,sans-serif;font-size:12px;color:rgba(210,225,240,0.90);min-width:160px;";
+    layerDiv.innerHTML = '<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:rgba(150,175,200,0.65);font-weight:700;margin-bottom:6px;">Reference Layers</div>'
+      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;"><input type="checkbox" id="tfl-draw-toggle-city" style="accent-color:#28b464;"><span>City Boundaries</span></label>'
+      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;"><input type="checkbox" id="tfl-draw-toggle-district" style="accent-color:#c88c3c;"><span>School Districts</span></label>';
+    const layerExpand = new Expand({{ view, content: layerDiv, expandIconClass: "esri-icon-layer-list", expandTooltip: "Toggle reference layers", group: "tools" }});
+
+    view.ui.add(home, "top-left");
+    view.ui.add(compass, "top-left");
+    view.ui.add(fullscreen, "top-left");
+    view.ui.add(locate, "top-left");
+    view.ui.add(sketchExpand, "top-left");
+    view.ui.add(layerExpand, "top-left");
+    view.ui.add(search, "top-right");
+    view.ui.add(basemapToggle, "top-right");
+    view.ui.add(scaleBar, "bottom-left");
+
+    view.when(() => {{
+      const cBox = document.getElementById("tfl-draw-toggle-city");
+      const dBox = document.getElementById("tfl-draw-toggle-district");
+      if (cBox) cBox.addEventListener("change", () => {{ cityLayer.visible = cBox.checked; }});
+      if (dBox) dBox.addEventListener("change", () => {{ districtLayer.visible = dBox.checked; }});
+    }});
+
+    /* Sketch complete → reverse-geocode the centroid of the drawn area */
+    sketch.on("create", (evt) => {{
+      if (evt.state !== "complete") return;
+      const geom = evt.graphic.geometry;
+      const ext = geom.extent;
+      if (!ext) return;
+
+      /* Sample grid of points inside the drawn area for reverse geocoding */
+      const cx = ext.center.longitude;
+      const cy = ext.center.latitude;
+      const dx = (ext.xmax - ext.xmin);
+      const dy = (ext.ymax - ext.ymin);
+      const SAMPLES = 5;
+      const promises = [];
+
+      /* Always geocode the centroid */
+      reverseGeocode(cy, cx);
+
+      /* Sample a NxN grid within the extent, but only inside the polygon */
+      for (let xi = 0; xi < SAMPLES; xi++) {{
+        for (let yi = 0; yi < SAMPLES; yi++) {{
+          const px = ext.xmin + (dx * (xi + 0.5) / SAMPLES);
+          const py = ext.ymin + (dy * (yi + 0.5) / SAMPLES);
+          const testPt = {{ type: "point", longitude: px, latitude: py, spatialReference: {{ wkid: 4326 }} }};
+          if (geometryEngine.contains(geom, testPt)) {{
+            reverseGeocode(py, px);
+          }}
+        }}
+      }}
+
+      /* Update badge */
+      const badge = document.getElementById("tfl-draw-badge");
+      if (badge) badge.textContent = "Area scanned — see collected addresses \\u2192";
+
+      /* Post area addresses */
+      setTimeout(() => {{
+        try {{
+          window.parent.postMessage({{
+            type: "tfl-draw-area-addresses",
+            allAddresses: collectedAddresses.slice()
+          }}, "*");
+        }} catch(e) {{}}
+      }}, 3000);
+    }});
+
+    /* Copy all button */
+    document.getElementById("tfl-draw-copy-btn").addEventListener("click", () => {{
+      if (collectedAddresses.length === 0) return;
+      const text = collectedAddresses.map(a => a.address).join("\\n");
+      navigator.clipboard.writeText(text).then(() => {{
+        const btn = document.getElementById("tfl-draw-copy-btn");
+        if (btn) {{ btn.textContent = "Copied!"; setTimeout(() => {{ btn.textContent = "Copy All"; }}, 2000); }}
+      }}).catch(() => {{}});
+
+      /* Also post to parent */
+      try {{
+        window.parent.postMessage({{
+          type: "tfl-draw-copy-all",
+          allAddresses: collectedAddresses.slice(),
+          text: text
+        }}, "*");
+      }} catch(e) {{}}
+    }});
+
+    /* Clear button */
+    document.getElementById("tfl-draw-clear-btn").addEventListener("click", () => {{
+      collectedAddresses.length = 0;
+      pinsLayer.removeAll();
+      sketchLayer.removeAll();
+      updateCollectorUI();
+      const badge = document.getElementById("tfl-draw-badge");
+      if (badge) badge.textContent = "Click map or search to collect addresses";
+    }});
+
+    /* Loading done */
+    view.when(() => {{
+      const loader = document.getElementById("tfl-draw-loading");
+      if (loader) {{ loader.style.opacity = "0"; setTimeout(() => loader.remove(), 600); }}
+      if (preMarkers.length > 0) {{
+        view.goTo(markersLayer.graphics.toArray(), {{ padding: {{ top:50, right:50, bottom:50, left:50 }}, duration:1000, easing:"ease-in-out" }}).catch(() => {{}});
+      }}
+    }});
+  }});
+</script>
+"""
+    components.html(arcgis_html, height=height + 8, scrolling=False)
+
 
 def render_address_overlap_arcgis_map(
     lon: float,
@@ -15507,9 +16108,9 @@ def render_tfl_subdivision_arcgis_map(
   .esri-sketch {{ background: rgba(13,23,36,0.92) !important; border-radius: 8px !important; border: 1px solid rgba(100,140,180,0.22) !important; }}
 
   #tfl-sub-legend {{
-    position: absolute; bottom: 36px; right: 12px; z-index: 90;
+    position: absolute; bottom: 90px; right: 12px; z-index: 90;
     background: rgba(10,20,32,0.92); border: 1px solid rgba(100,140,180,0.18);
-    border-radius: 11px; padding: 0; max-width: 220px; overflow: hidden;
+    border-radius: 11px; padding: 0; max-width: 240px; overflow: hidden;
     font-family: 'Avenir Next LT Pro', system-ui, sans-serif; font-size: 10.5px;
     color: rgba(210,225,240,0.90); backdrop-filter: blur(8px);
     transition: max-height 0.3s ease;
@@ -15526,8 +16127,11 @@ def render_tfl_subdivision_arcgis_map(
     font-size: 12px; color: rgba(150,175,200,0.60); transition: transform 0.25s;
   }}
   #tfl-sub-legend .leg-body {{
-    padding: 0 10px 6px 10px; max-height: 220px; overflow-y: auto;
+    padding: 0 10px 6px 10px; max-height: 180px; overflow-y: auto;
   }}
+  #tfl-sub-legend .leg-body::-webkit-scrollbar {{ width:4px; }}
+  #tfl-sub-legend .leg-body::-webkit-scrollbar-thumb {{ background:rgba(100,140,180,0.25); border-radius:4px; }}
+  #tfl-sub-legend .leg-body::-webkit-scrollbar-track {{ background:transparent; }}
   #tfl-sub-legend .leg-row {{
     display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 2px 0;
     cursor: pointer; border-radius: 4px; padding-left: 3px; padding-right: 3px;
@@ -15570,20 +16174,146 @@ def render_tfl_subdivision_arcgis_map(
     white-space:nowrap; letter-spacing:0.04em;
   }}
   #tfl-sub-sel-info {{
-    position:absolute; bottom:36px; left:12px; z-index:90;
+    position:absolute; top:52px; right:12px; z-index:90;
     background:rgba(10,16,26,0.92); border:1px solid rgba(0,180,255,0.25);
     border-radius:8px; padding:6px 12px; backdrop-filter:blur(6px);
     font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:11px;
-    color:rgba(200,220,240,0.90); display:none; max-width:280px;
+    color:rgba(200,220,240,0.90); display:none; max-width:260px;
   }}
   #tfl-sub-sel-info .sel-title {{
     font-weight:700; color:rgba(100,200,255,0.95); font-size:10px;
     text-transform:uppercase; letter-spacing:0.08em; margin-bottom:3px;
   }}
+
+  /* ── Address Collector Panel ── */
+  #tfl-sub-collector {{
+    position:absolute; bottom:40px; left:12px; z-index:95;
+    background:rgba(10,20,32,0.94); border:1px solid rgba(30,144,255,0.22);
+    border-radius:12px; padding:10px 12px; min-width:210px; max-width:260px;
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:11.5px;
+    color:rgba(210,225,240,0.90); backdrop-filter:blur(10px);
+    max-height:{height - 100}px; overflow-y:auto;
+    box-shadow:0 8px 28px rgba(0,0,0,0.40);
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+  }}
+  #tfl-sub-collector::-webkit-scrollbar {{ width:4px; }}
+  #tfl-sub-collector::-webkit-scrollbar-thumb {{ background:rgba(30,144,255,0.25); border-radius:4px; }}
+  #tfl-sub-collector::-webkit-scrollbar-track {{ background:transparent; }}
+  }}
+  #tfl-sub-collector.collapsed {{ max-height:32px; overflow:hidden; }}
+  #tfl-sub-collector .dc-title {{
+    text-transform:uppercase; letter-spacing:0.14em; font-size:8.5px;
+    color:rgba(30,144,255,0.82); font-weight:700; margin-bottom:6px;
+    display:flex; align-items:center; justify-content:space-between;
+    cursor:pointer; user-select:none;
+  }}
+  #tfl-sub-collector .dc-toggle {{
+    font-size:11px; color:rgba(150,175,200,0.60); transition:transform 0.25s;
+  }}
+  #tfl-sub-collector.collapsed .dc-toggle {{ transform:rotate(180deg); }}
+  #tfl-sub-collector .dc-body {{ }}
+  #tfl-sub-collector.collapsed .dc-body {{ display:none; }}
+  #tfl-sub-collector .dc-item {{
+    display:flex; align-items:flex-start; gap:6px; padding:5px 0;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+  }}
+  #tfl-sub-collector .dc-item:last-child {{ border-bottom:none; }}
+  #tfl-sub-collector .dc-num {{
+    flex-shrink:0; width:18px; height:18px; border-radius:50%;
+    background:rgba(30,144,255,0.18); border:1px solid rgba(30,144,255,0.30);
+    display:flex; align-items:center; justify-content:center;
+    font-size:9px; font-weight:700; color:rgba(30,144,255,0.90);
+  }}
+  #tfl-sub-collector .dc-addr {{
+    font-size:11px; line-height:1.35; color:rgba(210,230,245,0.85);
+  }}
+  #tfl-sub-collector .dc-coord {{
+    font-size:9px; color:rgba(160,185,210,0.55); margin-top:1px;
+  }}
+  #tfl-sub-collector .dc-empty {{
+    text-align:center; padding:10px 0; color:rgba(180,200,220,0.45); font-size:10.5px;
+  }}
+  #tfl-sub-collector .dc-actions {{
+    display:flex; gap:6px; margin-top:6px;
+  }}
+  #tfl-sub-collector .dc-btn {{
+    flex:1; padding:5px 8px; border-radius:8px; border:1px solid rgba(30,144,255,0.25);
+    background:rgba(30,144,255,0.10); color:rgba(30,144,255,0.90); cursor:pointer;
+    font-size:10px; font-weight:600; text-align:center; transition:all 0.2s;
+  }}
+  #tfl-sub-collector .dc-btn:hover {{ background:rgba(30,144,255,0.22); border-color:rgba(30,144,255,0.40); }}
+  #tfl-sub-collector .dc-btn.clear {{ background:rgba(255,80,80,0.08); border-color:rgba(255,80,80,0.20); color:rgba(255,120,120,0.85); }}
+  #tfl-sub-collector .dc-btn.clear:hover {{ background:rgba(255,80,80,0.18); }}
+  #tfl-sub-badge {{
+    display:none;
+  }}
+
+  /* ── Toast Notification System ── */
+  #tfl-sub-toast-container {{
+    position:absolute; bottom:50px; left:50%; transform:translateX(-50%); z-index:200;
+    display:flex; flex-direction:column-reverse; align-items:center; gap:8px;
+    pointer-events:none;
+  }}
+  .tfl-toast {{
+    background:rgba(10,20,32,0.95); border:1px solid rgba(30,144,255,0.30);
+    border-radius:10px; padding:8px 18px; backdrop-filter:blur(12px);
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:12px;
+    color:rgba(210,230,245,0.95); box-shadow:0 6px 24px rgba(0,0,0,0.45);
+    display:flex; align-items:center; gap:8px; white-space:nowrap;
+    animation: tfl-toast-in 0.35s ease-out forwards;
+    pointer-events:auto;
+  }}
+  .tfl-toast.success {{ border-color:rgba(40,180,100,0.40); }}
+  .tfl-toast.success .toast-icon {{ color:#28b464; }}
+  .tfl-toast.info {{ border-color:rgba(30,144,255,0.40); }}
+  .tfl-toast.info .toast-icon {{ color:#1e90ff; }}
+  .tfl-toast.warn {{ border-color:rgba(255,170,50,0.40); }}
+  .tfl-toast.warn .toast-icon {{ color:#ffaa32; }}
+  .tfl-toast.out {{ animation: tfl-toast-out 0.3s ease-in forwards; }}
+  .toast-icon {{ font-size:15px; }}
+  @keyframes tfl-toast-in {{ 0%{{opacity:0;transform:translateY(16px);}} 100%{{opacity:1;transform:translateY(0);}} }}
+  @keyframes tfl-toast-out {{ 0%{{opacity:1;transform:translateY(0);}} 100%{{opacity:0;transform:translateY(-12px);}} }}
+
+  /* ── Stats ribbon ── */
+  #tfl-sub-stats {{
+    position:absolute; top:10px; left:56px; z-index:90;
+    background:rgba(10,16,26,0.88); border:1px solid rgba(100,140,180,0.15);
+    border-radius:20px; padding:4px 16px; backdrop-filter:blur(8px);
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif; font-size:11px;
+    color:rgba(200,220,240,0.85); pointer-events:none;
+    display:flex; align-items:center; gap:14px; white-space:nowrap;
+    animation: tfl-toast-in 0.5s ease-out 1.2s both;
+  }}
+  #tfl-sub-stats .stat-val {{ font-weight:700; color:rgba(100,200,255,0.95); }}
+  #tfl-sub-stats .stat-sep {{ color:rgba(100,140,180,0.30); }}
+
+  /* ── Hover tooltip ── */
+  #tfl-sub-tooltip {{
+    position:absolute; z-index:110; pointer-events:none;
+    background:rgba(10,16,26,0.94); border:1px solid rgba(100,180,255,0.22);
+    border-radius:8px; padding:5px 10px; backdrop-filter:blur(8px);
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif;
+    color:rgba(210,230,245,0.92); display:none;
+    box-shadow:0 4px 16px rgba(0,0,0,0.35);
+    max-width:240px;
+  }}
+  #tfl-sub-tooltip .tt-name {{ font-size:11.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+  #tfl-sub-tooltip .tt-val {{ font-size:10px; color:rgba(100,200,255,0.85); margin-top:2px; }}
+  #tfl-sub-tooltip .tt-type {{ font-size:9px; color:rgba(150,175,200,0.55); margin-top:1px; }}
+
+  /* ── Address delete button ── */
+  #tfl-sub-collector .dc-del {{
+    flex-shrink:0; width:16px; height:16px; border-radius:50%; margin-left:auto;
+    background:rgba(255,80,80,0.08); border:1px solid rgba(255,80,80,0.20);
+    color:rgba(255,120,120,0.70); font-size:10px; line-height:14px;
+    text-align:center; cursor:pointer; transition:all 0.2s;
+    display:flex; align-items:center; justify-content:center;
+  }}
+  #tfl-sub-collector .dc-del:hover {{ background:rgba(255,80,80,0.22); color:rgba(255,120,120,1); }}
 </style>
 <div style="width:100%;height:{height}px;position:relative;">
   <div id="tfl-subdivision-map" style="width:100%;height:100%;border-radius:14px;overflow:hidden;"></div>
-  <div id="tfl-sub-legend">
+  <div id="tfl-sub-legend" class="collapsed">
     <div class="leg-hdr" onclick="this.parentElement.classList.toggle('collapsed')">
       <span class="leg-title">Subdivisions &middot; click to filter</span>
       <span class="leg-toggle">&#9650;</span>
@@ -15593,6 +16323,30 @@ def render_tfl_subdivision_arcgis_map(
   <div id="tfl-sub-loading"><div class="ld-spinner"></div><div class="ld-label">Loading map layers&hellip;</div></div>
   <div id="tfl-sub-coord">&ndash;</div>
   <div id="tfl-sub-sel-info"></div>
+  <div id="tfl-sub-badge">Click map or search to collect addresses</div>
+  <div id="tfl-sub-toast-container"></div>
+  <div id="tfl-sub-stats">
+    <span><span class="stat-val" id="tfl-sub-stats-count">{total_sub}</span> subdivisions</span>
+    <span class="stat-sep">|</span>
+    <span>TFL est. <span class="stat-val" id="tfl-sub-stats-high">{total_sub_high_fmt}</span></span>
+  </div>
+  <div id="tfl-sub-tooltip"><div class="tt-name"></div><div class="tt-val"></div><div class="tt-type"></div></div>
+  <div id="tfl-sub-collector">
+    <div class="dc-title" onclick="this.parentElement.classList.toggle('collapsed')">
+      <span>&#x1F4CD; Collected Addresses <span id="tfl-sub-addr-count">0</span></span>
+      <span class="dc-toggle">&#9650;</span>
+    </div>
+    <div class="dc-body">
+      <div id="tfl-sub-addr-list"><div class="dc-empty">Click on the map, use Search, or draw an area to collect addresses.</div></div>
+      <div class="dc-actions">
+        <div class="dc-btn" id="tfl-sub-send-forensics-btn">&#x1F50D; Send to Forensics</div>
+        <div class="dc-btn" id="tfl-sub-send-batch-btn">&#x1F4E5; Send to Batch</div>
+      </div>
+      <div class="dc-actions" style="margin-top:4px;">
+        <div class="dc-btn clear" id="tfl-sub-clear-btn">Clear</div>
+      </div>
+    </div>
+  </div>
 </div>
 <script src="https://js.arcgis.com/4.30/"></script>
 <script>
@@ -15642,6 +16396,11 @@ def render_tfl_subdivision_arcgis_map(
     "esri/geometry/geometryEngine"
   ], function(Map, MapView, FeatureLayer, GraphicsLayer, Graphic, Home, ScaleBar, BasemapToggle, Compass, Fullscreen, Search, Locate, Sketch, Expand, geometryEngine) {{
     const map = new Map({{ basemap: baseMapId }});
+
+    /* ── Address collector state ── */
+    const collectedAddresses = [];
+    const pinsLayer = new GraphicsLayer();
+    const geocodeUrl = "{ARCGIS_GEOCODER_URL}";
 
     const districtLayer = new FeatureLayer({{
       url: "{TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL}",
@@ -15717,6 +16476,7 @@ def render_tfl_subdivision_arcgis_map(
     const sketchLayer = new GraphicsLayer();
     map.add(graphics);
     map.add(sketchLayer);
+    map.add(pinsLayer);
 
     const view = new MapView({{
       container: "tfl-subdivision-map",
@@ -15727,6 +16487,100 @@ def render_tfl_subdivision_arcgis_map(
       popup: {{ dockEnabled: true, dockOptions: {{ position: "bottom-right", breakpoint: false }} }},
       ui: {{ padding: {{ top: 10, right: 10, bottom: 30, left: 10 }} }}
     }});
+
+    /* ── Address collector helper functions ── */
+    function updateCollectorUI() {{
+      const listEl = document.getElementById("tfl-sub-addr-list");
+      const countEl = document.getElementById("tfl-sub-addr-count");
+      if (countEl) countEl.textContent = collectedAddresses.length;
+      if (!listEl) return;
+      if (collectedAddresses.length === 0) {{
+        listEl.innerHTML = '<div class="dc-empty">Click on the map, use Search, or draw an area to collect addresses.</div>';
+        return;
+      }}
+      listEl.innerHTML = collectedAddresses.map((a, i) =>
+        '<div class="dc-item">'
+        + '<div class="dc-num">' + (i + 1) + '</div>'
+        + '<div style="flex:1;min-width:0;"><div class="dc-addr">' + (a.address || "Unknown") + '</div>'
+        + '<div class="dc-coord">' + Number(a.lat).toFixed(5) + '\u00b0 N, ' + Math.abs(a.lon).toFixed(5) + '\u00b0 W</div>'
+        + '</div>'
+        + '<div class="dc-del" onclick="window._tflRemoveAddr(' + i + ')" title="Remove">\u00d7</div>'
+        + '</div>'
+      ).join("");
+    }}
+
+    /* Toast notification system */
+    function showToast(message, type) {{
+      type = type || "info";
+      const icons = {{ success: "\u2713", info: "\u2139\uFE0F", warn: "\u26A0\uFE0F" }};
+      const container = document.getElementById("tfl-sub-toast-container");
+      if (!container) return;
+      const toast = document.createElement("div");
+      toast.className = "tfl-toast " + type;
+      toast.innerHTML = '<span class="toast-icon">' + (icons[type] || "") + '</span><span>' + message + '</span>';
+      container.appendChild(toast);
+      setTimeout(() => {{ toast.classList.add("out"); setTimeout(() => toast.remove(), 320); }}, 2600);
+    }}
+
+    /* Remove individual address by index */
+    function removeAddress(idx) {{
+      if (idx < 0 || idx >= collectedAddresses.length) return;
+      collectedAddresses.splice(idx, 1);
+      /* Rebuild pins layer to match */
+      pinsLayer.removeAll();
+      collectedAddresses.forEach((a) => {{
+        pinsLayer.add(new Graphic({{
+          geometry: {{ type: "point", longitude: a.lon, latitude: a.lat }},
+          symbol: {{ type: "simple-marker", style: "circle", size: 10, color: [30,144,255,0.85], outline: {{ color: [255,255,255,0.80], width: 1.5 }} }},
+          attributes: {{ address: a.address, lat: a.lat, lon: a.lon }},
+          popupTemplate: {{ title: a.address || "Point", content: "Lat: " + a.lat.toFixed(5) + ", Lon: " + a.lon.toFixed(5) }}
+        }}));
+      }});
+      updateCollectorUI();
+      showToast("Address removed", "info");
+    }}
+    /* Expose removeAddress globally for inline onclick */
+    window._tflRemoveAddr = removeAddress;
+
+    function addAddress(address, lat, lon) {{
+      const exists = collectedAddresses.some(a =>
+        Math.abs(a.lat - lat) < 0.0001 && Math.abs(a.lon - lon) < 0.0001
+      );
+      if (exists) {{
+        showToast("Address already collected", "warn");
+        return;
+      }}
+      collectedAddresses.push({{ address, lat, lon }});
+      pinsLayer.add(new Graphic({{
+        geometry: {{ type: "point", longitude: lon, latitude: lat }},
+        symbol: {{ type: "simple-marker", style: "circle", size: 12, color: [30,144,255,0.85], outline: {{ color: [255,255,255,0.90], width: 2 }} }},
+        attributes: {{ address, lat, lon }},
+        popupTemplate: {{ title: address || "Point", content: "Lat: " + lat.toFixed(5) + ", Lon: " + lon.toFixed(5) }}
+      }}));
+      updateCollectorUI();
+      showToast((address || "Point").substring(0, 50) + " added", "success");
+      /* Fly to the newly added point */
+      view.goTo({{ center: [lon, lat], zoom: Math.max(view.zoom || 10, 12) }}, {{ duration: 700, easing: "ease-in-out" }}).catch(() => {{}});
+      try {{
+        window.parent.postMessage({{
+          type: "tfl-draw-address-found",
+          address: address, lat: lat, lon: lon,
+          allAddresses: collectedAddresses.slice()
+        }}, "*");
+      }} catch(e) {{}}
+    }}
+
+    function reverseGeocode(lat, lon) {{
+      const url = geocodeUrl.replace("findAddressCandidates", "reverseGeocode")
+        + "?location=" + lon + "," + lat
+        + "&outSR=4326&langCode=en&f=json";
+      fetch(url).then(r => r.json()).then(data => {{
+        const addr = (data.address && data.address.LongLabel) || (data.address && data.address.ShortLabel) || ("Point: " + lat.toFixed(5) + ", " + lon.toFixed(5));
+        addAddress(addr, lat, lon);
+      }}).catch(() => {{
+        addAddress("Point: " + lat.toFixed(5) + ", " + lon.toFixed(5), lat, lon);
+      }});
+    }}
 
     const formatUsd = (v) => Number(v||0).toLocaleString("en-US",{{style:"currency",currency:"USD",maximumFractionDigits:0}});
     const maxHigh = tflPoints.reduce((a, r) => Math.max(a, Number(r.high_total || 0)), 0);
@@ -15750,14 +16604,17 @@ def render_tfl_subdivision_arcgis_map(
         popupTemplate: {{
           title: row.subdivision_name || "Political Subdivision",
           content: `<div style="font-family:'Avenir Next LT Pro',system-ui,sans-serif;font-size:12px;line-height:1.5;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(140,160,180,0.15);">
+              <div style="width:10px;height:10px;border-radius:50%;background:${{(Object.values(typeColors).find((_, idx) => Object.keys(typeColors)[idx] === row.subdivision_type) || [113,129,145]).slice(0,3).map(v => typeof v === 'number' ? v : 113).join(',') }};flex-shrink:0;border:1px solid rgba(255,255,255,0.15);"></div>
+              <span style="font-size:10px;color:rgba(150,175,200,0.70);text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">${{row.subdivision_type}}</span>
+            </div>
             <table style="border-collapse:collapse;width:100%;">
-              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">Type</td><td style="font-weight:600;">${{row.subdivision_type}}</td></tr>
-              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">Code</td><td>${{row.subdivision_code || "N/A"}}</td></tr>
-              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">TFL high est.</td><td style="font-weight:600;">${{formatUsd(row.high_total)}}</td></tr>
-              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">Source</td><td>${{row.source_name || "N/A"}}</td></tr>
-              <tr><td style="color:#7a94ab;padding:2px 6px 2px 0;font-size:11px;">Matched clients</td><td style="font-weight:600;">${{row.match_count}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:3px 8px 3px 0;font-size:11px;">Code</td><td style="font-weight:500;">${{row.subdivision_code || "N/A"}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:3px 8px 3px 0;font-size:11px;">TFL high est.</td><td style="font-weight:700;color:rgba(100,200,255,0.95);">${{formatUsd(row.high_total)}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:3px 8px 3px 0;font-size:11px;">Source</td><td>${{row.source_name || "N/A"}}</td></tr>
+              <tr><td style="color:#7a94ab;padding:3px 8px 3px 0;font-size:11px;">Matched clients</td><td style="font-weight:600;">${{row.match_count}}</td></tr>
             </table>
-            <div style="margin-top:5px;padding-top:4px;border-top:1px solid rgba(140,160,180,0.20);font-size:11px;">${{clientsHtml}}${{extraHtml}}</div>
+            <div style="margin-top:6px;padding-top:5px;border-top:1px solid rgba(140,160,180,0.12);font-size:10.5px;line-height:1.6;color:rgba(200,215,230,0.80);">${{clientsHtml}}${{extraHtml}}</div>
           </div>`
         }}
       }});
@@ -15766,11 +16623,19 @@ def render_tfl_subdivision_arcgis_map(
 
     /* Interactive legend filtering callback */
     filterCallback = () => {{
+      let visCount = 0, visHigh = 0;
       graphics.graphics.forEach(g => {{
         if (g.attributes && g.attributes.subdivision_type) {{
-          g.visible = !hiddenTypes.has(g.attributes.subdivision_type);
+          const vis = !hiddenTypes.has(g.attributes.subdivision_type);
+          g.visible = vis;
+          if (vis) {{ visCount++; visHigh += Number(g.attributes.high_total || 0); }}
         }}
       }});
+      /* Update stats ribbon */
+      const cEl = document.getElementById("tfl-sub-stats-count");
+      const hEl = document.getElementById("tfl-sub-stats-high");
+      if (cEl) cEl.textContent = visCount.toLocaleString();
+      if (hEl) hEl.textContent = formatUsd(visHigh);
     }};
 
     const updateLabels = () => {{
@@ -15793,6 +16658,12 @@ def render_tfl_subdivision_arcgis_map(
     const search = new Search({{
       view, popupEnabled: true, resultGraphicEnabled: true,
       goToOverride: (view, opts) => view.goTo(opts.target, {{ duration: 800, easing: "ease-in-out" }})
+    }});
+    search.on("select-result", (evt) => {{
+      if (evt.result && evt.result.feature && evt.result.feature.geometry) {{
+        const geom = evt.result.feature.geometry;
+        addAddress(evt.result.name || "", geom.latitude, geom.longitude);
+      }}
     }});
 
     /* Sketch tool for encircling areas */
@@ -15837,7 +16708,7 @@ def render_tfl_subdivision_arcgis_map(
       if (sBox) sBox.addEventListener("change", () => {{ senateLayer.visible = sBox.checked; }});
     }});
 
-    /* Sketch complete → batch analysis info */
+    /* Sketch complete → batch analysis info + address scanning */
     sketch.on("create", (evt) => {{
       if (evt.state !== "complete") return;
       const drawn = evt.graphic.geometry;
@@ -15860,6 +16731,37 @@ def render_tfl_subdivision_arcgis_map(
         selInfo.innerHTML = '<div class="sel-title">Area Selection</div><div>No subdivisions in drawn area.</div>';
         setTimeout(() => {{ selInfo.style.display = "none"; }}, 3000);
       }}
+
+      /* Reverse-geocode sampled points within the drawn area */
+      const ext = drawn.extent;
+      if (ext) {{
+        const cx = ext.center.longitude, cy = ext.center.latitude;
+        const dx = (ext.xmax - ext.xmin), dy = (ext.ymax - ext.ymin);
+        const SAMPLES = 5;
+        reverseGeocode(cy, cx);
+        for (let xi = 0; xi < SAMPLES; xi++) {{
+          for (let yi = 0; yi < SAMPLES; yi++) {{
+            const px = ext.xmin + (dx * (xi + 0.5) / SAMPLES);
+            const py = ext.ymin + (dy * (yi + 0.5) / SAMPLES);
+            const testPt = {{ type: "point", longitude: px, latitude: py, spatialReference: {{ wkid: 4326 }} }};
+            if (geometryEngine.contains(drawn, testPt)) {{
+              reverseGeocode(py, px);
+            }}
+          }}
+        }}
+        const badge = document.getElementById("tfl-sub-badge");
+        if (badge) badge.textContent = "Area scanned \u2014 see collected addresses \u2192";
+        setTimeout(() => {{
+          try {{ window.parent.postMessage({{ type: "tfl-draw-area-addresses", allAddresses: collectedAddresses.slice() }}, "*"); }} catch(e) {{}}
+        }}, 3000);
+      }}
+    }});
+
+    /* Click → reverse geocode for address collection */
+    view.on("click", (evt) => {{
+      if (evt.mapPoint) {{
+        reverseGeocode(evt.mapPoint.latitude, evt.mapPoint.longitude);
+      }}
     }});
 
     /* Coordinate readout */
@@ -15869,11 +16771,12 @@ def render_tfl_subdivision_arcgis_map(
       if (pt && el) el.textContent = pt.latitude.toFixed(5) + "\u00b0 N, " + Math.abs(pt.longitude).toFixed(5) + "\u00b0 W";
     }});
 
-    /* Hover highlight */
+    /* Hover highlight + tooltip */
     let hoverHL = null;
     view.on("pointer-move", (evt) => {{
+      const tooltip = document.getElementById("tfl-sub-tooltip");
       view.hitTest(evt, {{ include: [graphics] }}).then((r) => {{
-        const hit = r.results && r.results.find(x => x.graphic);
+        const hit = r.results && r.results.find(x => x.graphic && x.graphic.attributes && x.graphic.attributes.subdivision_name);
         document.getElementById("tfl-subdivision-map").style.cursor = hit ? "pointer" : "default";
         if (hoverHL) {{ graphics.remove(hoverHL); hoverHL = null; }}
         if (hit && hit.graphic && hit.graphic.geometry) {{
@@ -15882,13 +16785,84 @@ def render_tfl_subdivision_arcgis_map(
             symbol: {{ type: "simple-marker", style: "circle", size: 30, color: [255,255,255,0.0], outline: {{ color: [255,255,255,0.55], width: 2 }} }}
           }});
           graphics.add(hoverHL);
+          /* Show tooltip */
+          if (tooltip) {{
+            const a = hit.graphic.attributes;
+            tooltip.querySelector(".tt-name").textContent = a.subdivision_name || "";
+            tooltip.querySelector(".tt-val").textContent = formatUsd(a.high_total);
+            tooltip.querySelector(".tt-type").textContent = a.subdivision_type || "";
+            tooltip.style.display = "block";
+            tooltip.style.left = (evt.x + 14) + "px";
+            tooltip.style.top = (evt.y - 10) + "px";
+          }}
+        }} else {{
+          if (tooltip) tooltip.style.display = "none";
         }}
       }});
     }});
 
+    /* ── Send to Forensics (first address) ── */
+    document.getElementById("tfl-sub-send-forensics-btn").addEventListener("click", () => {{
+      if (collectedAddresses.length === 0) {{ showToast("No addresses collected yet", "warn"); return; }}
+      const payload = {{
+        type: "tfl-send-address",
+        action: "forensics",
+        address: collectedAddresses[0].address || "",
+        addresses: collectedAddresses.map(a => a.address),
+        nonce: Date.now()
+      }};
+      try {{
+        const frames = window.parent.frames;
+        for (let i = 0; i < frames.length; i++) {{
+          try {{ frames[i].postMessage(payload, "*"); }} catch(_) {{}}
+        }}
+      }} catch(_) {{}}
+      showToast("Sent to Address Forensics", "success");
+    }});
+
+    /* ── Send All to Batch ── */
+    document.getElementById("tfl-sub-send-batch-btn").addEventListener("click", () => {{
+      if (collectedAddresses.length === 0) {{ showToast("No addresses collected yet", "warn"); return; }}
+      const payload = {{
+        type: "tfl-send-address",
+        action: "batch",
+        address: collectedAddresses[0].address || "",
+        addresses: collectedAddresses.map(a => a.address),
+        nonce: Date.now()
+      }};
+      try {{
+        const frames = window.parent.frames;
+        for (let i = 0; i < frames.length; i++) {{
+          try {{ frames[i].postMessage(payload, "*"); }} catch(_) {{}}
+        }}
+      }} catch(_) {{}}
+      showToast(collectedAddresses.length + " address(es) sent to Batch", "success");
+    }});
+
+    /* Clear button */
+    document.getElementById("tfl-sub-clear-btn").addEventListener("click", () => {{
+      const count = collectedAddresses.length;
+      collectedAddresses.length = 0;
+      pinsLayer.removeAll();
+      sketchLayer.removeAll();
+      updateCollectorUI();
+      const badge = document.getElementById("tfl-sub-badge");
+      if (badge) badge.textContent = "Click map or search to collect addresses";
+      const selInfo = document.getElementById("tfl-sub-sel-info");
+      if (selInfo) selInfo.style.display = "none";
+      if (count > 0) showToast(count + " address(es) cleared", "info");
+    }});
+
     view.when(() => {{
       const loader = document.getElementById("tfl-sub-loading");
-      if (loader) {{ loader.style.opacity = "0"; setTimeout(() => loader.remove(), 600); }}
+      const ldLabel = loader && loader.querySelector(".ld-label");
+      if (ldLabel) ldLabel.textContent = "Rendering " + tflPoints.length + " subdivisions\u2026";
+      setTimeout(() => {{
+        if (ldLabel) ldLabel.textContent = "Almost ready\u2026";
+      }}, 600);
+      setTimeout(() => {{
+        if (loader) {{ loader.style.opacity = "0"; setTimeout(() => loader.remove(), 600); }}
+      }}, 900);
       updateLabels();
       if (graphics.graphics.length > 0) {{
         view.goTo(graphics.graphics.toArray(), {{ padding: {{ top: 50, right: 50, bottom: 50, left: 50 }}, duration: 1000, easing: "ease-in-out" }}).catch(() => {{}});
@@ -23470,7 +24444,7 @@ else:
                             .value_counts()
                             .reset_index()
                         )
-                        status_counts.columns = ["Status", "Count"]
+                        status_counts = status_counts.set_axis(["Status", "Count"], axis=1)
                         fig_status = px.bar(
                             status_counts.sort_values("Count"),
                             x="Count",
@@ -23502,7 +24476,7 @@ else:
                             .value_counts()
                             .reset_index()
                         )
-                        pos_counts.columns = ["Position", "Count"]
+                        pos_counts = pos_counts.set_axis(["Position", "Count"], axis=1)
                         fig_pos = px.bar(
                             pos_counts.sort_values("Count"),
                             x="Count",
@@ -23789,7 +24763,7 @@ else:
                     export_ctx = [f"Bills-tab focus: {len(focus_bill_ids):,} bill(s)"] if focus_active else None
                     _ = export_dataframe(m2, "policy_areas.csv", context=export_ctx)
 
-                    top_policy_subject = str(top_mentions.iloc[0].get("Subject", "")).strip()
+                    top_policy_subject = str(top_mentions.iloc[0].get("Subject", "")).strip() if not top_mentions.empty else ""
                     if top_policy_subject:
                         st.markdown(
                             f"""
@@ -23984,7 +24958,7 @@ else:
                         .value_counts()
                         .reset_index()
                     )
-                    type_counts.columns = ["Type", "Count"]
+                    type_counts = type_counts.set_axis(["Type", "Count"], axis=1)
                     if not type_counts.empty:
                         fig_type = px.bar(
                             type_counts.sort_values("Count"),
@@ -24117,7 +25091,7 @@ else:
                         .value_counts()
                         .reset_index()
                     )
-                    type_counts.columns = ["Type", "Count"]
+                    type_counts = type_counts.set_axis(["Type", "Count"], axis=1)
                     if not type_counts.empty:
                         fig_type = px.bar(
                             type_counts.sort_values("Count"),
