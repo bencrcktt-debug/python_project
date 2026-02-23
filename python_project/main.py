@@ -1,6 +1,8 @@
-﻿import os
+﻿import gc
+import os
 import re
 import difflib
+import functools
 import html
 import json
 import logging
@@ -13,11 +15,69 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 import pandas as pd
+pd.options.mode.copy_on_write = True  # PERFORMANCE: deferred copy — makes .copy() nearly free
 import streamlit as st
 import streamlit.components.v1 as components
 import plotly.express as px
 import plotly.io as pio
 from fpdf import FPDF, XPos, YPos
+
+# =========================================================
+# PERFORMANCE: Pre-compiled regex patterns
+# =========================================================
+_RE_WHITESPACE = re.compile(r"\s+")
+_RE_BILL_PATTERN = re.compile(
+    r"\b(HB|SB|HR|SR|HCR|SCR|HJR|SJR)\s*(\d+)\b", re.IGNORECASE
+)
+_RE_PARENS = re.compile(r"\([^)]*\)")
+
+# =========================================================
+# PERFORMANCE: Vectorized display helpers (avoid .apply())
+# =========================================================
+def _vectorized_person_display(org: pd.Series, last: pd.Series, first: pd.Series) -> pd.Series:
+    """Vectorized version of person_display — avoids row-by-row .apply()."""
+    org_s = org.fillna("").astype(str).str.strip()
+    last_s = last.fillna("").astype(str).str.strip()
+    first_s = first.fillna("").astype(str).str.strip()
+    # Priority: org if non-empty, then "last, first", then whichever exists
+    result = org_s.where(org_s != "", last_s + ", " + first_s)
+    # Fix cases where only last or only first
+    both = (last_s != "") & (first_s != "")
+    only_last = (last_s != "") & (first_s == "")
+    only_first = (last_s == "") & (first_s != "")
+    neither = (last_s == "") & (first_s == "")
+    result = result.where(~(~(org_s != "")) | True, result)  # keep org priority
+    # Rebuild for non-org cases
+    no_org = org_s == ""
+    result = result.where(~no_org, pd.Series("", index=org.index))
+    result[no_org & both] = last_s[no_org & both] + ", " + first_s[no_org & both]
+    result[no_org & only_last] = last_s[no_org & only_last]
+    result[no_org & only_first] = first_s[no_org & only_first]
+    result[no_org & neither] = ""
+    result[~no_org] = org_s[~no_org]
+    return result.str.strip()
+
+
+def _vectorized_amount_display(exact: pd.Series, low: pd.Series, high: pd.Series, code: pd.Series | None = None) -> pd.Series:
+    """Vectorized version of amount_display — avoids row-by-row .apply()."""
+    exact_s = exact.fillna("").astype(str).str.strip()
+    low_s = low.fillna("").astype(str).str.strip()
+    high_s = high.fillna("").astype(str).str.strip()
+    code_s = code.fillna("").astype(str).str.strip() if code is not None else pd.Series("", index=exact.index)
+    # Priority: exact -> low--high or low -> code -> ""
+    result = pd.Series("", index=exact.index)
+    has_exact = exact_s != ""
+    has_low = low_s != ""
+    has_high = high_s != ""
+    has_code = code_s != ""
+    result = result.where(~has_exact, exact_s)
+    need_range = ~has_exact & has_low & has_high
+    result[need_range] = low_s[need_range] + "--" + high_s[need_range]
+    need_low_only = ~has_exact & has_low & ~has_high
+    result[need_low_only] = low_s[need_low_only]
+    need_code = ~has_exact & ~has_low & has_code
+    result[need_code] = code_s[need_code]
+    return result
 
 # =========================================================
 # CONFIG
@@ -43,7 +103,7 @@ MAP_BASEMAP_OPTIONS = {
     "Satellite": "hybrid",
 }
 
-# ── Atlas → Forensics / Batch bridge (invisible component relay) ──
+# -- Atlas → Forensics / Batch bridge (invisible component relay) --
 _TFL_BRIDGE_DIR = Path(__file__).parent / "_atlas_bridge"
 _atlas_bridge = components.declare_component("atlas_bridge", path=str(_TFL_BRIDGE_DIR))
 SUBDIVISION_TYPE_COLORS = {
@@ -2361,7 +2421,7 @@ div[data-testid="stTextInput"]:has(input[aria-label="Nav search"]) input{
 st.markdown(
     """
 <style>
-/* ── Data-table improvements ── */
+/* -- Data-table improvements -- */
 [data-testid="stDataFrame"] table tbody tr:nth-child(even) td{
     background: rgba(255,255,255,0.025);
 }
@@ -2378,10 +2438,10 @@ st.markdown(
     border-bottom: 2px solid rgba(160,185,210,0.22);
 }
 
-/* ── Smooth scroll behavior ── */
+/* -- Smooth scroll behavior -- */
 html{ scroll-behavior: smooth; }
 
-/* ── Back-to-top floating button ── */
+/* -- Back-to-top floating button -- */
 #tfl-back-to-top{
     position: fixed;
     bottom: 28px;
@@ -2414,7 +2474,7 @@ html{ scroll-behavior: smooth; }
     transform: translateY(-2px);
 }
 
-/* ── Focus / keyboard accessibility ── */
+/* -- Focus / keyboard accessibility -- */
 button:focus-visible,
 [data-testid="stSelectbox"] div[role="combobox"]:focus-visible,
 [data-testid="stTextInput"] input:focus-visible{
@@ -2422,7 +2482,7 @@ button:focus-visible,
     outline-offset: 2px;
 }
 
-/* ── Spinner quality of life ── */
+/* -- Spinner quality of life -- */
 [data-testid="stSpinner"] > div{
     animation: tfl-spinner-fade 0.35s ease both;
 }
@@ -2431,7 +2491,7 @@ button:focus-visible,
     to{ opacity:1; transform:translateY(0); }
 }
 
-/* ── Toast notification ── */
+/* -- Toast notification -- */
 .tfl-toast{
     position: fixed;
     bottom: 80px;
@@ -2457,7 +2517,7 @@ button:focus-visible,
     transform: translateY(0);
 }
 
-/* ── Print-friendly ── */
+/* -- Print-friendly -- */
 @media print{
     .custom-nav,
     #tfl-back-to-top,
@@ -2506,6 +2566,35 @@ button:focus-visible,
 )
 
 
+# =========================================================
+# CRASH PROTECTION: Safe page wrapper
+# =========================================================
+def _safe_page(page_name: str):
+    """Decorator that wraps page functions in try/except to prevent full app crashes."""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except st.runtime.scriptrunner.StopException:
+                raise  # Let Streamlit's st.stop() and st.switch_page() propagate
+            except Exception as exc:
+                logging.exception("Unhandled error in page %s", page_name)
+                st.error(
+                    f"An unexpected error occurred on the **{page_name}** page. "
+                    f"Try refreshing the browser or clearing filters.\n\n"
+                    f"Error details: `{type(exc).__name__}: {exc}`"
+                )
+                # Offer a reset button
+                if st.button("Reset and reload", key=f"crash_reset_{page_name}"):
+                    for key in list(st.session_state.keys()):
+                        del st.session_state[key]
+                    st.rerun()
+        return wrapper
+    return decorator
+
+
+@_safe_page("Start Here")
 def _page_about():
     _render_page_intro(
         kicker="Start Here",
@@ -2577,7 +2666,7 @@ def _page_about():
         st.markdown(
             """
 <div class="policy-panel">
-  <h3>What “taxpayer-funded” means in this app</h3>
+  <h3>What "taxpayer-funded" means in this app</h3>
   <p>Entities are classified from source records and shown alongside private relationships so users can compare public and private funding exposure in the same frame.</p>
 </div>
 """,
@@ -2648,6 +2737,7 @@ def _page_about():
         ],
     )
 
+@_safe_page("Media Briefings")
 def _page_turn_off_tap():
     _render_page_intro(
         kicker="Media Briefings",
@@ -2836,6 +2926,7 @@ def _page_turn_off_tap():
             )
         st.markdown(f'<div class="video-grid">{"".join(all_cards)}</div>', unsafe_allow_html=True)
 
+@_safe_page("Policy Context")
 def _page_solutions():
     _render_page_intro(
         kicker="Policy Context",
@@ -2947,6 +3038,7 @@ def _page_solutions():
         ],
     )
 
+@_safe_page("Clients")
 def _page_client_lookup():
     _render_page_intro(
         kicker="Client Workspace",
@@ -3260,10 +3352,10 @@ def _page_client_lookup():
         d = df.copy()
         d["Session"] = d["Session"].astype(str).str.strip()
         if scope_val == "This Session" and session_val is not None:
-            d = d[d["Session"] == str(session_val)].copy()
+            d = d[d["Session"] == str(session_val)]
 
         d = ensure_cols(d, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0, "LobbyShort": ""})
-        d = d[d["Client"].fillna("").astype(str).str.strip() != ""].copy()
+        d = d[d["Client"].fillna("").astype(str).str.strip() != ""]
         if d.empty:
             return pd.DataFrame(), {}
 
@@ -3417,10 +3509,10 @@ def _page_client_lookup():
                 cat_base["Session"] = cat_base["Session"].astype(str).str.strip()
                 cat_base = ensure_cols(cat_base, {"Client": "", "Low_num": 0.0, "High_num": 0.0, "IsTFL": 0})
                 cat_base["IsTFL"] = pd.to_numeric(cat_base["IsTFL"], errors="coerce").fillna(0)
-                cat_base = cat_base[cat_base["IsTFL"] == 1].copy()
+                cat_base = cat_base[cat_base["IsTFL"] == 1]
                 cat_base["SessionBase"] = _session_base_number_series(cat_base["Session"])
-                cat_base = cat_base[cat_base["SessionBase"].between(85, 89)].copy()
-                cat_base = cat_base[cat_base["Client"].fillna("").astype(str).str.strip() != ""].copy()
+                cat_base = cat_base[cat_base["SessionBase"].between(85, 89)]
+                cat_base = cat_base[cat_base["Client"].fillna("").astype(str).str.strip() != ""]
                 if not cat_base.empty:
                     cat_base["Category"] = cat_base["Client"].map(lambda x: match_entity_type(x)[1])
                     cat_base["Low_num"] = pd.to_numeric(cat_base["Low_num"], errors="coerce").fillna(0)
@@ -3431,7 +3523,7 @@ def _page_client_lookup():
                         .sum()
                         .rename(columns={"Mid": "Total"})
                     )
-                    cat_group["SessionLabel"] = cat_group["SessionBase"].apply(_session_base_label)
+                    cat_group["SessionLabel"] = cat_group["SessionBase"].map(_session_base_label)
                     session_order = sorted(cat_group["SessionBase"].dropna().unique().tolist())
                     session_labels = [_session_base_label(s) for s in session_order]
                     cat_order = (
@@ -3481,12 +3573,10 @@ def _page_client_lookup():
             t1, t2 = st.columns(2)
             with t1:
                 st.markdown('<div class="section-title">Top 5 Taxpayer Funded Clients</div>', unsafe_allow_html=True)
-                top_tfl = all_clients[all_clients["IsTFL"] == 1].copy()
+                top_tfl = all_clients[all_clients["IsTFL"] == 1]
                 if not top_tfl.empty:
                     top_tfl = top_tfl.sort_values(["High", "Low"], ascending=[False, False]).head(5)
-                    top_tfl["Taxpayer Funded Total"] = top_tfl.apply(
-                        lambda r: f"{fmt_usd(r.get('Low', 0.0))} - {fmt_usd(r.get('High', 0.0))}", axis=1
-                    )
+                    top_tfl["Taxpayer Funded Total"] = top_tfl["Low"].map(fmt_usd) + " - " + top_tfl["High"].map(fmt_usd)
                     st.dataframe(
                         top_tfl[["Client", "Taxpayer Funded Total"]],
                         width="stretch",
@@ -3498,12 +3588,10 @@ def _page_client_lookup():
 
             with t2:
                 st.markdown('<div class="section-title">Top 5 Private Clients</div>', unsafe_allow_html=True)
-                top_pri = all_clients[all_clients["IsTFL"] == 0].copy()
+                top_pri = all_clients[all_clients["IsTFL"] == 0]
                 if not top_pri.empty:
                     top_pri = top_pri.sort_values(["High", "Low"], ascending=[False, False]).head(5)
-                    top_pri["Private Total"] = top_pri.apply(
-                        lambda r: f"{fmt_usd(r.get('Low', 0.0))} - {fmt_usd(r.get('High', 0.0))}", axis=1
-                    )
+                    top_pri["Private Total"] = top_pri["Low"].map(fmt_usd) + " - " + top_pri["High"].map(fmt_usd)
                     st.dataframe(
                         top_pri[["Client", "Private Total"]],
                         width="stretch",
@@ -3516,7 +3604,7 @@ def _page_client_lookup():
             st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
             st.markdown('<div class="section-title">Taxpayer Funded Breakdown</div>', unsafe_allow_html=True)
 
-            tfl_breakdown = all_clients[all_clients["IsTFL"] == 1].copy()
+            tfl_breakdown = all_clients[all_clients["IsTFL"] == 1]
             if tfl_breakdown.empty:
                 st.info("No taxpayer funded clients found for the selected scope/session.")
             else:
@@ -3536,10 +3624,7 @@ def _page_client_lookup():
                 )
 
                 for df in (by_category, by_type):
-                    df["Total Compensation"] = df.apply(
-                        lambda r: f"{fmt_usd(r.get('Low', 0.0))} - {fmt_usd(r.get('High', 0.0))}",
-                        axis=1,
-                    )
+                    df["Total Compensation"] = df["Low"].map(fmt_usd) + " - " + df["High"].map(fmt_usd)
 
                 b1, b2 = st.columns(2)
                 with b1:
@@ -3567,16 +3652,16 @@ def _page_client_lookup():
                 help="Filter the All Clients table by a name substring.",
             )
 
-            view = all_clients.copy()
+            view = all_clients
             if st.session_state.client_filter.strip():
                 view = view[
                     view["Client"].astype(str).str.contains(st.session_state.client_filter.strip(), case=False, na=False)
-                ].copy()
+                ]
 
-            view_disp = view.copy()
+            view_disp = view
             view_disp["Taxpayer Funded"] = view_disp["IsTFL"].map({1: "Yes", 0: "No"})
-            view_disp["Low"] = view_disp["Low"].astype(float).apply(fmt_usd)
-            view_disp["High"] = view_disp["High"].astype(float).apply(fmt_usd)
+            view_disp["Low"] = view_disp["Low"].astype(float).map(fmt_usd)
+            view_disp["High"] = view_disp["High"].astype(float).map(fmt_usd)
 
             show_cols = ["Client", "Taxpayer Funded", "Lobbyists", "Low", "High"]
             st.dataframe(
@@ -3612,10 +3697,10 @@ def _page_client_lookup():
 
     lt_base = Lobby_TFL_Client_All.copy()
     lt_base["ClientNorm"] = lt_base["Client"].map(norm_name)
-    client_rows_all = lt_base[lt_base["ClientNorm"] == client_norm].copy()
+    client_rows_all = lt_base[lt_base["ClientNorm"] == client_norm]
 
     tfl_session = str(tfl_session_val) if tfl_session_val is not None else session
-    client_lt = client_rows_all[client_rows_all["Session"].astype(str).str.strip() == tfl_session].copy()
+    client_lt = client_rows_all[client_rows_all["Session"].astype(str).str.strip() == tfl_session]
     client_lt = ensure_cols(
         client_lt,
         {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0, "LobbyShort": "", "Lobby Name": ""},
@@ -3691,7 +3776,7 @@ def _page_client_lookup():
         wit_all = wit_all.copy()
         wit_all["LobbyShortNorm"] = norm_name_series(wit_all["LobbyShort"])
     session_col = wit_all["Session"].astype(str).str.strip()
-    wit = wit_all[(session_col == session) & (wit_all["LobbyShortNorm"].isin(lobbyshort_norms))].copy()
+    wit = wit_all[(session_col == session) & (wit_all["LobbyShortNorm"].isin(lobbyshort_norms))]
     if not wit.empty:
         norm_to_short = {norm_name(s): s for s in lobbyshorts if s}
         wit["LobbyShort"] = wit["LobbyShortNorm"].map(norm_to_short).fillna(wit["LobbyShort"])
@@ -3704,7 +3789,7 @@ def _page_client_lookup():
     )
 
     if not wit.empty and "org" in wit.columns:
-        orgs = wit.copy()
+        orgs = wit
         orgs["Organization"] = orgs.get("org", "").fillna("").astype(str).str.strip()
         orgs = orgs.groupby(["Session", "Bill", "LobbyShort"])["Organization"].apply(
             lambda s: ", ".join(sorted({x for x in s if x}))
@@ -3712,7 +3797,7 @@ def _page_client_lookup():
         bills = bills.merge(orgs, on=["Session", "Bill", "LobbyShort"], how="left")
 
     if not bills.empty:
-        fi = Fiscal_Impact[Fiscal_Impact["Session"].astype(str).str.strip() == session].copy()
+        fi = Fiscal_Impact[Fiscal_Impact["Session"].astype(str).str.strip() == session]
         if not fi.empty and {"Version", "EstimatedTwoYearNetImpactGR"}.issubset(fi.columns):
             fi["Version"] = fi["Version"].astype(str).str.upper().str.strip()
             fi["EstimatedTwoYearNetImpactGR"] = pd.to_numeric(fi["EstimatedTwoYearNetImpactGR"], errors="coerce").fillna(0)
@@ -3743,17 +3828,17 @@ def _page_client_lookup():
     else:
         mentions = pd.DataFrame(columns=["Subject", "Mentions", "Share"])
 
-    lobby_sub = Lobby_Sub_All.copy()
+    lobby_sub = Lobby_Sub_All
     if "Session" in lobby_sub.columns:
-        lobby_sub = lobby_sub[lobby_sub["Session"].astype(str).str.strip() == session].copy()
+        lobby_sub = lobby_sub[lobby_sub["Session"].astype(str).str.strip() == session]
     elif "session" in lobby_sub.columns:
-        lobby_sub = lobby_sub[lobby_sub["session"].astype(str).str.strip() == session].copy()
+        lobby_sub = lobby_sub[lobby_sub["session"].astype(str).str.strip() == session]
     if "LobbyShortNorm" in lobby_sub.columns:
-        lobby_sub = lobby_sub[lobby_sub["LobbyShortNorm"].isin(lobbyshort_norms)].copy()
+        lobby_sub = lobby_sub[lobby_sub["LobbyShortNorm"].isin(lobbyshort_norms)]
     elif "LobbyShort" in lobby_sub.columns:
-        lobby_sub = lobby_sub[lobby_sub["LobbyShort"].astype(str).str.strip().isin(lobbyshorts)].copy()
+        lobby_sub = lobby_sub[lobby_sub["LobbyShort"].astype(str).str.strip().isin(lobbyshorts)]
     else:
-        lobby_sub = lobby_sub.iloc[0:0].copy()
+        lobby_sub = lobby_sub.iloc[0:0]
 
     if not lobby_sub.empty:
         lobby_sub = lobby_sub.assign(
@@ -3819,8 +3904,8 @@ def _page_client_lookup():
     if lobbyshort_norms:
         match_mask = match_mask | staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)).isin(lobbyshort_norms)
 
-    staff_pick = staff_df[match_mask].copy()
-    staff_pick_session = staff_df[staff_session & match_mask].copy()
+    staff_pick = staff_df[match_mask]
+    staff_pick_session = staff_df[staff_session & match_mask]
 
     if not staff_pick.empty:
         staff_pick["Matched Lobbyist"] = (
@@ -3836,7 +3921,7 @@ def _page_client_lookup():
 
         legs = sorted(staff_rows["Legislator"].dropna().astype(str).unique().tolist())
         out = []
-        bs = bs_all[bs_all["Session"].astype(str).str.strip() == str(session_val)].copy()
+        bs = bs_all[bs_all["Session"].astype(str).str.strip() == str(session_val)]
 
         for leg in legs:
             authored = bs[bs["Author"].fillna("").astype(str).str.contains(leg, case=False, na=False)][["Session", "Bill", "Status"]]
@@ -4010,9 +4095,9 @@ def _page_client_lookup():
         if lobbyist_totals.empty:
             st.info("No lobbyists found for this client in the selected session.")
         else:
-            view = lobbyist_totals.copy()
-            view["Low"] = view["Low"].astype(float).apply(fmt_usd)
-            view["High"] = view["High"].astype(float).apply(fmt_usd)
+            view = lobbyist_totals
+            view["Low"] = view["Low"].astype(float).map(fmt_usd)
+            view["High"] = view["High"].astype(float).map(fmt_usd)
             view_disp = view.rename(columns={"LobbyShort": "Last name + first initial"})
             show_cols = ["Lobbyist", "Last name + first initial", "Low", "High"]
             show_cols = [c for c in show_cols if c in view_disp.columns]
@@ -4057,7 +4142,7 @@ def _page_client_lookup():
                 key="client_bill_search_input",
                 help="Filter bills by bill number, author, caption, organization, or lobbyist.",
             )
-            filtered = bills.copy()
+            filtered = bills
             if st.session_state.client_bill_search.strip():
                 q = st.session_state.client_bill_search.strip()
                 filtered = filtered[
@@ -4066,7 +4151,7 @@ def _page_client_lookup():
                     filtered["Caption"].astype(str).str.contains(q, case=False, na=False) |
                     filtered["Organization"].astype(str).str.contains(q, case=False, na=False) |
                     filtered["Lobbyist"].astype(str).str.contains(q, case=False, na=False)
-                ].copy()
+                ]
 
             f1, f2, f3 = st.columns(3)
             with f1:
@@ -4107,11 +4192,11 @@ def _page_client_lookup():
                 )
 
             if status_sel:
-                filtered = filtered[filtered["Status"].astype(str).isin(status_sel)].copy()
+                filtered = filtered[filtered["Status"].astype(str).isin(status_sel)]
             if pos_sel:
-                filtered = filtered[filtered["Position"].astype(str).isin(pos_sel)].copy()
+                filtered = filtered[filtered["Position"].astype(str).isin(pos_sel)]
             if lobby_sel:
-                filtered = filtered[filtered["Lobbyist"].astype(str).isin(lobby_sel)].copy()
+                filtered = filtered[filtered["Lobbyist"].astype(str).isin(lobby_sel)]
 
             for col in ["Fiscal Impact H", "Fiscal Impact S"]:
                 if col in filtered.columns:
@@ -4251,14 +4336,14 @@ def _page_client_lookup():
                     focus_active = False
                     focus_bill_ids = []
 
-        policy_mentions = mentions.copy()
+        policy_mentions = mentions
         if focus_active:
             focus_norm = {
                 re.sub(r"\s+", " ", bill.upper()).strip()
                 for bill in focus_bill_ids
                 if bill
             }
-            focus_subjects = bill_subjects.copy()
+            focus_subjects = bill_subjects
             if not focus_subjects.empty and focus_norm:
                 focus_subjects["BillNorm"] = (
                     focus_subjects["Bill"]
@@ -4268,8 +4353,8 @@ def _page_client_lookup():
                     .str.replace(r"\s+", " ", regex=True)
                     .str.strip()
                 )
-                focus_subjects = focus_subjects[focus_subjects["BillNorm"].isin(focus_norm)].copy()
-                focus_subjects = focus_subjects[focus_subjects["Subject"].fillna("").astype(str).str.strip() != ""].copy()
+                focus_subjects = focus_subjects[focus_subjects["BillNorm"].isin(focus_norm)]
+                focus_subjects = focus_subjects[focus_subjects["Subject"].fillna("").astype(str).str.strip() != ""]
                 if not focus_subjects.empty:
                     policy_mentions = (
                         focus_subjects.groupby("Subject")["Bill"]
@@ -4290,7 +4375,7 @@ def _page_client_lookup():
             else:
                 st.info("No subjects found (Texas Legislature Online bill subject data returned 0 rows).")
         else:
-            chart_mentions = policy_mentions.copy()
+            chart_mentions = policy_mentions
             chart_mentions["SharePct"] = (chart_mentions["Share"] * 100).round(1)
             chart_mentions = chart_mentions.sort_values("Share", ascending=False)
             top_mentions = chart_mentions.head(20)
@@ -4335,7 +4420,7 @@ def _page_client_lookup():
                 fig_tree.update_layout(coloraxis_showscale=False)
                 st.plotly_chart(fig_tree, width="stretch", config=PLOTLY_CONFIG)
 
-            m2 = policy_mentions.copy()
+            m2 = policy_mentions
             m2["Share"] = (m2["Share"] * 100).round(0).astype("Int64").astype(str) + "%"
             m2 = m2.rename(columns={"Subject": "Policy Area"})
             st.dataframe(m2[["Policy Area", "Mentions", "Share"]], width="stretch", height=520, hide_index=True)
@@ -4368,7 +4453,7 @@ def _page_client_lookup():
         if lobby_sub_counts.empty:
             st.info("No Texas Ethics Commission subject-matter rows found for lobbyists tied to this client/session.")
         else:
-            top_topics = lobby_sub_counts.head(12).copy()
+            top_topics = lobby_sub_counts.head(12)
             max_mentions = int(top_topics["Mentions"].max()) if not top_topics.empty else 0
             topic_chunks = [top_topics.iloc[i:i + 4] for i in range(0, len(top_topics), 4)]
             if topic_chunks:
@@ -4430,7 +4515,7 @@ def _page_client_lookup():
         elif not staff_stats.empty:
             st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
             st.caption("Computed from authored bills intersected with this client's lobbyist witness activity.")
-            s2 = staff_stats.copy()
+            s2 = staff_stats
             for col in ["% Against that Failed", "% For that Passed"]:
                 s2[col] = pd.to_numeric(s2[col], errors="coerce")
                 s2[col] = (s2[col] * 100).round(0)
@@ -4442,7 +4527,7 @@ def _page_client_lookup():
         if activities.empty:
             st.info("No activity rows found for lobbyists tied to this client/session.")
         else:
-            filt = activities.copy()
+            filt = activities
             t_opts = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
             t_opts = sorted(t_opts)
             sel_types = st.multiselect(
@@ -4453,7 +4538,7 @@ def _page_client_lookup():
                 help="Limit results to selected activity categories.",
             )
             if sel_types:
-                filt = filt[filt["Type"].isin(sel_types)].copy()
+                filt = filt[filt["Type"].isin(sel_types)]
 
             lobby_opts = _clean_options(filt["Lobbyist"].dropna().astype(str).unique().tolist())
             lobby_opts = sorted(lobby_opts)
@@ -4465,7 +4550,7 @@ def _page_client_lookup():
                 help="Limit results to selected lobbyists.",
             )
             if sel_lobby:
-                filt = filt[filt["Lobbyist"].isin(sel_lobby)].copy()
+                filt = filt[filt["Lobbyist"].isin(sel_lobby)]
 
             st.session_state.client_activity_search = st.text_input(
                 "Search activities (lobbyist, filer, member, description)",
@@ -4480,7 +4565,7 @@ def _page_client_lookup():
                     filt["Filer"].astype(str).str.contains(q, case=False, na=False) |
                     filt["Member"].astype(str).str.contains(q, case=False, na=False) |
                     filt["Description"].astype(str).str.contains(q, case=False, na=False)
-                ].copy()
+                ]
 
             date_parsed = pd.to_datetime(filt["Date"], errors="coerce")
             if date_parsed.notna().any():
@@ -4495,7 +4580,7 @@ def _page_client_lookup():
                 d_from, d_to = (_date_val if isinstance(_date_val, (list, tuple)) and len(_date_val) == 2 else (min_d, max_d))
                 if d_from and d_to:
                     mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
-                    filt = filt[mask].copy()
+                    filt = filt[mask]
 
             st.caption(f"{len(filt):,} rows")
             st.dataframe(filt, width="stretch", height=560, hide_index=True)
@@ -4506,7 +4591,7 @@ def _page_client_lookup():
         if disclosures.empty:
             st.info("No disclosure rows found for lobbyists tied to this client/session.")
         else:
-            filt = disclosures.copy()
+            filt = disclosures
             d_types = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
             d_types = sorted(d_types)
             sel_types = st.multiselect(
@@ -4517,7 +4602,7 @@ def _page_client_lookup():
                 help="Limit results to selected disclosure categories.",
             )
             if sel_types:
-                filt = filt[filt["Type"].isin(sel_types)].copy()
+                filt = filt[filt["Type"].isin(sel_types)]
 
             lobby_opts = _clean_options(filt["Lobbyist"].dropna().astype(str).unique().tolist())
             lobby_opts = sorted(lobby_opts)
@@ -4529,7 +4614,7 @@ def _page_client_lookup():
                 help="Limit results to selected lobbyists.",
             )
             if sel_lobby:
-                filt = filt[filt["Lobbyist"].isin(sel_lobby)].copy()
+                filt = filt[filt["Lobbyist"].isin(sel_lobby)]
 
             st.session_state.client_disclosure_search = st.text_input(
                 "Search disclosures (lobbyist, filer, description, entity)",
@@ -4544,7 +4629,7 @@ def _page_client_lookup():
                     filt["Filer"].astype(str).str.contains(q, case=False, na=False) |
                     filt["Description"].astype(str).str.contains(q, case=False, na=False) |
                     filt["Entity"].astype(str).str.contains(q, case=False, na=False)
-                ].copy()
+                ]
 
             date_parsed = pd.to_datetime(filt["Date"], errors="coerce")
             if date_parsed.notna().any():
@@ -4559,7 +4644,7 @@ def _page_client_lookup():
                 d_from, d_to = (_date_val if isinstance(_date_val, (list, tuple)) and len(_date_val) == 2 else (min_d, max_d))
                 if d_from and d_to:
                     mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
-                    filt = filt[mask].copy()
+                    filt = filt[mask]
 
             st.caption(f"{len(filt):,} rows")
             st.dataframe(filt, width="stretch", height=560, hide_index=True)
@@ -4576,6 +4661,7 @@ footer {visibility: hidden;}
         unsafe_allow_html=True,
     )
 
+@_safe_page("Map & Address")
 def _page_map_address():
     _render_page_intro(
         kicker="Geospatial Command Center",
@@ -4795,9 +4881,9 @@ def _page_map_address():
         d = df.copy()
         d["Session"] = d["Session"].astype(str).str.strip()
         if scope_val == "This Session" and session_val is not None:
-            d = d[d["Session"] == str(session_val)].copy()
+            d = d[d["Session"] == str(session_val)]
         d = ensure_cols(d, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0, "LobbyShort": ""})
-        d = d[d["Client"].fillna("").astype(str).str.strip() != ""].copy()
+        d = d[d["Client"].fillna("").astype(str).str.strip() != ""]
         if d.empty:
             return pd.DataFrame(), {}
 
@@ -4823,9 +4909,9 @@ def _page_map_address():
         tfl_session_val,
         st.session_state.map_scope,
     )
-    tfl_spending_source = all_clients.copy()
+    tfl_spending_source = all_clients
     if not tfl_spending_source.empty and "IsTFL" in tfl_spending_source.columns:
-        tfl_spending_source = tfl_spending_source[tfl_spending_source["IsTFL"] == 1].copy()
+        tfl_spending_source = tfl_spending_source[tfl_spending_source["IsTFL"] == 1]
 
     subdivision_match_cols = [
         "subdivision_type",
@@ -4968,7 +5054,7 @@ def _page_map_address():
 
     overview_entity = pd.DataFrame()
     if not tfl_spending_source.empty:
-        overview_entity = tfl_spending_source.copy()
+        overview_entity = tfl_spending_source
         overview_entity["Entity Type"] = overview_entity["Client"].map(classify_requested_entity_type)
         overview_entity = (
             overview_entity.groupby("Entity Type", as_index=False)
@@ -4979,7 +5065,7 @@ def _page_map_address():
             )
             .sort_values("High", ascending=False)
             .head(10)
-            .copy()
+            
         )
 
     overview_left, overview_right = st.columns([1.5, 1.0], gap="large")
@@ -5024,9 +5110,9 @@ def _page_map_address():
         )
     with overview_right:
         if not overview_entity.empty:
-            entity_mix_display = overview_entity.copy()
-            entity_mix_display["Low"] = entity_mix_display["Low"].astype(float).apply(fmt_usd)
-            entity_mix_display["High"] = entity_mix_display["High"].astype(float).apply(fmt_usd)
+            entity_mix_display = overview_entity
+            entity_mix_display["Low"] = entity_mix_display["Low"].astype(float).map(fmt_usd)
+            entity_mix_display["High"] = entity_mix_display["High"].astype(float).map(fmt_usd)
             st.markdown('<div class="map-rail-title">Top Entity Types In Scope</div>', unsafe_allow_html=True)
             st.dataframe(entity_mix_display, width="stretch", height=310, hide_index=True)
         else:
@@ -5098,18 +5184,18 @@ def _page_map_address():
             active_map_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.map_basemap_label, "gray-vector")
             f = subdivision_matches.copy()
             if selected_types:
-                f = f[f["subdivision_type"].astype(str).isin(selected_types)].copy()
+                f = f[f["subdivision_type"].astype(str).isin(selected_types)]
             else:
-                f = f.iloc[0:0].copy()
+                f = f.iloc[0:0]
             f["match_count"] = pd.to_numeric(f.get("match_count", 0), errors="coerce").fillna(0).astype(int)
             f["high_total"] = pd.to_numeric(f.get("high_total", 0.0), errors="coerce").fillna(0.0)
             f["low_total"] = pd.to_numeric(f.get("low_total", 0.0), errors="coerce").fillna(0.0)
-            f = f[f["match_count"] >= int(min_match)].copy()
+            f = f[f["match_count"] >= int(min_match)]
             if q:
                 f = f[
                     f["subdivision_name"].astype(str).str.lower().str.contains(q, na=False)
                     | f["subdivision_code"].astype(str).str.lower().str.contains(q, na=False)
-                ].copy()
+                ]
             if client_q:
                 client_series = f.get(
                     "match_clients",
@@ -5127,7 +5213,7 @@ def _page_map_address():
                         else client_q in str(items).lower()
                     )
                 )
-                f = f[preview_mask | client_mask].copy()
+                f = f[preview_mask | client_mask]
 
             cov_sort = str(st.session_state.get("map_subdivision_sort", "Highest High Estimate"))
             if cov_sort == "Highest Matched Client Count":
@@ -5257,7 +5343,7 @@ def _page_map_address():
                     render_subdivision_map_legend(f["subdivision_type"].value_counts().to_dict())
                     map_cap = int(st.session_state.get("map_subdivision_map_cap", 650) or 650)
                     map_cap = max(100, min(900, map_cap))
-                    plot_rows = f.head(map_cap).copy()
+                    plot_rows = f.head(map_cap)
                     render_tfl_subdivision_arcgis_map(plot_rows, height=650, basemap=active_map_basemap)
                     if len(plot_rows) < len(f):
                         st.caption(f"Map capped at {len(plot_rows):,} points. Table includes all filtered rows.")
@@ -5265,8 +5351,8 @@ def _page_map_address():
                         columns={"subdivision_type": "Subdivision Type", "subdivision_name": "Subdivision", "subdivision_code": "Code", "match_count": "Matched TFL Client Count", "low_total": "Matched TFL Low Estimate", "high_total": "Matched TFL High Estimate", "match_clients_preview": "Matched TFL Clients"}
                     )
                     display_view = view.copy()
-                    display_view["Matched TFL Low Estimate"] = display_view["Matched TFL Low Estimate"].astype(float).apply(fmt_usd)
-                    display_view["Matched TFL High Estimate"] = display_view["Matched TFL High Estimate"].astype(float).apply(fmt_usd)
+                    display_view["Matched TFL Low Estimate"] = display_view["Matched TFL Low Estimate"].astype(float).map(fmt_usd)
+                    display_view["Matched TFL High Estimate"] = display_view["Matched TFL High Estimate"].astype(float).map(fmt_usd)
                     st.dataframe(display_view, width="stretch", height=340, hide_index=True)
                     _ = export_dataframe(view, "subdivision_coverage_map.csv", label="Export coverage CSV")
                     chart_col, summary_col = st.columns([1.5, 1.0], gap="large")
@@ -5275,7 +5361,7 @@ def _page_map_address():
                             f[["subdivision_name", "subdivision_type", "high_total"]]
                             .sort_values("high_total", ascending=False)
                             .head(15)
-                            .copy()
+                            
                         )
                         if not top_chart.empty:
                             fig_cov = px.bar(
@@ -5318,7 +5404,7 @@ def _page_map_address():
                         )
                         if not type_rollup.empty:
                             type_display = type_rollup.copy()
-                            type_display["HighTotal"] = type_display["HighTotal"].astype(float).apply(fmt_usd)
+                            type_display["HighTotal"] = type_display["HighTotal"].astype(float).map(fmt_usd)
                             type_display = type_display.rename(columns={"subdivision_type": "Type", "HighTotal": "Matched High"})
                             st.dataframe(type_display, width="stretch", height=400, hide_index=True)
             all_tfl_name_set = {
@@ -5341,12 +5427,12 @@ def _page_map_address():
                         ]
                         .sort_values("High", ascending=False)
                         .head(150)
-                        .copy()
+                        
                     )
                     if not unmatched_view.empty:
                         unmatched_display = unmatched_view.copy()
-                        unmatched_display["Low"] = unmatched_display["Low"].astype(float).apply(fmt_usd)
-                        unmatched_display["High"] = unmatched_display["High"].astype(float).apply(fmt_usd)
+                        unmatched_display["Low"] = unmatched_display["Low"].astype(float).map(fmt_usd)
+                        unmatched_display["High"] = unmatched_display["High"].astype(float).map(fmt_usd)
                         st.dataframe(unmatched_display, width="stretch", height=300, hide_index=True)
                         _ = export_dataframe(
                             unmatched_view,
@@ -5534,7 +5620,7 @@ def _page_map_address():
                     tfl_spending=tfl_spending_source,
                 )
                 st.session_state.map_overlap_last_row_count = int(overlap_spend.shape[0]) if isinstance(overlap_spend, pd.DataFrame) else 0
-                filtered_spend = overlap_spend.copy()
+                filtered_spend = overlap_spend
                 if not overlap_spend.empty:
                     conf = [c for c in ["High", "Medium", "Low", "Unknown"] if c in overlap_spend["Match Confidence"].value_counts().to_dict()]
                     st.session_state.map_overlap_confidence_filter = [str(v) for v in st.session_state.get("map_overlap_confidence_filter", []) if str(v) in conf] or list(conf)
@@ -5564,28 +5650,28 @@ def _page_map_address():
                         st.checkbox("Focus selected clients", key="map_overlap_focus_selected_clients", disabled=not bool(selected_client_set))
 
                     if overlap_conf:
-                        filtered_spend = filtered_spend[filtered_spend["Match Confidence"].astype(str).isin(overlap_conf)].copy()
+                        filtered_spend = filtered_spend[filtered_spend["Match Confidence"].astype(str).isin(overlap_conf)]
                     method_filter = [str(v).strip() for v in st.session_state.get("map_overlap_method_filter", []) if str(v).strip()]
                     if method_filter:
-                        filtered_spend = filtered_spend[filtered_spend["Match Method"].astype(str).isin(method_filter)].copy()
+                        filtered_spend = filtered_spend[filtered_spend["Match Method"].astype(str).isin(method_filter)]
                     subtype_filter = [str(v).strip() for v in st.session_state.get("map_overlap_subdivision_type_filter", []) if str(v).strip()]
                     if subtype_filter:
-                        filtered_spend = filtered_spend[filtered_spend["Subdivision Type"].astype(str).isin(subtype_filter)].copy()
+                        filtered_spend = filtered_spend[filtered_spend["Subdivision Type"].astype(str).isin(subtype_filter)]
                     if ent_q:
-                        filtered_spend = filtered_spend[filtered_spend["TFL Entity"].astype(str).str.contains(ent_q, case=False, na=False)].copy()
+                        filtered_spend = filtered_spend[filtered_spend["TFL Entity"].astype(str).str.contains(ent_q, case=False, na=False)]
                     if st.session_state.get("map_overlap_use_coverage_filters", True):
                         c_types = [str(v) for v in st.session_state.get("map_subdivision_types_filter", []) if str(v).strip()]
                         if c_types:
-                            filtered_spend = filtered_spend[filtered_spend["Subdivision Type"].astype(str).isin(c_types)].copy()
+                            filtered_spend = filtered_spend[filtered_spend["Subdivision Type"].astype(str).isin(c_types)]
                     if st.session_state.get("map_overlap_focus_selected_subdivision", False) and selected_name:
                         filtered_spend = filtered_spend[
                             (filtered_spend["Subdivision Type"].astype(str) == selected_type)
                             & (filtered_spend["Subdivision"].astype(str) == selected_name)
-                        ].copy()
+                        ]
                         if selected_code:
-                            filtered_spend = filtered_spend[filtered_spend["Code"].astype(str) == selected_code].copy()
+                            filtered_spend = filtered_spend[filtered_spend["Code"].astype(str) == selected_code]
                     if st.session_state.get("map_overlap_focus_selected_clients", False) and selected_client_set:
-                        filtered_spend = filtered_spend[filtered_spend["TFL Entity"].astype(str).isin(selected_client_set)].copy()
+                        filtered_spend = filtered_spend[filtered_spend["TFL Entity"].astype(str).isin(selected_client_set)]
                     if sort_mode == "Highest High":
                         filtered_spend = filtered_spend.sort_values(["High", "Mid", "Low", "TFL Entity"], ascending=[False, False, False, True])
                     elif sort_mode == "Highest Mid":
@@ -5596,22 +5682,20 @@ def _page_map_address():
                         filtered_spend = filtered_spend.sort_values(["Subdivision Type", "Subdivision", "TFL Entity"], ascending=[True, True, True])
                     if not overlap_points.empty:
                         if filtered_spend.empty:
-                            overlap_points = overlap_points.iloc[0:0].copy()
+                            overlap_points = overlap_points.iloc[0:0]
                         else:
-                            allowed = {
-                                (str(r["Subdivision Type"]).strip(), str(r["Subdivision"]).strip(), str(r["Code"]).strip())
-                                for _, r in filtered_spend[["Subdivision Type", "Subdivision", "Code"]].drop_duplicates().iterrows()
-                            }
-                            overlap_points = overlap_points[
-                                overlap_points.apply(
-                                    lambda r: (
-                                        str(r.get("subdivision_type", "")).strip(),
-                                        str(r.get("subdivision_name", "")).strip(),
-                                        str(r.get("subdivision_code", "")).strip(),
-                                    ) in allowed,
-                                    axis=1,
-                                )
-                            ].copy()
+                            _dedup = filtered_spend[["Subdivision Type", "Subdivision", "Code"]].drop_duplicates()
+                            allowed = set(zip(
+                                _dedup["Subdivision Type"].astype(str).str.strip(),
+                                _dedup["Subdivision"].astype(str).str.strip(),
+                                _dedup["Code"].astype(str).str.strip(),
+                            ))
+                            _op_key = list(zip(
+                                overlap_points.get("subdivision_type", pd.Series(dtype=str)).fillna("").astype(str).str.strip(),
+                                overlap_points.get("subdivision_name", pd.Series(dtype=str)).fillna("").astype(str).str.strip(),
+                                overlap_points.get("subdivision_code", pd.Series(dtype=str)).fillna("").astype(str).str.strip(),
+                            ))
+                            overlap_points = overlap_points[[k in allowed for k in _op_key]]
                     st.caption(f"Showing {len(filtered_spend):,} of {len(overlap_spend):,} overlap rows.")
 
                 filtered_rows = int(filtered_spend.shape[0]) if not filtered_spend.empty else 0
@@ -5683,9 +5767,9 @@ def _page_map_address():
                     st.dataframe(overlap_display, width="stretch", height=480, hide_index=True)
                 if not overlap_spend.empty:
                     disp = filtered_spend.copy()
-                    disp["Low"] = disp["Low"].astype(float).apply(fmt_usd)
-                    disp["High"] = disp["High"].astype(float).apply(fmt_usd)
-                    disp["Mid"] = disp["Mid"].astype(float).apply(fmt_usd)
+                    disp["Low"] = disp["Low"].astype(float).map(fmt_usd)
+                    disp["High"] = disp["High"].astype(float).map(fmt_usd)
+                    disp["Mid"] = disp["Mid"].astype(float).map(fmt_usd)
                     disp = disp.rename(columns={"Lobbyists": "Lobbyists Under Contract", "Mid": "Midpoint"})
                     st.dataframe(disp[["Subdivision Type", "Subdivision", "Code", "Entity Type", "TFL Entity", "Match Method", "Match Confidence", "Map Source", "Low", "High", "Midpoint", "Lobbyists Under Contract"]], width="stretch", height=390, hide_index=True)
                     _ = export_dataframe(
@@ -5748,11 +5832,11 @@ def _page_map_address():
                             '<div class="map-lead-banner">Investigative Leads &mdash; ranked by matched exposure, confidence mix, and subdivision breadth.</div>',
                             unsafe_allow_html=True,
                         )
-                        leads_export = entity_rank.copy()
+                        leads_export = entity_rank
                         leads_display = leads_export.copy()
-                        leads_display["Low"] = leads_display["Low"].astype(float).apply(fmt_usd)
-                        leads_display["High"] = leads_display["High"].astype(float).apply(fmt_usd)
-                        leads_display["Mid"] = leads_display["Mid"].astype(float).apply(fmt_usd)
+                        leads_display["Low"] = leads_display["Low"].astype(float).map(fmt_usd)
+                        leads_display["High"] = leads_display["High"].astype(float).map(fmt_usd)
+                        leads_display["Mid"] = leads_display["Mid"].astype(float).map(fmt_usd)
                         leads_display["HighConfidenceShare"] = (leads_display["HighConfidenceShare"] * 100.0).map(lambda v: f"{v:.1f}%")
                         leads_display["InvestigationScore"] = pd.to_numeric(leads_display["InvestigationScore"], errors="coerce").fillna(0.0).round(0)
                         st.dataframe(
@@ -5916,7 +6000,7 @@ def _page_map_address():
                                         if cov_types and not overlap_spend_batch.empty:
                                             overlap_spend_batch = overlap_spend_batch[
                                                 overlap_spend_batch["Subdivision Type"].astype(str).isin(cov_types)
-                                            ].copy()
+                                            ]
                                     high_rows = int((overlap_spend_batch["Match Confidence"].astype(str) == "High").sum()) if not overlap_spend_batch.empty else 0
                                     med_rows = int((overlap_spend_batch["Match Confidence"].astype(str) == "Medium").sum()) if not overlap_spend_batch.empty else 0
                                     low_rows = int((overlap_spend_batch["Match Confidence"].astype(str) == "Low").sum()) if not overlap_spend_batch.empty else 0
@@ -5979,9 +6063,9 @@ def _page_map_address():
                             key="map_overlap_batch_sort",
                         )
 
-                    filtered_batch = batch_df.copy()
+                    filtered_batch = batch_df
                     if status_filter:
-                        filtered_batch = filtered_batch[filtered_batch["Status"].astype(str).isin(status_filter)].copy()
+                        filtered_batch = filtered_batch[filtered_batch["Status"].astype(str).isin(status_filter)]
                     if batch_sort == "Highest Triage Score":
                         filtered_batch = filtered_batch.sort_values(["Triage Score", "Combined High"], ascending=[False, False])
                     elif batch_sort == "Highest Overlap Rows":
@@ -5998,8 +6082,8 @@ def _page_map_address():
                     st.caption(f"Batch results: {len(filtered_batch):,} of {len(batch_df):,} addresses.")
                     display_batch = filtered_batch.copy()
                     if not display_batch.empty:
-                        display_batch["Combined Low"] = display_batch["Combined Low"].astype(float).apply(fmt_usd)
-                        display_batch["Combined High"] = display_batch["Combined High"].astype(float).apply(fmt_usd)
+                        display_batch["Combined Low"] = display_batch["Combined Low"].astype(float).map(fmt_usd)
+                        display_batch["Combined High"] = display_batch["Combined High"].astype(float).map(fmt_usd)
                         display_batch["Geocode Score"] = pd.to_numeric(display_batch["Geocode Score"], errors="coerce").fillna(0.0).round(0)
                         display_batch["High Confidence Share"] = (
                             pd.to_numeric(display_batch["High Confidence Share"], errors="coerce").fillna(0.0) * 100.0
@@ -6085,6 +6169,7 @@ footer {visibility: hidden;}
     )
     return
 
+@_safe_page("Map & Address Legacy")
 def _page_map_address_rebuild_legacy():
     _render_page_intro(
         kicker="Geospatial Strategy",
@@ -6213,9 +6298,9 @@ def _page_map_address_rebuild_legacy():
         d = df.copy()
         d["Session"] = d["Session"].astype(str).str.strip()
         if scope_val == "This Session" and session_val is not None:
-            d = d[d["Session"] == str(session_val)].copy()
+            d = d[d["Session"] == str(session_val)]
         d = ensure_cols(d, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0, "LobbyShort": ""})
-        d = d[d["Client"].fillna("").astype(str).str.strip() != ""].copy()
+        d = d[d["Client"].fillna("").astype(str).str.strip() != ""]
         if d.empty:
             return pd.DataFrame(), {}
         g = d.groupby("Client", as_index=False).agg(Low=("Low_num", "sum"), High=("High_num", "sum"), Lobbyists=("LobbyShort", lambda s: s.dropna().astype(str).nunique()), IsTFL=("IsTFL", "max"))
@@ -6224,7 +6309,7 @@ def _page_map_address_rebuild_legacy():
     sess = _tfl_session_for_filter(st.session_state.map_session, tfl_sessions)
     active_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.get("map_basemap_label", ""), "gray-vector")
     all_clients, stats = _overview(base, sess, st.session_state.map_scope)
-    tfl_spend = all_clients[all_clients.get("IsTFL", 0) == 1].copy() if not all_clients.empty else pd.DataFrame()
+    tfl_spend = all_clients[all_clients.get("IsTFL", 0) == 1] if not all_clients.empty else pd.DataFrame()
     names = tuple(sorted({str(v).strip() for v in tfl_spend.get("Client", pd.Series(dtype=object)).dropna().astype(str).tolist() if str(v).strip()}))
     subdivision_matches = build_tfl_political_subdivision_matches(names) if names else pd.DataFrame()
     subdivision_matches = _attach_subdivision_spend_totals(subdivision_matches, all_clients)
@@ -6291,17 +6376,17 @@ def _page_map_address_rebuild_legacy():
                 st.text_input("Entity contains", key="map_subdivision_client_filter")
 
             f = subdivision_matches.copy()
-            f = f[f["subdivision_type"].astype(str).isin(st.session_state.map_subdivision_types_filter)].copy()
-            f = f[pd.to_numeric(f.get("match_count", 0), errors="coerce").fillna(0) >= int(st.session_state.get("map_min_match_count", 1))].copy()
+            f = f[f["subdivision_type"].astype(str).isin(st.session_state.map_subdivision_types_filter)]
+            f = f[pd.to_numeric(f.get("match_count", 0), errors="coerce").fillna(0) >= int(st.session_state.get("map_min_match_count", 1))]
             q_name = str(st.session_state.get("map_subdivision_name_filter", "")).strip().lower()
             if q_name:
                 f = f[
                     f["subdivision_name"].astype(str).str.lower().str.contains(q_name, na=False)
                     | f["subdivision_code"].astype(str).str.lower().str.contains(q_name, na=False)
-                ].copy()
+                ]
             q_client = str(st.session_state.get("map_subdivision_client_filter", "")).strip().lower()
             if q_client:
-                f = f[f["match_clients"].apply(lambda vals: any(q_client in str(v).lower() for v in vals) if isinstance(vals, list) else False)].copy()
+                f = f[f["match_clients"].apply(lambda vals: any(q_client in str(v).lower() for v in vals) if isinstance(vals, list) else False)]
             if st.session_state.get("map_subdivision_sort") == "Highest High Estimate":
                 f = f.sort_values(["high_total", "match_count"], ascending=[False, False])
             elif st.session_state.get("map_subdivision_sort") == "Highest Match Count":
@@ -6356,7 +6441,7 @@ def _page_map_address_rebuild_legacy():
                         f[["subdivision_name", "subdivision_type", "high_total", "match_count"]]
                         .sort_values(["high_total", "match_count"], ascending=[False, False])
                         .head(18)
-                        .copy()
+                        
                     )
                     fig_cov_bar = px.bar(
                         top_cov.sort_values("high_total", ascending=True),
@@ -6376,7 +6461,7 @@ def _page_map_address_rebuild_legacy():
                     fig_cov_bar.update_layout(xaxis_tickprefix="$", xaxis_tickformat=",")
                     st.plotly_chart(fig_cov_bar, width="stretch", config=PLOTLY_CONFIG)
                 with cov_chart_r:
-                    scatter_cov = f[["subdivision_name", "subdivision_type", "high_total", "match_count"]].copy()
+                    scatter_cov = f[["subdivision_name", "subdivision_type", "high_total", "match_count"]]
                     scatter_cov["match_count"] = pd.to_numeric(scatter_cov["match_count"], errors="coerce").fillna(0)
                     scatter_cov["high_total"] = pd.to_numeric(scatter_cov["high_total"], errors="coerce").fillna(0.0)
                     fig_cov_scatter = px.scatter(
@@ -6442,8 +6527,8 @@ def _page_map_address_rebuild_legacy():
                     st.dataframe(cov_style, width="stretch", height=300, hide_index=True)
                 else:
                     disp = view.copy()
-                    disp["Matched TFL Low Estimate"] = disp["Matched TFL Low Estimate"].astype(float).apply(fmt_usd)
-                    disp["Matched TFL High Estimate"] = disp["Matched TFL High Estimate"].astype(float).apply(fmt_usd)
+                    disp["Matched TFL Low Estimate"] = disp["Matched TFL Low Estimate"].astype(float).map(fmt_usd)
+                    disp["Matched TFL High Estimate"] = disp["Matched TFL High Estimate"].astype(float).map(fmt_usd)
                     disp["Coverage Signal"] = pd.to_numeric(disp["Coverage Signal"], errors="coerce").fillna(0.0).round(0)
                     st.dataframe(disp, width="stretch", height=300, hide_index=True)
                 _ = export_dataframe(view, "coverage_atlas_filtered_subdivisions.csv", label="Download coverage atlas CSV")
@@ -6552,21 +6637,22 @@ def _page_map_address_rebuild_legacy():
                 filtered["Low"] = pd.to_numeric(filtered.get("Low", 0.0), errors="coerce").fillna(0.0)
                 filtered["High"] = pd.to_numeric(filtered.get("High", 0.0), errors="coerce").fillna(0.0)
                 filtered["Mid"] = pd.to_numeric(filtered.get("Mid", 0.0), errors="coerce").fillna(0.0)
-                filtered["Distance Miles"] = filtered.apply(
-                    lambda r: _miles(
-                        float(analysis_point["lat"]),
-                        float(analysis_point["lon"]),
-                        point_lookup.get((str(r.get("Subdivision Type", "")).strip(), str(r.get("Subdivision", "")).strip(), str(r.get("Code", "")).strip()), (float("nan"), float("nan")))[0],
-                        point_lookup.get((str(r.get("Subdivision Type", "")).strip(), str(r.get("Subdivision", "")).strip(), str(r.get("Code", "")).strip()), (float("nan"), float("nan")))[1],
-                    ),
-                    axis=1,
+                _fk = list(zip(
+                    filtered.get("Subdivision Type", pd.Series("", index=filtered.index)).fillna("").astype(str).str.strip(),
+                    filtered.get("Subdivision", pd.Series("", index=filtered.index)).fillna("").astype(str).str.strip(),
+                    filtered.get("Code", pd.Series("", index=filtered.index)).fillna("").astype(str).str.strip(),
+                ))
+                _nan_pair = (float("nan"), float("nan"))
+                _coords = [point_lookup.get(k, _nan_pair) for k in _fk]
+                _plat, _plon = float(analysis_point["lat"]), float(analysis_point["lon"])
+                filtered["Distance Miles"] = pd.Series(
+                    [_miles(_plat, _plon, c[0], c[1]) for c in _coords], index=filtered.index
                 )
                 filtered["RowSignal"] = filtered["High"] * filtered["Match Confidence"].map(
-                    lambda c: 1.0 if str(c) == "High" else (0.72 if str(c) == "Medium" else (0.42 if str(c) == "Low" else 0.24))
+                    {"High": 1.0, "Medium": 0.72, "Low": 0.42, "Unknown": 0.24}
                 ).fillna(0.24)
-                filtered["RowSignal"] = filtered["RowSignal"] * filtered["Distance Miles"].apply(
-                    lambda d: 1.0 if pd.isna(d) else max(0.65, 1.15 - (min(float(d), 320.0) / 320.0))
-                )
+                _fd = filtered["Distance Miles"].astype(float)
+                filtered["RowSignal"] = filtered["RowSignal"] * (1.15 - (_fd.clip(upper=320.0).clip(lower=0.0) / 320.0)).clip(lower=0.65).fillna(1.0)
 
                 conf_options = [c for c in ["High", "Medium", "Low", "Unknown"] if c in filtered["Match Confidence"].value_counts().to_dict()]
                 method_options = sorted({str(v).strip() for v in filtered.get("Match Method", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()})
@@ -6613,34 +6699,34 @@ def _page_map_address_rebuild_legacy():
                 subtype_filter = [str(v) for v in st.session_state.get("map_overlap_subdivision_type_filter", []) if str(v).strip()]
                 entity_type_filter = [str(v) for v in st.session_state.get("map_probe_entity_type_filter", []) if str(v).strip()]
                 if conf_filter:
-                    filtered = filtered[filtered["Match Confidence"].astype(str).isin(conf_filter)].copy()
+                    filtered = filtered[filtered["Match Confidence"].astype(str).isin(conf_filter)]
                 if method_filter:
-                    filtered = filtered[filtered["Match Method"].astype(str).isin(method_filter)].copy()
+                    filtered = filtered[filtered["Match Method"].astype(str).isin(method_filter)]
                 if subtype_filter:
-                    filtered = filtered[filtered["Subdivision Type"].astype(str).isin(subtype_filter)].copy()
+                    filtered = filtered[filtered["Subdivision Type"].astype(str).isin(subtype_filter)]
                 if entity_type_filter:
-                    filtered = filtered[filtered["Entity Type"].astype(str).isin(entity_type_filter)].copy()
+                    filtered = filtered[filtered["Entity Type"].astype(str).isin(entity_type_filter)]
                 ent_q = str(st.session_state.get("map_overlap_entity_filter", "")).strip()
                 if ent_q:
-                    filtered = filtered[filtered["TFL Entity"].astype(str).str.contains(ent_q, case=False, na=False)].copy()
+                    filtered = filtered[filtered["TFL Entity"].astype(str).str.contains(ent_q, case=False, na=False)]
                 min_high = float(st.session_state.get("map_probe_min_high", 0.0) or 0.0)
                 if min_high > 0:
-                    filtered = filtered[filtered["High"] >= min_high].copy()
+                    filtered = filtered[filtered["High"] >= min_high]
                 if st.session_state.get("map_overlap_use_coverage_filters", True):
                     c_types = [str(v).strip() for v in st.session_state.get("map_subdivision_types_filter", []) if str(v).strip()]
                     if c_types:
-                        filtered = filtered[filtered["Subdivision Type"].astype(str).isin(c_types)].copy()
+                        filtered = filtered[filtered["Subdivision Type"].astype(str).isin(c_types)]
                 if st.session_state.get("map_overlap_focus_selected_subdivision", False) and selected_name:
-                    filtered = filtered[(filtered["Subdivision Type"].astype(str) == selected_type) & (filtered["Subdivision"].astype(str) == selected_name)].copy()
+                    filtered = filtered[(filtered["Subdivision Type"].astype(str) == selected_type) & (filtered["Subdivision"].astype(str) == selected_name)]
                     if selected_code:
-                        filtered = filtered[filtered["Code"].astype(str) == selected_code].copy()
+                        filtered = filtered[filtered["Code"].astype(str) == selected_code]
                 if st.session_state.get("map_overlap_focus_selected_clients", False) and selected_clients:
-                    filtered = filtered[filtered["TFL Entity"].astype(str).isin(selected_clients)].copy()
+                    filtered = filtered[filtered["TFL Entity"].astype(str).isin(selected_clients)]
                 dist_cap = float(st.session_state.get("map_distance_cap_miles", 160) or 160)
                 filtered = filtered[
                     filtered["Distance Miles"].isna()
                     | (pd.to_numeric(filtered["Distance Miles"], errors="coerce").fillna(dist_cap + 1) <= dist_cap)
-                ].copy()
+                ]
 
                 sort_mode = str(st.session_state.get("map_overlap_sort", "Highest Signal Score"))
                 if sort_mode == "Highest High":
@@ -6730,7 +6816,7 @@ def _page_map_address_rebuild_legacy():
                             "RowSignal",
                             "Lobbyists",
                         ]
-                    ].rename(columns={"Mid": "Midpoint", "Lobbyists": "Lobbyists Under Contract"}).copy()
+                    ].rename(columns={"Mid": "Midpoint", "Lobbyists": "Lobbyists Under Contract"})
                     max_probe_signal = float(pd.to_numeric(probe_view["RowSignal"], errors="coerce").fillna(0.0).max() or 0.0)
                     probe_view["Signal Bar"] = probe_view["RowSignal"].apply(lambda v: _compact_ratio_bar(v, max_probe_signal, width=10))
                     st.markdown('<div class="map-rail-title">Probe Rows: confidence and signal-highlighted</div>', unsafe_allow_html=True)
@@ -6759,17 +6845,17 @@ def _page_map_address_rebuild_legacy():
                             rgb_lo=(44, 74, 104),
                             rgb_hi=(105, 189, 255),
                         )
-                        probe_style = probe_style.applymap(
+                        probe_style = probe_style.map(
                             lambda v: f"background-color: {confidence_color_map.get(str(v), '#8ea5bf')}33; font-weight: 600;",
                             subset=["Match Confidence"],
                         )
                         st.dataframe(probe_style, width="stretch", height=320, hide_index=True)
                     else:
-                        fallback = probe_view.copy()
+                        fallback = probe_view
                         fallback["Distance Miles"] = pd.to_numeric(fallback["Distance Miles"], errors="coerce").round(2)
-                        fallback["Low"] = pd.to_numeric(fallback["Low"], errors="coerce").fillna(0.0).apply(fmt_usd)
-                        fallback["High"] = pd.to_numeric(fallback["High"], errors="coerce").fillna(0.0).apply(fmt_usd)
-                        fallback["Midpoint"] = pd.to_numeric(fallback["Midpoint"], errors="coerce").fillna(0.0).apply(fmt_usd)
+                        fallback["Low"] = pd.to_numeric(fallback["Low"], errors="coerce").fillna(0.0).map(fmt_usd)
+                        fallback["High"] = pd.to_numeric(fallback["High"], errors="coerce").fillna(0.0).map(fmt_usd)
+                        fallback["Midpoint"] = pd.to_numeric(fallback["Midpoint"], errors="coerce").fillna(0.0).map(fmt_usd)
                         fallback["RowSignal"] = pd.to_numeric(fallback["RowSignal"], errors="coerce").fillna(0.0).round(0)
                         st.dataframe(fallback, width="stretch", height=320, hide_index=True)
                     _ = export_dataframe(filtered, "address_probe_filtered_rows.csv", label="Download filtered probe CSV")
@@ -6806,7 +6892,7 @@ def _page_map_address_rebuild_legacy():
                             "HighShare",
                             "RowSignal",
                         ]
-                    ].rename(columns={"HighShare": "High Confidence Share", "RowSignal": "Signal Score", "Mid": "Midpoint"}).copy()
+                    ].rename(columns={"HighShare": "High Confidence Share", "RowSignal": "Signal Score", "Mid": "Midpoint"})
                     max_lead_signal = float(pd.to_numeric(lead_view["Signal Score"], errors="coerce").fillna(0.0).max() or 0.0)
                     lead_view["Signal Bar"] = lead_view["Signal Score"].apply(lambda v: _compact_ratio_bar(v, max_lead_signal, width=10))
                     st.markdown('<div class="map-rail-title">Leadboard: tiered and color-scaled</div>', unsafe_allow_html=True)
@@ -6835,19 +6921,19 @@ def _page_map_address_rebuild_legacy():
                             rgb_lo=(44, 74, 104),
                             rgb_hi=(105, 189, 255),
                         )
-                        lead_style = lead_style.applymap(_priority_cell_style, subset=["Priority"])
+                        lead_style = lead_style.map(_priority_cell_style, subset=["Priority"])
                         st.dataframe(lead_style, width="stretch", height=250, hide_index=True)
                     else:
-                        fallback = lead_view.copy()
-                        fallback["Low"] = pd.to_numeric(fallback["Low"], errors="coerce").fillna(0.0).apply(fmt_usd)
-                        fallback["High"] = pd.to_numeric(fallback["High"], errors="coerce").fillna(0.0).apply(fmt_usd)
-                        fallback["Midpoint"] = pd.to_numeric(fallback["Midpoint"], errors="coerce").fillna(0.0).apply(fmt_usd)
+                        fallback = lead_view
+                        fallback["Low"] = pd.to_numeric(fallback["Low"], errors="coerce").fillna(0.0).map(fmt_usd)
+                        fallback["High"] = pd.to_numeric(fallback["High"], errors="coerce").fillna(0.0).map(fmt_usd)
+                        fallback["Midpoint"] = pd.to_numeric(fallback["Midpoint"], errors="coerce").fillna(0.0).map(fmt_usd)
                         fallback["High Confidence Share"] = (pd.to_numeric(fallback["High Confidence Share"], errors="coerce").fillna(0.0) * 100.0).map(lambda v: f"{v:.1f}%")
                         fallback["Signal Score"] = pd.to_numeric(fallback["Signal Score"], errors="coerce").fillna(0.0).round(0)
                         st.dataframe(fallback, width="stretch", height=250, hide_index=True)
                     lead_chart_l, lead_chart_r = st.columns([1.3, 1.0], gap="large")
                     with lead_chart_l:
-                        scatter_leads = leads.copy()
+                        scatter_leads = leads
                         scatter_leads["Priority"] = scatter_leads["Priority"].astype(str)
                         fig_leads = px.scatter(
                             scatter_leads,
@@ -6958,12 +7044,12 @@ def _page_map_address_rebuild_legacy():
                         rgb_lo=(118, 44, 44),
                         rgb_hi=(255, 149, 120),
                     )
-                watch_style = watch_style.applymap(_priority_cell_style, subset=["Priority"])
+                watch_style = watch_style.map(_priority_cell_style, subset=["Priority"])
                 st.dataframe(watch_style, width="stretch", height=320, hide_index=True)
             else:
-                fallback = vw.copy()
+                fallback = vw
                 if "High" in fallback.columns:
-                    fallback["High"] = pd.to_numeric(fallback["High"], errors="coerce").fillna(0.0).apply(fmt_usd)
+                    fallback["High"] = pd.to_numeric(fallback["High"], errors="coerce").fillna(0.0).map(fmt_usd)
                 if "Signal Score" in fallback.columns:
                     fallback["Signal Score"] = pd.to_numeric(fallback["Signal Score"], errors="coerce").fillna(0.0).round(0)
                 st.dataframe(fallback, width="stretch", height=320, hide_index=True)
@@ -6971,7 +7057,7 @@ def _page_map_address_rebuild_legacy():
             if not wd.empty:
                 watch_chart_l, watch_chart_r = st.columns([1.3, 1.0], gap="large")
                 with watch_chart_l:
-                    wplot = wd.copy()
+                    wplot = wd
                     wplot["Signal Score"] = pd.to_numeric(wplot.get("Signal Score", 0.0), errors="coerce").fillna(0.0)
                     wplot = wplot.sort_values(["Signal Score"], ascending=[True]).tail(16)
                     fig_watch_bar = px.bar(
@@ -7036,6 +7122,7 @@ footer {visibility: hidden;}
     )
     return
 
+@_safe_page("Legislators")
 def _page_member_lookup():
     _render_page_intro(
         kicker="Legislator Workspace",
@@ -7328,17 +7415,17 @@ def _page_member_lookup():
         if not session:
             return pd.DataFrame(), {}
 
-        d = author_bills.copy()
+        d = author_bills
         d["Session"] = d["Session"].astype(str).str.strip()
-        d = d[d["Session"] == session].copy()
+        d = d[d["Session"] == session]
         d = ensure_cols(d, {"Author": "", "Status": "", "Bill": ""})
-        d = d[d["Author"].astype(str).str.strip() != ""].copy()
+        d = d[d["Author"].astype(str).str.strip() != ""]
         if d.empty:
             return pd.DataFrame(), {}
 
-        d = d[d["Bill"].notna()].copy()
+        d = d[d["Bill"].notna()]
         d["Bill"] = d["Bill"].astype(str)
-        d = d[d["Bill"].str.strip() != ""].copy()
+        d = d[d["Bill"].str.strip() != ""]
         d["StatusClean"] = d["Status"].fillna("").astype(str).str.strip()
 
         bills = d[["Author", "Bill", "StatusClean"]].drop_duplicates()
@@ -7360,15 +7447,15 @@ def _page_member_lookup():
             wit = wit_all.copy()
             wit = ensure_cols(wit, {"Session": "", "Bill": "", "LobbyShort": ""})
             wit["Session"] = wit["Session"].astype(str).str.strip()
-            wit = wit[wit["Session"] == session].copy()
-            wit = wit[wit["Bill"].notna()].copy()
+            wit = wit[wit["Session"] == session]
+            wit = wit[wit["Bill"].notna()]
             wit["Bill"] = wit["Bill"].astype(str)
-            wit = wit[wit["Bill"].str.strip() != ""].copy()
+            wit = wit[wit["Bill"].str.strip() != ""]
             bill_set = set(bills["Bill"].dropna().astype(str).unique().tolist())
             if bill_set:
-                wit = wit[wit["Bill"].astype(str).isin(bill_set)].copy()
+                wit = wit[wit["Bill"].astype(str).isin(bill_set)]
             wit["LobbyShort"] = wit["LobbyShort"].fillna("").astype(str).str.strip()
-            wit = wit[wit["LobbyShort"] != ""].copy()
+            wit = wit[wit["LobbyShort"] != ""]
 
         witness_rows = int(len(wit)) if not wit.empty else 0
         witness_lobbyists = int(wit["LobbyShort"].nunique()) if not wit.empty else 0
@@ -7378,7 +7465,7 @@ def _page_member_lookup():
             bill_authors = bills[["Bill", "Author"]].drop_duplicates()
             bill_authors["Bill"] = bill_authors["Bill"].astype(str)
             wit_join = bill_authors.merge(wit[["Bill", "LobbyShort"]], on="Bill", how="left")
-            wit_join = wit_join[wit_join["LobbyShort"].astype(str).str.strip() != ""].copy()
+            wit_join = wit_join[wit_join["LobbyShort"].astype(str).str.strip() != ""]
             if not wit_join.empty:
                 wit_counts = (
                     wit_join.groupby("Author", as_index=False)
@@ -7522,13 +7609,13 @@ def _page_member_lookup():
                 help="Filter the All Legislators table by a name substring.",
             )
 
-            view = all_legislators.copy()
+            view = all_legislators
             if st.session_state.member_filter.strip():
                 view = view[
                     view["Legislator"].astype(str).str.contains(
                         st.session_state.member_filter.strip(), case=False, na=False
                     )
-                ].copy()
+                ]
 
             sort_cols = []
             sort_order = []
@@ -7590,15 +7677,15 @@ def _page_member_lookup():
     member_norm = norm_name(member_name)
     member_info = parse_member_name(member_name)
 
-    authored = author_bills_all.copy()
-    authored = authored[authored["AuthorNorm"] == member_norm].copy()
-    authored = authored[authored["Session"].astype(str).str.strip() == session].copy()
+    authored = author_bills_all
+    authored = authored[authored["AuthorNorm"] == member_norm]
+    authored = authored[authored["Session"].astype(str).str.strip() == session]
     authored = authored.drop_duplicates(subset=["Session", "Bill", "Author"])
 
     tfl_session = str(tfl_session_val) if tfl_session_val is not None else session
-    lt = Lobby_TFL_Client_All.copy()
+    lt = Lobby_TFL_Client_All
     if "Session" in lt.columns:
-        lt = lt[lt["Session"].astype(str).str.strip() == tfl_session].copy()
+        lt = lt[lt["Session"].astype(str).str.strip() == tfl_session]
     lt = ensure_cols(lt, {"LobbyShort": "", "IsTFL": 0})
     tfl_flag = (
         lt.groupby("LobbyShort", as_index=False)["IsTFL"]
@@ -7610,7 +7697,7 @@ def _page_member_lookup():
     if short_to_names:
         lobbyshort_to_name = {k: (v[0] if v else k) for k, v in short_to_names.items()}
     if not lobbyshort_to_name and not Lobby_TFL_Client_All.empty:
-        tmp = Lobby_TFL_Client_All[["LobbyShort", "Lobby Name"]].dropna().copy()
+        tmp = Lobby_TFL_Client_All[["LobbyShort", "Lobby Name"]].dropna()
         tmp["LobbyShort"] = tmp["LobbyShort"].astype(str).str.strip()
         tmp["Lobby Name"] = tmp["Lobby Name"].astype(str).str.strip()
         lobbyshort_to_name = (
@@ -7629,12 +7716,12 @@ def _page_member_lookup():
         wit = wit_all[
             (wit_all["Session"].astype(str).str.strip() == session) &
             (wit_all["Bill"].astype(str).isin(bill_list))
-        ].copy()
+        ]
     else:
-        wit = wit_all.iloc[0:0].copy()
+        wit = wit_all.iloc[0:0]
 
     if "LobbyShort" in wit.columns:
-        wit = wit[wit["LobbyShort"].notna() & (wit["LobbyShort"].astype(str).str.strip() != "")].copy()
+        wit = wit[wit["LobbyShort"].notna() & (wit["LobbyShort"].astype(str).str.strip() != "")]
 
     witness = pd.DataFrame()
     if not wit.empty:
@@ -7684,7 +7771,7 @@ def _page_member_lookup():
     else:
         activities = pd.DataFrame(columns=["Session", "Date", "Type", "LobbyShort", "Lobbyist", "Filer", "Member", "Description", "Amount", "Has TFL Client"])
 
-    staff_df = Staff_All.copy()
+    staff_df = Staff_All
     staff_matches = pd.DataFrame()
     if not staff_df.empty and "Legislator" in staff_df.columns:
         leg_norm = norm_name_series(staff_df["Legislator"])
@@ -7702,11 +7789,11 @@ def _page_member_lookup():
         if full_norm:
             match = match | leg_norm.str.contains(full_norm, na=False)
 
-        staff_matches = staff_df[match].copy()
+        staff_matches = staff_df[match]
 
     staff_lobbyists = pd.DataFrame()
     if not staff_matches.empty and "Staffer" in staff_matches.columns:
-        tmp_short = Lobby_TFL_Client_All[["LobbyShort"]].dropna().copy()
+        tmp_short = Lobby_TFL_Client_All[["LobbyShort"]].dropna()
         tmp_short["InitialKey"] = tmp_short["LobbyShort"].map(_last_first_initial_key)
         init_counts = (
             tmp_short.groupby(["InitialKey", "LobbyShort"])
@@ -7728,9 +7815,9 @@ def _page_member_lookup():
                 return str(initial_to_short[init_key])
             return ""
 
-        staff_lobbyists = staff_matches.copy()
+        staff_lobbyists = staff_matches
         staff_lobbyists["LobbyShort"] = staff_lobbyists["Staffer"].fillna("").astype(str).map(map_staffer)
-        staff_lobbyists = staff_lobbyists[staff_lobbyists["LobbyShort"].astype(str).str.strip() != ""].copy()
+        staff_lobbyists = staff_lobbyists[staff_lobbyists["LobbyShort"].astype(str).str.strip() != ""]
         staff_lobbyists["Lobbyist"] = staff_lobbyists["LobbyShort"].map(lobbyshort_to_name).fillna(staff_lobbyists["LobbyShort"])
 
     with tab_overview:
@@ -7818,7 +7905,7 @@ def _page_member_lookup():
                         lobbyshort_to_name.get(top_witness_lobby_short, top_witness_lobby_short)
                     ).strip()
             if top_witness_lobby_short and not lt.empty:
-                top_client_rows = lt[lt["LobbyShort"].astype(str).str.strip() == top_witness_lobby_short].copy()
+                top_client_rows = lt[lt["LobbyShort"].astype(str).str.strip() == top_witness_lobby_short]
                 if not top_client_rows.empty and "Client" in top_client_rows.columns:
                     top_client_rows = ensure_cols(top_client_rows, {"Low_num": 0.0, "High_num": 0.0, "Client": ""})
                     top_client_rows["Mid"] = (pd.to_numeric(top_client_rows["Low_num"], errors="coerce").fillna(0) + pd.to_numeric(top_client_rows["High_num"], errors="coerce").fillna(0)) / 2
@@ -7926,14 +8013,14 @@ def _page_member_lookup():
                     key="member_bill_search_input",
                     help="Filter authored bills by bill number, caption, or status.",
                 )
-                bill_view = authored.copy()
+                bill_view = authored
                 if st.session_state.member_bill_search.strip():
                     q = st.session_state.member_bill_search.strip()
                     bill_view = bill_view[
                         bill_view["Bill"].astype(str).str.contains(q, case=False, na=False) |
                         bill_view.get("Caption", pd.Series(dtype=object)).astype(str).str.contains(q, case=False, na=False) |
                         bill_view.get("Status", pd.Series(dtype=object)).astype(str).str.contains(q, case=False, na=False)
-                    ].copy()
+                    ]
 
                 show_cols = [c for c in ["Bill", "Status", "Caption", "Chamber", "Link"] if c in bill_view.columns]
                 bill_view = bill_view.drop_duplicates(subset=["Bill"])
@@ -8004,7 +8091,7 @@ def _page_member_lookup():
                 key="member_witness_search_input",
                 help="Filter witness list rows by bill, lobbyist, organization, or witness name.",
             )
-            witness_view = witness.copy()
+            witness_view = witness
             if st.session_state.member_witness_search.strip():
                 q = st.session_state.member_witness_search.strip()
                 witness_view = witness_view[
@@ -8012,7 +8099,7 @@ def _page_member_lookup():
                     witness_view.get("Lobbyist", pd.Series(dtype=object)).astype(str).str.contains(q, case=False, na=False) |
                     witness_view.get("Organization", pd.Series(dtype=object)).astype(str).str.contains(q, case=False, na=False) |
                     witness_view.get("Witness Name", pd.Series(dtype=object)).astype(str).str.contains(q, case=False, na=False)
-                ].copy()
+                ]
 
             f1, f2, f3 = st.columns(3)
             with f1:
@@ -8053,11 +8140,11 @@ def _page_member_lookup():
                 )
 
             if pos_sel:
-                witness_view = witness_view[witness_view["Position"].astype(str).isin(pos_sel)].copy()
+                witness_view = witness_view[witness_view["Position"].astype(str).isin(pos_sel)]
             if tfl_sel:
-                witness_view = witness_view[witness_view["Has TFL Client"].astype(str).isin(tfl_sel)].copy()
+                witness_view = witness_view[witness_view["Has TFL Client"].astype(str).isin(tfl_sel)]
             if lob_sel:
-                witness_view = witness_view[witness_view["Lobbyist"].astype(str).isin(lob_sel)].copy()
+                witness_view = witness_view[witness_view["Lobbyist"].astype(str).isin(lob_sel)]
 
             show_cols = [
                 "Bill",
@@ -8118,7 +8205,7 @@ def _page_member_lookup():
                         top_witness_bill_tab = str(bill_counts.value_counts().index[0]).strip()
 
             if top_witness_lobby_short_tab and not lt.empty:
-                top_client_rows = lt[lt["LobbyShort"].astype(str).str.strip() == top_witness_lobby_short_tab].copy()
+                top_client_rows = lt[lt["LobbyShort"].astype(str).str.strip() == top_witness_lobby_short_tab]
                 if not top_client_rows.empty and "Client" in top_client_rows.columns:
                     top_client_rows = ensure_cols(top_client_rows, {"Low_num": 0.0, "High_num": 0.0, "Client": ""})
                     top_client_rows["Mid"] = (
@@ -8185,7 +8272,7 @@ def _page_member_lookup():
         if activities.empty:
             st.info("No activity rows found where this legislator is the recipient.")
         else:
-            filt = activities.copy()
+            filt = activities
             t_opts = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
             t_opts = sorted(t_opts)
             sel_types = st.multiselect(
@@ -8196,7 +8283,7 @@ def _page_member_lookup():
                 help="Limit results to selected activity categories.",
             )
             if sel_types:
-                filt = filt[filt["Type"].isin(sel_types)].copy()
+                filt = filt[filt["Type"].isin(sel_types)]
 
             lobby_opts = _clean_options(filt["Lobbyist"].dropna().astype(str).unique().tolist())
             lobby_opts = sorted(lobby_opts)
@@ -8208,7 +8295,7 @@ def _page_member_lookup():
                 help="Limit results to selected lobbyists.",
             )
             if sel_lobby:
-                filt = filt[filt["Lobbyist"].isin(sel_lobby)].copy()
+                filt = filt[filt["Lobbyist"].isin(sel_lobby)]
 
             st.session_state.member_activity_search = st.text_input(
                 "Search activities (lobbyist, description, filer)",
@@ -8222,7 +8309,7 @@ def _page_member_lookup():
                     filt["Lobbyist"].astype(str).str.contains(q, case=False, na=False) |
                     filt["Description"].astype(str).str.contains(q, case=False, na=False) |
                     filt["Filer"].astype(str).str.contains(q, case=False, na=False)
-                ].copy()
+                ]
 
             date_parsed = pd.to_datetime(filt["Date"], errors="coerce")
             if date_parsed.notna().any():
@@ -8237,7 +8324,7 @@ def _page_member_lookup():
                 d_from, d_to = (_date_val if isinstance(_date_val, (list, tuple)) and len(_date_val) == 2 else (min_d, max_d))
                 if d_from and d_to:
                     mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
-                    filt = filt[mask].copy()
+                    filt = filt[mask]
 
             show_cols = ["Date", "Type", "Lobbyist", "Has TFL Client", "Description", "Amount"]
             show_cols = [c for c in show_cols if c in filt.columns]
@@ -8270,10 +8357,153 @@ footer {visibility: hidden;}
         unsafe_allow_html=True,
     )
 
+# =========================================================
+# PERFORMANCE: Module-level pure helpers for map-address page
+# (moved out of page function to avoid re-creation on every rerun)
+# =========================================================
+
+def _mp5_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Haversine distance in statute miles."""
+    try:
+        d_lat = math.radians(float(lat2) - float(lat1))
+        d_lon = math.radians(float(lon2) - float(lon1))
+        a = (
+            math.sin(d_lat / 2) ** 2
+            + math.cos(math.radians(float(lat1)))
+            * math.cos(math.radians(float(lat2)))
+            * (math.sin(d_lon / 2) ** 2)
+        )
+        return 3958.7613 * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
+    except Exception:
+        return float("nan")
+
+
+_MP5_METHOD_WEIGHTS: dict[str, float] = {
+    "spatial boundary (code)": 1.00,
+    "spatial boundary (name)": 0.94,
+    "spatial boundary (fuzzy)": 0.78,
+}
+
+
+def _mp5_method_weight(method: str) -> float:
+    m = str(method).strip().lower()
+    w = _MP5_METHOD_WEIGHTS.get(m)
+    if w is not None:
+        return w
+    if "name + geocode context" in m:
+        return 0.62
+    if "name anchored" in m:
+        return 0.50
+    return 0.66
+
+
+_MP5_CONFIDENCE_WEIGHTS: dict[str, float] = {
+    "high": 1.00,
+    "medium": 0.72,
+    "low": 0.46,
+    "unknown": 0.28,
+}
+
+
+def _mp5_confidence_weight(conf: str) -> float:
+    return _MP5_CONFIDENCE_WEIGHTS.get(str(conf).strip().lower(), 0.30)
+
+
+def _mp5_priority_from_score(score: float) -> str:
+    value = float(score or 0.0)
+    if value >= 78:
+        return "Tier 1"
+    if value >= 58:
+        return "Tier 2"
+    return "Tier 3"
+
+
+def _mp5_geocode_badge(score, floor: float) -> str:
+    if score is None:
+        return '<span class="mp5-badge mp5-badge-mid">Coordinate mode</span>'
+    s = float(score)
+    if s >= floor:
+        return f'<span class="mp5-badge mp5-badge-high">Geocode {s:.0f}</span>'
+    if s >= 70:
+        return f'<span class="mp5-badge mp5-badge-mid">Geocode {s:.0f} \u2014 below floor</span>'
+    return f'<span class="mp5-badge mp5-badge-low">Geocode {s:.0f} \u2014 weak</span>'
+
+
+def _mp5_tier_html(tier: str) -> str:
+    cls = {"Tier 1": "mp5-tier1", "Tier 2": "mp5-tier2"}.get(tier, "mp5-tier3")
+    return f'<span class="{cls}">{html.escape(tier)}</span>'
+
+
+# =========================================================
+# PERFORMANCE: Cached helpers for map-address page
+# =========================================================
+
+@st.cache_data(show_spinner=False, ttl=600, max_entries=4)
+def _map_scoped_totals(workbook_path: str, scope: str, session_for_filter: str | None) -> pd.DataFrame:
+    """Cache the groupby totals computation for map-address scope."""
+    data = load_workbook(workbook_path)
+    scoped = data["Lobby_TFL_Client_All"].copy()
+    scoped["Session"] = scoped["Session"].astype(str).str.strip()
+    if scope == "This Session" and session_for_filter is not None:
+        scoped = scoped[scoped["Session"] == str(session_for_filter)]
+    scoped = ensure_cols(scoped, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0, "LobbyShort": ""})
+    scoped = scoped[scoped["Client"].fillna("").astype(str).str.strip() != ""]
+    if scoped.empty:
+        return pd.DataFrame(columns=["Client", "Low", "High", "Lobbyists", "IsTFL"])
+    return scoped.groupby("Client", as_index=False).agg(
+        Low=("Low_num", "sum"),
+        High=("High_num", "sum"),
+        Lobbyists=("LobbyShort", lambda s: s.dropna().astype(str).nunique()),
+        IsTFL=("IsTFL", "max"),
+    )
+
+
+@st.cache_data(show_spinner=False, ttl=600, max_entries=4)
+def _map_tfl_spend_and_names(totals: pd.DataFrame) -> tuple[pd.DataFrame, tuple[str, ...]]:
+    """Cache TFL spend extraction + entity classification + sorted name tuple."""
+    tfl_spend = totals[totals.get("IsTFL", 0) == 1] if not totals.empty else pd.DataFrame()
+    if not tfl_spend.empty:
+        tfl_spend["Client"] = tfl_spend["Client"].fillna("").astype(str).str.strip()
+        tfl_spend = tfl_spend[tfl_spend["Client"] != ""]
+        tfl_spend["Low"] = pd.to_numeric(tfl_spend["Low"], errors="coerce").fillna(0.0)
+        tfl_spend["High"] = pd.to_numeric(tfl_spend["High"], errors="coerce").fillna(0.0)
+        tfl_spend["Entity Type"] = tfl_spend["Client"].map(classify_requested_entity_type)
+    names = tuple(sorted({
+        str(v).strip()
+        for v in tfl_spend.get("Client", pd.Series(dtype=object)).dropna().astype(str).tolist()
+        if str(v).strip()
+    }))
+    return tfl_spend, names
+
+
+@st.cache_data(show_spinner=False, ttl=600, max_entries=4)
+def _map_coverage_metrics(
+    subdivision_matches: pd.DataFrame, tfl_spend: pd.DataFrame,
+) -> tuple[set[str], int, float, float, float, int]:
+    """Cache coverage metrics: matched_clients, total_tfl, total_high, mapped_high, mapped_rate, unmapped."""
+    matched_clients: set[str] = set()
+    if not subdivision_matches.empty:
+        for vals in subdivision_matches.get("match_clients", pd.Series(dtype=object)).tolist():
+            if isinstance(vals, list):
+                matched_clients.update({str(v).strip() for v in vals if str(v).strip()})
+    total_tfl = int(tfl_spend["Client"].astype(str).nunique()) if not tfl_spend.empty else 0
+    total_high = float(pd.to_numeric(tfl_spend.get("High", 0.0), errors="coerce").fillna(0.0).sum()) if not tfl_spend.empty else 0.0
+    mapped_high = float(
+        pd.to_numeric(
+            tfl_spend[tfl_spend["Client"].astype(str).isin(matched_clients)]["High"],
+            errors="coerce",
+        ).fillna(0.0).sum()
+    ) if not tfl_spend.empty and matched_clients else 0.0
+    mapped_rate = (len(matched_clients) / total_tfl) if total_tfl else 0.0
+    unmapped_count = max(0, total_tfl - len(matched_clients))
+    return matched_clients, total_tfl, total_high, mapped_high, mapped_rate, unmapped_count
+
+
+@_safe_page("Map & Address Full")
 def _page_map_address_full_pass():
     """Map & Address — v5 ground-up redesign."""
 
-    # ── page header ──────────────────────────────────────────────────
+    # -- page header --------------------------------------------------
     _render_page_intro(
         kicker="Geospatial Intelligence Hub",
         title="Map & Address",
@@ -8300,11 +8530,11 @@ def _page_map_address_full_pass():
         ),
     )
 
-    # ── v5 CSS design tokens ─────────────────────────────────────────
+    # -- v5 CSS design tokens -----------------------------------------
     st.markdown(
         """
 <style>
-/* ── mp5 shell ─────────────────────────────────────────── */
+/* -- mp5 shell ------------------------------------------- */
 .mp5-glass{
   border:1px solid rgba(130,219,248,.22);
   border-radius:20px;
@@ -8343,7 +8573,7 @@ def _page_map_address_full_pass():
   margin-top:4px;
   line-height:1.45;
 }
-/* ── metric grid ───────────────────────────────────────── */
+/* -- metric grid ----------------------------------------- */
 .mp5-metrics{
   display:grid;
   gap:10px;
@@ -8381,7 +8611,7 @@ def _page_map_address_full_pass():
   color:rgba(195,220,236,.78);
   line-height:1.35;
 }
-/* ── context anchor ────────────────────────────────────── */
+/* -- context anchor -------------------------------------- */
 .mp5-anchor{
   border:1px solid rgba(255,255,255,.13);
   border-left:3px solid rgba(0,224,184,.82);
@@ -8399,7 +8629,7 @@ def _page_map_address_full_pass():
   font-size:.84rem;
   margin-top:6px;
 }
-/* ── badges ────────────────────────────────────────────── */
+/* -- badges ---------------------------------------------- */
 .mp5-badge{
   display:inline-block;
   padding:3px 10px;
@@ -8423,17 +8653,17 @@ def _page_map_address_full_pass():
   background:rgba(247,85,97,.13);
   color:rgba(255,220,223,.96);
 }
-/* ── tier badges ───────────────────────────────────────── */
+/* -- tier badges ----------------------------------------- */
 .mp5-tier1{color:#6ee7b7;font-weight:700;}
 .mp5-tier2{color:#fcd34d;font-weight:700;}
 .mp5-tier3{color:#fca5a5;font-weight:700;}
-/* ── section divider ───────────────────────────────────── */
+/* -- section divider ------------------------------------- */
 .mp5-divider{
   border:0;
   border-top:1px solid rgba(255,255,255,.08);
   margin:18px 0 14px 0;
 }
-/* ── narrative callout ─────────────────────────────────── */
+/* -- narrative callout ----------------------------------- */
 .mp5-narrative{
   border-left:3px solid rgba(100,180,255,.55);
   padding:8px 12px;
@@ -8444,7 +8674,7 @@ def _page_map_address_full_pass():
   line-height:1.5;
   margin:8px 0;
 }
-/* ── plotly chart container ────────────────────────────── */
+/* -- plotly chart container ------------------------------ */
 .mp5-chart-wrap{
   border:1px solid rgba(255,255,255,.10);
   border-radius:14px;
@@ -8453,9 +8683,9 @@ def _page_map_address_full_pass():
   margin-top:8px;
 }
 
-/* ══ v6 ENHANCED DESIGN TOKENS ═══════════════════════════ */
+/* -- v6 ENHANCED DESIGN TOKENS --------------------------- */
 
-/* ── animated gradient border cards ────────────────────── */
+/* -- animated gradient border cards ---------------------- */
 .mp5-card{
   position:relative;
   overflow:hidden;
@@ -8478,7 +8708,7 @@ def _page_map_address_full_pass():
 }
 .mp5-card:hover::after{ opacity:1; }
 
-/* ── progress / health bar ─────────────────────────────── */
+/* -- progress / health bar ------------------------------- */
 .mp5-health{
   margin:12px 0 8px 0;
 }
@@ -8516,7 +8746,7 @@ def _page_map_address_full_pass():
   background:linear-gradient(90deg,#ef4444,#fca5a5);
 }
 
-/* ── quick preset buttons ──────────────────────────────── */
+/* -- quick preset buttons -------------------------------- */
 .mp5-preset-row{
   display:flex;
   flex-wrap:wrap;
@@ -8549,7 +8779,7 @@ def _page_map_address_full_pass():
   color:#6ee7b7;
 }
 
-/* ── evidence quality meter ────────────────────────────── */
+/* -- evidence quality meter ------------------------------ */
 .mp5-meter{
   display:flex;
   align-items:center;
@@ -8597,7 +8827,7 @@ def _page_map_address_full_pass():
   line-height:1.38;
 }
 
-/* ── status tags for case docket ───────────────────────── */
+/* -- status tags for case docket ------------------------- */
 .mp5-status{
   display:inline-flex;
   align-items:center;
@@ -8624,7 +8854,7 @@ def _page_map_address_full_pass():
   color:rgba(220,255,240,.96);
 }
 
-/* ── section hero banner ───────────────────────────────── */
+/* -- section hero banner --------------------------------- */
 .mp5-section-hero{
   position:relative;
   overflow:hidden;
@@ -8659,7 +8889,7 @@ def _page_map_address_full_pass():
   margin-bottom:6px;
 }
 
-/* ── gap alert card ────────────────────────────────────── */
+/* -- gap alert card -------------------------------------- */
 .mp5-gap-alert{
   display:flex;
   align-items:flex-start;
@@ -8696,7 +8926,7 @@ def _page_map_address_full_pass():
   margin-top:2px;
 }
 
-/* ── info/action strip ─────────────────────────────────── */
+/* -- info/action strip ----------------------------------- */
 .mp5-action-strip{
   display:flex;
   flex-wrap:wrap;
@@ -8716,7 +8946,7 @@ def _page_map_address_full_pass():
   color:rgba(180,216,235,.72);
 }
 
-/* ── summary snapshot card ─────────────────────────────── */
+/* -- summary snapshot card ------------------------------- */
 .mp5-snapshot{
   border:1px solid rgba(130,219,248,.24);
   border-radius:16px;
@@ -8758,7 +8988,7 @@ def _page_map_address_full_pass():
   margin-top:1px;
 }
 
-/* ── cross-tab navigation strips ──────────────────────── */
+/* -- cross-tab navigation strips ------------------------ */
 .mp5-crosslink{
   display:flex;
   flex-wrap:wrap;
@@ -8824,7 +9054,7 @@ def _page_map_address_full_pass():
   color:rgba(210,230,245,.45);
 }
 
-/* ── responsive refinements ────────────────────────────── */
+/* -- responsive refinements ------------------------------ */
 @media (max-width:768px){
   .mp5-metrics{ grid-template-columns:repeat(2,minmax(0,1fr)); }
   .mp5-preset-row{ gap:4px; }
@@ -8838,7 +9068,7 @@ def _page_map_address_full_pass():
         unsafe_allow_html=True,
     )
 
-    # ── data gate ────────────────────────────────────────────────────
+    # -- data gate ----------------------------------------------------
     if not PATH:
         st.error("Data path not configured. Set DATA_PATH.")
         st.stop()
@@ -8854,7 +9084,7 @@ def _page_map_address_full_pass():
         .dropna().astype(str).str.strip().unique().tolist()
     )
 
-    # ── session-state defaults ───────────────────────────────────────
+    # -- session-state defaults ---------------------------------------
     defaults = {
         "map_scope": "This Session",
         "map_session": None,
@@ -8922,7 +9152,7 @@ def _page_map_address_full_pass():
     }:
         st.session_state.map_session = default_session
 
-    # ── workspace helpers ────────────────────────────────────────────
+    # -- workspace helpers --------------------------------------------
     def _reset_workspace() -> None:
         for key, default in defaults.items():
             if isinstance(default, list):
@@ -8957,7 +9187,7 @@ def _page_map_address_full_pass():
         ctx_name = html.escape(str(ctx.get("subdivision_name", "")).strip(), quote=True) if has_ctx else ""
         ctx_type = html.escape(str(ctx.get("subdivision_type", "")).strip(), quote=True) if has_ctx else ""
         ctx_badge = (
-            f'<span class="mp5-context-badge">\U0001F4CD {ctx_type} · {ctx_name}</span>'
+            f'<span class="mp5-context-badge">\U0001F4CD {ctx_type} — {ctx_name}</span>'
             if has_ctx
             else '<span class="mp5-context-badge empty">No subdivision context</span>'
         )
@@ -8976,67 +9206,9 @@ def _page_map_address_full_pass():
             unsafe_allow_html=True,
         )
 
-    def _miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        try:
-            d_lat = math.radians(float(lat2) - float(lat1))
-            d_lon = math.radians(float(lon2) - float(lon1))
-            a = (
-                math.sin(d_lat / 2) ** 2
-                + math.cos(math.radians(float(lat1)))
-                * math.cos(math.radians(float(lat2)))
-                * (math.sin(d_lon / 2) ** 2)
-            )
-            return 3958.7613 * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
-        except Exception:
-            return float("nan")
-
-    def _method_weight(method: str) -> float:
-        m = str(method).strip().lower()
-        if m == "spatial boundary (code)":
-            return 1.00
-        if m == "spatial boundary (name)":
-            return 0.94
-        if m == "spatial boundary (fuzzy)":
-            return 0.78
-        if "name + geocode context" in m:
-            return 0.62
-        if "name anchored" in m:
-            return 0.50
-        return 0.66
-
-    def _confidence_weight(conf: str) -> float:
-        return {
-            "high": 1.00,
-            "medium": 0.72,
-            "low": 0.46,
-            "unknown": 0.28,
-        }.get(str(conf).strip().lower(), 0.30)
-
-    def _priority_from_score(score: float) -> str:
-        value = float(score or 0.0)
-        if value >= 78:
-            return "Tier 1"
-        if value >= 58:
-            return "Tier 2"
-        return "Tier 3"
-
-    def _geocode_badge(score, floor: float) -> str:
-        if score is None:
-            return '<span class="mp5-badge mp5-badge-mid">Coordinate mode</span>'
-        s = float(score)
-        if s >= floor:
-            return f'<span class="mp5-badge mp5-badge-high">Geocode {s:.0f}</span>'
-        if s >= 70:
-            return f'<span class="mp5-badge mp5-badge-mid">Geocode {s:.0f} — below floor</span>'
-        return f'<span class="mp5-badge mp5-badge-low">Geocode {s:.0f} — weak</span>'
-
-    def _tier_html(tier: str) -> str:
-        cls = {"Tier 1": "mp5-tier1", "Tier 2": "mp5-tier2"}.get(tier, "mp5-tier3")
-        return f'<span class="{cls}">{html.escape(tier)}</span>'
-
-    # ══════════════════════════════════════════════════════════════════
+    # ------------------------------------------------------------------
     # COMMAND DECK
-    # ══════════════════════════════════════════════════════════════════
+    # ------------------------------------------------------------------
     st.markdown('<div class="mp5-glass">', unsafe_allow_html=True)
     st.markdown(
         '<div class="mp5-kicker">Command Deck</div>'
@@ -9073,7 +9245,7 @@ def _page_map_address_full_pass():
         st.slider("Geocode floor", 60, 99, key="map_geocode_floor")
     with c5:
         st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
-        if st.button("⟳ Reset", key="map_reset_workspace_btn_v4", use_container_width=True):
+        if st.button("? Reset", key="map_reset_workspace_btn_v4", use_container_width=True):
             _reset_workspace()
             st.rerun()
 
@@ -9086,7 +9258,7 @@ def _page_map_address_full_pass():
         with a3:
             st.number_input("Map point cap", min_value=100, max_value=1600, step=50, key="map_subdivision_map_cap")
 
-    # ── active filter summary chips ──────────────────────────────────
+    # -- active filter summary chips ----------------------------------
     _active_chips = [
         f"Session: {html.escape(_session_label(st.session_state.map_session))}",
         f"Scope: {html.escape(st.session_state.map_scope)}",
@@ -9101,7 +9273,7 @@ def _page_map_address_full_pass():
         _active_chips.append(f"Distance cap: {_dist_cap} mi")
     _ctx_v6 = st.session_state.get("map_selected_subdivision_context", {})
     if isinstance(_ctx_v6, dict) and str(_ctx_v6.get("subdivision_name", "")).strip():
-        _active_chips.append(f"Context: {html.escape(str(_ctx_v6.get('subdivision_type', '')).strip())} · {html.escape(str(_ctx_v6.get('subdivision_name', '')).strip())}")
+        _active_chips.append(f"Context: {html.escape(str(_ctx_v6.get('subdivision_type', '')).strip())} — {html.escape(str(_ctx_v6.get('subdivision_name', '')).strip())}")
     _watchlist_count = len(st.session_state.get("map_watchlist", []))
     if _watchlist_count > 0:
         _active_chips.append(f"Docket: {_watchlist_count:,} entities")
@@ -9116,41 +9288,12 @@ def _page_map_address_full_pass():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # ── scope + coverage data ────────────────────────────────────────
-    scoped = base.copy()
-    scoped["Session"] = scoped["Session"].astype(str).str.strip()
+    # -- scope + coverage data (CACHED) -------------------------------
     session_for_filter = _tfl_session_for_filter(
         st.session_state.map_session, tfl_sessions,
     )
-    if st.session_state.map_scope == "This Session" and session_for_filter is not None:
-        scoped = scoped[scoped["Session"] == str(session_for_filter)].copy()
-    scoped = ensure_cols(scoped, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0, "LobbyShort": ""})
-    scoped = scoped[scoped["Client"].fillna("").astype(str).str.strip() != ""].copy()
-
-    totals = (
-        scoped.groupby("Client", as_index=False).agg(
-            Low=("Low_num", "sum"),
-            High=("High_num", "sum"),
-            Lobbyists=("LobbyShort", lambda s: s.dropna().astype(str).nunique()),
-            IsTFL=("IsTFL", "max"),
-        )
-        if not scoped.empty
-        else pd.DataFrame(columns=["Client", "Low", "High", "Lobbyists", "IsTFL"])
-    )
-
-    tfl_spend = totals[totals.get("IsTFL", 0) == 1].copy() if not totals.empty else pd.DataFrame()
-    if not tfl_spend.empty:
-        tfl_spend["Client"] = tfl_spend["Client"].fillna("").astype(str).str.strip()
-        tfl_spend = tfl_spend[tfl_spend["Client"] != ""].copy()
-        tfl_spend["Low"] = pd.to_numeric(tfl_spend["Low"], errors="coerce").fillna(0.0)
-        tfl_spend["High"] = pd.to_numeric(tfl_spend["High"], errors="coerce").fillna(0.0)
-        tfl_spend["Entity Type"] = tfl_spend["Client"].map(classify_requested_entity_type)
-
-    names = tuple(sorted({
-        str(v).strip()
-        for v in tfl_spend.get("Client", pd.Series(dtype=object)).dropna().astype(str).tolist()
-        if str(v).strip()
-    }))
+    totals = _map_scoped_totals(PATH, st.session_state.map_scope, session_for_filter)
+    tfl_spend, names = _map_tfl_spend_and_names(totals)
     subdivision_matches = build_tfl_political_subdivision_matches(names) if names else pd.DataFrame()
     subdivision_matches = _attach_subdivision_spend_totals(subdivision_matches, totals)
     if not subdivision_matches.empty:
@@ -9163,23 +9306,9 @@ def _page_map_address_full_pass():
         subdivision_matches["high_total"] = pd.to_numeric(
             subdivision_matches.get("high_total", 0.0), errors="coerce",
         ).fillna(0.0)
-
-    matched_clients: set[str] = set()
-    if not subdivision_matches.empty:
-        for vals in subdivision_matches.get("match_clients", pd.Series(dtype=object)).tolist():
-            if isinstance(vals, list):
-                matched_clients.update({str(v).strip() for v in vals if str(v).strip()})
-
-    total_tfl = int(tfl_spend["Client"].astype(str).nunique()) if not tfl_spend.empty else 0
-    total_high = float(pd.to_numeric(tfl_spend.get("High", 0.0), errors="coerce").fillna(0.0).sum()) if not tfl_spend.empty else 0.0
-    mapped_high = float(
-        pd.to_numeric(
-            tfl_spend[tfl_spend["Client"].astype(str).isin(matched_clients)]["High"],
-            errors="coerce",
-        ).fillna(0.0).sum()
-    ) if not tfl_spend.empty and matched_clients else 0.0
-    mapped_rate = (len(matched_clients) / total_tfl) if total_tfl else 0.0
-    unmapped_count = max(0, total_tfl - len(matched_clients))
+    matched_clients, total_tfl, total_high, mapped_high, mapped_rate, unmapped_count = _map_coverage_metrics(
+        subdivision_matches, tfl_spend,
+    )
 
     # top hotspot
     top_hotspot = (
@@ -9193,14 +9322,14 @@ def _page_map_address_full_pass():
     hotspot_high = 0.0
     if not top_hotspot.empty:
         hotspot_label = (
-            f"{str(top_hotspot.iloc[0].get('subdivision_type', '')).strip()} · "
+            f"{str(top_hotspot.iloc[0].get('subdivision_type', '')).strip()} — "
             f"{str(top_hotspot.iloc[0].get('subdivision_name', '')).strip()}"
         )
         hotspot_high = float(top_hotspot.iloc[0].get("high_total", 0.0) or 0.0)
 
-    # ══════════════════════════════════════════════════════════════════
+    # ------------------------------------------------------------------
     # SITUATION DASHBOARD
-    # ══════════════════════════════════════════════════════════════════
+    # ------------------------------------------------------------------
     st.markdown('<div class="mp5-glass-inner">', unsafe_allow_html=True)
     st.markdown(
         '<div class="mp5-kicker">Situation Dashboard</div>'
@@ -9232,7 +9361,7 @@ def _page_map_address_full_pass():
         )
     st.markdown(f'<div class="mp5-narrative">{coverage_narrative}</div>', unsafe_allow_html=True)
 
-    # ── visual coverage health bar ───────────────────────────────────
+    # -- visual coverage health bar -----------------------------------
     _health_pct = min(100.0, mapped_rate * 100.0)
     _health_cls = "is-strong" if mapped_rate >= 0.70 else ("is-moderate" if mapped_rate >= 0.40 else "is-weak")
     _spend_pct = min(100.0, ((mapped_high / total_high) * 100.0) if total_high else 0.0)
@@ -9284,7 +9413,7 @@ def _page_map_address_full_pass():
         unsafe_allow_html=True,
     )
 
-    # ── top coverage gaps alert ──────────────────────────────────────
+    # -- top coverage gaps alert --------------------------------------
     _unmapped_tfl_names = set()
     if not tfl_spend.empty:
         _all_tfl_names_dash = {
@@ -9294,15 +9423,15 @@ def _page_map_address_full_pass():
         }
         _unmapped_tfl_names = _all_tfl_names_dash - matched_clients
     if _unmapped_tfl_names:
-        _gap_df = tfl_spend[tfl_spend["Client"].astype(str).isin(_unmapped_tfl_names)].copy()
+        _gap_df = tfl_spend[tfl_spend["Client"].astype(str).isin(_unmapped_tfl_names)]
         _gap_df = _gap_df.sort_values("High", ascending=False).head(5)
         _gap_items_html = ""
-        for _, _gap_row in _gap_df.iterrows():
+        for _gap_rec in _gap_df.to_dict("records"):
             _gap_items_html += (
                 f'<div style="display:flex;justify-content:space-between;font-size:.76rem;'
                 f'padding:2px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
-                f'<span style="color:rgba(255,220,223,.88)">{html.escape(str(_gap_row["Client"]).strip())}</span>'
-                f'<span style="color:rgba(247,186,189,.78)">{fmt_usd(float(_gap_row.get("High", 0.0) or 0.0))}</span>'
+                f'<span style="color:rgba(255,220,223,.88)">{html.escape(str(_gap_rec["Client"]).strip())}</span>'
+                f'<span style="color:rgba(247,186,189,.78)">{fmt_usd(float(_gap_rec.get("High", 0.0) or 0.0))}</span>'
                 f'</div>'
             )
         st.markdown(
@@ -9319,10 +9448,10 @@ def _page_map_address_full_pass():
             unsafe_allow_html=True,
         )
 
-    # ── coverage distribution in two columns ─────────────────────────
+    # -- coverage distribution in two columns -------------------------
     _dash_left, _dash_right = st.columns([1.4, 1.0], gap="large")
 
-    # ── coverage distribution mini-chart ─────────────────────────────
+    # -- coverage distribution mini-chart -----------------------------
     if not subdivision_matches.empty:
         type_dist = (
             subdivision_matches.groupby(
@@ -9363,7 +9492,7 @@ def _page_map_address_full_pass():
                 st.markdown("</div>", unsafe_allow_html=True)
 
         with _dash_right:
-            # ── entity type breakdown (top 8) ────────────────────────
+            # -- entity type breakdown (top 8) ------------------------
             if not tfl_spend.empty and "Entity Type" in tfl_spend.columns:
                 _etype_summary = (
                     tfl_spend.groupby("Entity Type", as_index=False)
@@ -9406,27 +9535,27 @@ def _page_map_address_full_pass():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════════════════════════
+    # ------------------------------------------------------------------
     # TABS (with count badges)
-    # ══════════════════════════════════════════════════════════════════
+    # ------------------------------------------------------------------
     _atlas_count = len(subdivision_matches) if not subdivision_matches.empty else 0
     _docket_count = len(st.session_state.get("map_watchlist", []))
-    _atlas_label = f"🗺️  Coverage Atlas ({_atlas_count:,})"
-    _forensics_label = "🔬  Address Forensics"
-    _docket_label = f"📋  Case Docket ({_docket_count:,})" if _docket_count else "📋  Case Docket"
+    _atlas_label = f"\U0001f5fa\ufe0f Coverage Atlas ({_atlas_count:,})"
+    _forensics_label = "\U0001f50d Address Forensics"
+    _docket_label = f"\U0001f4cb Case Docket ({_docket_count:,})" if _docket_count else "\U0001f4cb Case Docket"
     tab_cov, tab_forensics, tab_docket = st.tabs([
         _atlas_label,
         _forensics_label,
         _docket_label,
     ])
 
-    # ══════════════════════════════════════════════════════════════════
+    # ------------------------------------------------------------------
     # TAB 1 — COVERAGE ATLAS
-    # ══════════════════════════════════════════════════════════════════
+    # ------------------------------------------------------------------
     with tab_cov:
-        # ── cross-context banner ─────────────────────────────────────
+        # -- cross-context banner -------------------------------------
         _render_cross_context_banner("atlas")
-        # ── section hero ─────────────────────────────────────────────
+        # -- section hero ---------------------------------------------
         st.markdown(
             f"""
 <div class="mp5-section-hero">
@@ -9473,7 +9602,7 @@ def _page_map_address_full_pass():
             if st.session_state.get("map_subdivision_sort_v4") not in sort_options:
                 st.session_state.map_subdivision_sort_v4 = "Highest Signal"
 
-            # ── atlas filters ────────────────────────────────────────
+            # -- atlas filters ----------------------------------------
             st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
 
             # quick-filter presets
@@ -9512,19 +9641,19 @@ def _page_map_address_full_pass():
             with f4:
                 st.selectbox("Sort", sort_options, key="map_subdivision_sort_v4")
 
-            # ── apply filters ────────────────────────────────────────
+            # -- apply filters ----------------------------------------
             filtered_cov = subdivision_matches.copy()
             selected_types = st.session_state.get("map_subdivision_types_filter", [])
             if selected_types:
                 filtered_cov = filtered_cov[
                     filtered_cov["subdivision_type"].astype(str).isin(selected_types)
-                ].copy()
+                ]
             else:
-                filtered_cov = filtered_cov.iloc[0:0].copy()
+                filtered_cov = filtered_cov.iloc[0:0]
             filtered_cov = filtered_cov[
                 pd.to_numeric(filtered_cov["match_count"], errors="coerce").fillna(0)
                 >= int(st.session_state.get("map_min_match_count", 1))
-            ].copy()
+            ]
 
             query = str(st.session_state.get("map_subdivision_name_filter", "")).strip().lower()
             if query:
@@ -9535,13 +9664,10 @@ def _page_map_address_full_pass():
                 filtered_cov = filtered_cov[
                     filtered_cov["subdivision_name"].astype(str).str.lower().str.contains(query, na=False)
                     | preview_col.str.lower().str.contains(query, na=False)
-                ].copy()
+                ]
 
-            filtered_cov["_signal"] = filtered_cov["high_total"] * (
-                1 + pd.to_numeric(filtered_cov["match_count"], errors="coerce").fillna(0).map(
-                    lambda x: math.log1p(max(float(x), 0.0))
-                )
-            )
+            _mc = pd.to_numeric(filtered_cov["match_count"], errors="coerce").fillna(0).clip(lower=0)
+            filtered_cov["_signal"] = filtered_cov["high_total"] * (1 + _mc.map(math.log1p))
             sort_mode = st.session_state.get("map_subdivision_sort_v4", "Highest Signal")
             if sort_mode == "Highest High":
                 filtered_cov = filtered_cov.sort_values(["high_total", "match_count"], ascending=[False, False])
@@ -9552,7 +9678,7 @@ def _page_map_address_full_pass():
             else:
                 filtered_cov = filtered_cov.sort_values(["_signal", "high_total"], ascending=[False, False])
 
-            # ── atlas KPI row ────────────────────────────────────────
+            # -- atlas KPI row ----------------------------------------
             cov_total_high_filtered = float(filtered_cov["high_total"].sum()) if not filtered_cov.empty else 0.0
             cov_total_low_filtered = float(filtered_cov["low_total"].sum()) if not filtered_cov.empty else 0.0
             cov_entity_count = 0
@@ -9578,7 +9704,7 @@ def _page_map_address_full_pass():
                 unsafe_allow_html=True,
             )
 
-            # ── map + context picker ─────────────────────────────────
+            # -- map + context picker ---------------------------------
             left, right = st.columns([1.65, 1.0], gap="large")
             with left:
                 if filtered_cov.empty:
@@ -9597,7 +9723,7 @@ def _page_map_address_full_pass():
                     render_tfl_subdivision_arcgis_map(
                         filtered_cov.head(cap), height=630, basemap=active_basemap,
                     )
-                    # ── Invisible bridge: receives addresses from map and routes to session state ──
+                    # -- Invisible bridge: receives addresses from map and routes to session state --
                     _bridge_result = _atlas_bridge(default=None, key="_tfl_atlas_bridge_v2")
                     if _bridge_result and isinstance(_bridge_result, dict):
                         _br_nonce = _bridge_result.get("nonce", 0)
@@ -9637,7 +9763,7 @@ def _page_map_address_full_pass():
                 for row in filtered_cov.head(350).itertuples(index=False):
                     code = str(getattr(row, "subdivision_code", "")).strip() or "N/A"
                     label = (
-                        f"{str(getattr(row, 'subdivision_type', '')).strip()} · "
+                        f"{str(getattr(row, 'subdivision_type', '')).strip()} — "
                         f"{str(getattr(row, 'subdivision_name', '')).strip()} ({code})"
                     )
                     labels_atlas.append(label)
@@ -9699,9 +9825,9 @@ def _page_map_address_full_pass():
                     st.markdown(
                         f"""
 <div class="mp5-anchor">
-  <strong>{html.escape(str(ctx.get("subdivision_type", "")), quote=True)} · {html.escape(str(ctx.get("subdivision_name", "")), quote=True)}</strong><br>
+  <strong>{html.escape(str(ctx.get("subdivision_type", "")), quote=True)} — {html.escape(str(ctx.get("subdivision_name", "")), quote=True)}</strong><br>
   Code: {html.escape(str(ctx.get("subdivision_code", "") or "N/A"), quote=True)}<br>
-  Matched entities: <strong>{int(ctx.get("match_count", 0) or 0):,}</strong> · High estimate: <strong>{fmt_usd(float(ctx.get("high_total", 0.0) or 0.0))}</strong><br>
+  Matched entities: <strong>{int(ctx.get("match_count", 0) or 0):,}</strong> — High estimate: <strong>{fmt_usd(float(ctx.get("high_total", 0.0) or 0.0))}</strong><br>
   <span style="font-size:.74rem;color:rgba(195,220,236,.72)">Clients: {html.escape(_ctx_preview or "None", quote=True)}</span>
 </div>
 """,
@@ -9741,7 +9867,7 @@ def _page_map_address_full_pass():
                                     "Boundary Share": 0.0,
                                     "Avg Distance (mi)": float("nan"),
                                     "Overlap Rows": 0,
-                                    "Source Query": f"Coverage Atlas: {str(ctx.get('subdivision_type', '')).strip()} · {str(ctx.get('subdivision_name', '')).strip()}",
+                                    "Source Query": f"Coverage Atlas: {str(ctx.get('subdivision_type', '')).strip()} — {str(ctx.get('subdivision_name', '')).strip()}",
                                     "Status": "New",
                                     "Notes": "",
                                 })
@@ -9772,14 +9898,14 @@ def _page_map_address_full_pass():
                         .sort_values("High", ascending=False)
                     )
                     if not _atlas_type_summary.empty:
-                        _atlas_type_summary["High"] = _atlas_type_summary["High"].apply(fmt_usd)
+                        _atlas_type_summary["High"] = _atlas_type_summary["High"].map(fmt_usd)
                         st.markdown(
                             '<div class="mp5-kicker" style="margin-top:10px;margin-bottom:4px">Type Summary</div>',
                             unsafe_allow_html=True,
                         )
                         st.dataframe(_atlas_type_summary, use_container_width=True, height=min(200, len(_atlas_type_summary) * 40 + 40), hide_index=True)
 
-            # ── atlas charts ─────────────────────────────────────────
+            # -- atlas charts -----------------------------------------
             st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
             _atlas_chart_left, _atlas_chart_right = st.columns(2, gap="medium")
 
@@ -9839,7 +9965,7 @@ def _page_map_address_full_pass():
                         st.plotly_chart(fig_hist, use_container_width=True, key="mp5_atlas_hist")
                         st.markdown('</div>', unsafe_allow_html=True)
 
-            # ── atlas data table ─────────────────────────────────────
+            # -- atlas data table -------------------------------------
             cov_view = filtered_cov[
                 ["subdivision_type", "subdivision_name", "subdivision_code", "match_count", "high_total", "source_name"]
             ].rename(columns={
@@ -9853,7 +9979,7 @@ def _page_map_address_full_pass():
             st.dataframe(cov_view, use_container_width=True, height=300, hide_index=True)
             _ = export_dataframe(cov_view, "coverage_atlas.csv", label="Download Coverage Atlas CSV")
 
-            # ── atlas cross-navigation strip ─────────────────────────
+            # -- atlas cross-navigation strip -------------------------
             st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
             st.markdown(
                 '<div class="mp5-crosslink">'
@@ -9906,15 +10032,15 @@ def _page_map_address_full_pass():
                             "Boundary Share": 0.0,
                             "Avg Distance (mi)": float("nan"),
                             "Overlap Rows": 0,
-                            "Source Query": f"Coverage Atlas: {ctx_type} · {ctx_name}",
+                            "Source Query": f"Coverage Atlas: {ctx_type} — {ctx_name}",
                             "Status": "New",
-                            "Notes": f"Promoted from Coverage Atlas ({ctx_type} · {ctx_name})",
+                            "Notes": f"Promoted from Coverage Atlas ({ctx_type} — {ctx_name})",
                         })
                         existing.add(k)
                         added += 1
                     st.session_state.map_watchlist = watch
                     if added:
-                        st.success(f"Promoted {added:,} entities to Case Docket from {ctx_type} · {ctx_name}.")
+                        st.success(f"Promoted {added:,} entities to Case Docket from {ctx_type} — {ctx_name}.")
                     else:
                         st.info("All entities from this context are already in the docket.")
             with _ax3:
@@ -9927,13 +10053,13 @@ def _page_map_address_full_pass():
                 ):
                     st.info("Switch to the **Case Docket** tab above to review and manage your queued entities.")
 
-    # ══════════════════════════════════════════════════════════════════
+    # ------------------------------------------------------------------
     # TAB 2 — ADDRESS FORENSICS
-    # ══════════════════════════════════════════════════════════════════
+    # ------------------------------------------------------------------
     with tab_forensics:
-        # ── cross-context banner ─────────────────────────────────────
+        # -- cross-context banner -------------------------------------
         _render_cross_context_banner("forensics")
-        # ── section hero ─────────────────────────────────────────────
+        # -- section hero ---------------------------------------------
         st.markdown(
             f"""
 <div class="mp5-section-hero">
@@ -9967,7 +10093,7 @@ def _page_map_address_full_pass():
         overlap_points = pd.DataFrame()
         overlap_spend = pd.DataFrame()
 
-        # ── input panel + context sidebar ────────────────────────────
+        # -- input panel + context sidebar ----------------------------
         lcol, rcol = st.columns([1.1, 1.7], gap="large")
         with lcol:
             # context badge
@@ -9976,7 +10102,7 @@ def _page_map_address_full_pass():
                 if len(selected_clients) > 4:
                     _ctx_client_preview += f" +{len(selected_clients) - 4}"
                 st.markdown(
-                    f'<div class="mp5-anchor"><strong>{html.escape(selected_type, quote=True)} · '
+                    f'<div class="mp5-anchor"><strong>{html.escape(selected_type, quote=True)} — '
                     f"{html.escape(selected_name, quote=True)}</strong><br>"
                     f"Context clients: <strong>{len(selected_clients):,}</strong><br>"
                     f'<span style="font-size:.72rem;color:rgba(195,220,236,.68)">{html.escape(_ctx_client_preview or "—", quote=True)}</span></div>',
@@ -10095,7 +10221,7 @@ def _page_map_address_full_pass():
                     tfl_spending=tfl_spend,
                 )
 
-        # ── results panel ────────────────────────────────────────────
+        # -- results panel --------------------------------------------
         filtered = pd.DataFrame()
         leads = pd.DataFrame()
         with rcol:
@@ -10109,7 +10235,7 @@ def _page_map_address_full_pass():
                 # geocode badge
                 floor_val = float(st.session_state.get("map_geocode_floor", 82))
                 st.markdown(
-                    _geocode_badge(analysis_point.get("score"), floor_val),
+                    _mp5_geocode_badge(analysis_point.get("score"), floor_val),
                     unsafe_allow_html=True,
                 )
 
@@ -10145,39 +10271,34 @@ def _page_map_address_full_pass():
                                 str(getattr(p, "subdivision_name", "")).strip(),
                                 str(getattr(p, "subdivision_code", "")).strip(),
                             )
-                            dist_lookup[key] = _miles(
+                            dist_lookup[key] = _mp5_miles(
                                 float(analysis_point["lat"]),
                                 float(analysis_point["lon"]),
                                 float(getattr(p, "lat", 0.0)),
                                 float(getattr(p, "lon", 0.0)),
                             )
 
-                    rows["Distance Miles"] = rows.apply(
-                        lambda r: dist_lookup.get(
-                            (
-                                str(r.get("Subdivision Type", "")).strip(),
-                                str(r.get("Subdivision", "")).strip(),
-                                str(r.get("Code", "")).strip(),
-                            ),
-                            float("nan"),
-                        ),
-                        axis=1,
-                    )
-                    rows["Method Weight"] = rows["Match Method"].map(_method_weight)
-                    rows["Confidence Weight"] = rows["Match Confidence"].map(_confidence_weight)
+                    _rk = list(zip(
+                        rows.get("Subdivision Type", pd.Series("", index=rows.index)).fillna("").astype(str).str.strip(),
+                        rows.get("Subdivision", pd.Series("", index=rows.index)).fillna("").astype(str).str.strip(),
+                        rows.get("Code", pd.Series("", index=rows.index)).fillna("").astype(str).str.strip(),
+                    ))
+                    rows["Distance Miles"] = pd.Series([dist_lookup.get(k, float("nan")) for k in _rk], index=rows.index)
+                    rows["Method Weight"] = rows["Match Method"].map(_mp5_method_weight)
+                    rows["Confidence Weight"] = rows["Match Confidence"].map(_mp5_confidence_weight)
                     rows["Boundary Match"] = (
                         rows["Match Method"].astype(str).str.lower().str.startswith("spatial boundary")
                     )
+                    _rd = rows["Distance Miles"].astype(float)
+                    _dist_factor = (1.0 / (1.0 + (_rd.clip(lower=0.0) / 70.0))).fillna(0.72)
                     rows["Row Signal"] = (
                         rows["High"]
                         * rows["Method Weight"]
                         * rows["Confidence Weight"]
-                        * rows["Distance Miles"].apply(
-                            lambda d: 0.72 if pd.isna(d) else 1.0 / (1.0 + (max(float(d), 0.0) / 70.0))
-                        )
+                        * _dist_factor
                     )
 
-                    # ── evidence filters (in left column) ────────────
+                    # -- evidence filters (in left column) ------------
                     conf_opts = [
                         c for c in ["High", "Medium", "Low", "Unknown"]
                         if c in rows["Match Confidence"].astype(str).value_counts().to_dict()
@@ -10223,40 +10344,40 @@ def _page_map_address_full_pass():
                             disabled=not bool(selected_clients),
                         )
 
-                    # ── apply evidence filters ───────────────────────
-                    filtered = rows.copy()
+                    # -- apply evidence filters -----------------------
+                    filtered = rows
                     filtered = filtered[
                         filtered["Match Confidence"].astype(str).isin(
                             st.session_state.get("map_overlap_confidence_filter", []),
                         )
-                    ].copy()
+                    ]
                     filtered = filtered[
                         filtered["Match Method"].astype(str).isin(
                             st.session_state.get("map_overlap_method_filter", []),
                         )
-                    ].copy()
+                    ]
                     q_entity = str(st.session_state.get("map_overlap_entity_filter", "")).strip().lower()
                     if q_entity:
                         filtered = filtered[
                             filtered["TFL Entity"].astype(str).str.lower().str.contains(q_entity, na=False)
-                        ].copy()
+                        ]
                     min_high = float(st.session_state.get("map_probe_min_high", 0.0) or 0.0)
                     if min_high > 0:
-                        filtered = filtered[filtered["High"] >= min_high].copy()
+                        filtered = filtered[filtered["High"] >= min_high]
                     dist_cap = float(st.session_state.get("map_distance_cap_miles", 160) or 160)
                     filtered = filtered[
                         filtered["Distance Miles"].isna()
                         | (pd.to_numeric(filtered["Distance Miles"], errors="coerce").fillna(dist_cap + 1) <= dist_cap)
-                    ].copy()
+                    ]
                     if st.session_state.get("map_overlap_focus_selected_subdivision", False) and selected_name:
                         filtered = filtered[
                             (filtered["Subdivision Type"].astype(str) == selected_type)
                             & (filtered["Subdivision"].astype(str) == selected_name)
-                        ].copy()
+                        ]
                     if st.session_state.get("map_overlap_focus_selected_clients", False) and selected_client_set:
                         filtered = filtered[
                             filtered["TFL Entity"].astype(str).str.lower().isin(selected_client_set)
-                        ].copy()
+                        ]
 
                     sort_mode = st.session_state.get("map_overlap_sort_v4", "Signal Score")
                     if sort_mode == "Highest High":
@@ -10272,7 +10393,7 @@ def _page_map_address_full_pass():
                     else:
                         filtered = filtered.sort_values(["Row Signal", "High"], ascending=[False, False])
 
-                    # ── evidence KPIs ────────────────────────────────
+                    # -- evidence KPIs --------------------------------
                     if filtered.empty:
                         st.warning("All overlap rows were removed by current filters.")
                     else:
@@ -10350,7 +10471,7 @@ def _page_map_address_full_pass():
                             unsafe_allow_html=True,
                         )
 
-                    # ── evidence table ────────────────────────────────
+                    # -- evidence table --------------------------------
                     probe_view = filtered[
                         [
                             "Subdivision Type", "Subdivision", "Entity Type",
@@ -10361,9 +10482,9 @@ def _page_map_address_full_pass():
                     st.dataframe(probe_view, use_container_width=True, height=300, hide_index=True)
                     _ = export_dataframe(filtered, "address_forensics_rows.csv", label="Download Evidence CSV")
 
-                    # ── signal scatter chart ─────────────────────────
+                    # -- signal scatter chart -------------------------
                     if not filtered.empty and len(filtered) > 1:
-                        chart_df = filtered.copy()
+                        chart_df = filtered
                         chart_df["Confidence"] = chart_df["Match Confidence"].astype(str)
                         fig_scatter = px.scatter(
                             chart_df,
@@ -10378,7 +10499,7 @@ def _page_map_address_full_pass():
                                 "Low": "#fca5a5",
                                 "Unknown": "#94a3b8",
                             },
-                            title="Evidence Quality · Signal vs Distance",
+                            title="Evidence Quality — Signal vs Distance",
                             labels={
                                 "Row Signal": "Row Signal Score",
                                 "Distance Miles": "Distance (mi)",
@@ -10402,7 +10523,7 @@ def _page_map_address_full_pass():
                         st.plotly_chart(fig_scatter, use_container_width=True, key="mp5_evidence_scatter")
                         st.markdown("</div>", unsafe_allow_html=True)
 
-                    # ── confidence × method heatmap + entity-type spend ──
+                    # -- confidence — method heatmap + entity-type spend --
                     if not filtered.empty and len(filtered) > 2:
                         _fc_left, _fc_right = st.columns(2, gap="medium")
                         with _fc_left:
@@ -10422,7 +10543,7 @@ def _page_map_address_full_pass():
                                 fig_heat = px.imshow(
                                     heat_pivot,
                                     color_continuous_scale="tealgrn",
-                                    title="Confidence × Method (row count)",
+                                    title="Confidence — Method (row count)",
                                     aspect="auto",
                                 )
                                 fig_heat.update_layout(
@@ -10479,7 +10600,7 @@ def _page_map_address_full_pass():
                                 st.plotly_chart(fig_etype, use_container_width=True, key="mp5_etype_spend")
                                 st.markdown('</div>', unsafe_allow_html=True)
 
-                    # ═══ RANKED LEADS ════════════════════════════════
+                    # --- RANKED LEADS --------------------------------
                     leads = (
                         filtered.groupby("TFL Entity", as_index=False).agg(
                             EntityType=("Entity Type", lambda s: next((str(v).strip() for v in s if str(v).strip()), "")),
@@ -10498,16 +10619,15 @@ def _page_map_address_full_pass():
                         leads["BoundaryShare"] = leads["BoundaryRows"] / leads["OverlapRows"].replace(0, 1)
                         max_signal = float(leads["SignalScore"].max() or 0.0)
                         leads["SignalNorm"] = (leads["SignalScore"] / max_signal * 100.0) if max_signal > 0 else 0.0
-                        leads["ProximityScore"] = leads["AvgDistance"].apply(
-                            lambda d: 44.0 if pd.isna(d) else (100.0 / (1.0 + (max(float(d), 0.0) / 55.0)))
-                        )
+                        _ld = leads["AvgDistance"].astype(float)
+                        leads["ProximityScore"] = (100.0 / (1.0 + (_ld.clip(lower=0.0) / 55.0))).fillna(44.0)
                         leads["LeadScore"] = (
                             leads["SignalNorm"] * 0.55
                             + leads["HighShare"] * 100.0 * 0.2
                             + leads["BoundaryShare"] * 100.0 * 0.15
                             + leads["ProximityScore"] * 0.1
                         )
-                        leads["Priority"] = leads["LeadScore"].map(_priority_from_score)
+                        leads["Priority"] = leads["LeadScore"].map(_mp5_priority_from_score)
                         leads = leads.sort_values(
                             ["LeadScore", "SignalScore", "High"],
                             ascending=[False, False, False],
@@ -10567,9 +10687,9 @@ def _page_map_address_full_pass():
                         )
                         _ = export_dataframe(leads, "address_ranked_leads.csv", label="Download Ranked Leads CSV")
 
-                        # ── lead score bar chart ─────────────────────
+                        # -- lead score bar chart ---------------------
                         if len(leads) > 1:
-                            chart_leads = leads.head(20).copy()
+                            chart_leads = leads.head(20)
                             chart_leads["Entity"] = chart_leads["TFL Entity"].astype(str).str[:40]
                             fig_leads = px.bar(
                                 chart_leads,
@@ -10603,7 +10723,7 @@ def _page_map_address_full_pass():
                             st.plotly_chart(fig_leads, use_container_width=True, key="mp5_lead_bar")
                             st.markdown("</div>", unsafe_allow_html=True)
 
-                        # ── promote + open ───────────────────────────
+                        # -- promote + open ---------------------------
                         st.markdown(
                             '<div class="mp5-action-strip" style="margin-top:8px">'
                             '<span style="font-weight:600;font-size:.82rem;">Actions</span>'
@@ -10670,7 +10790,7 @@ def _page_map_address_full_pass():
                         if st.button("Open Client", key="map_open_client_from_probe_btn_v4", use_container_width=True) and open_entity:
                             _open_client(open_entity)
 
-        # ── batch triage ─────────────────────────────────────────────
+        # -- batch triage ---------------------------------------------
         with st.expander("Batch Address Triage", expanded=False):
             st.markdown(
                 '<div style="font-size:.72rem;color:rgba(210,230,245,.45);margin-bottom:6px">'
@@ -10797,7 +10917,7 @@ def _page_map_address_full_pass():
                     st.session_state.map_overlap_address_query = str(top.get("Input", "")).strip()
                     st.rerun()
 
-        # ── forensics cross-navigation strip ─────────────────────────
+        # -- forensics cross-navigation strip -------------------------
         st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
         st.markdown(
             '<div class="mp5-crosslink">'
@@ -10852,11 +10972,11 @@ def _page_map_address_full_pass():
                         )
                     st.info("Your last query has been added to Batch Triage. Expand the section above to run it.")
 
-    # ══════════════════════════════════════════════════════════════════
+    # ------------------------------------------------------------------
     # TAB 3 — CASE DOCKET
-    # ══════════════════════════════════════════════════════════════════
+    # ------------------------------------------------------------------
     with tab_docket:
-        # ── cross-context banner ─────────────────────────────────────
+        # -- cross-context banner -------------------------------------
         _render_cross_context_banner("docket")
         st.markdown(
             '<div class="mp5-section-hero">'
@@ -10886,7 +11006,7 @@ def _page_map_address_full_pass():
                 if st.button("\U0001F5FA Open Coverage Atlas", key="docket_empty_to_atlas_btn", use_container_width=True):
                     st.info("Switch to the **Coverage Atlas** tab to explore subdivisions and promote context entities.")
         else:
-            wd = pd.DataFrame(watch).copy()
+            wd = pd.DataFrame(watch)
             defaults_queue = {
                 "Added": "",
                 "TFL Entity": "",
@@ -10943,21 +11063,21 @@ def _page_map_address_full_pass():
             with q4:
                 st.selectbox("Sort", ["Lead Score", "Signal Score", "Highest High", "Newest"], key="map_queue_sort_v4")
 
-            qv = wd.copy()
+            qv = wd
             qv = qv[
                 qv["Priority"].astype(str).isin(
                     st.session_state.get("map_queue_priority_filter_v4", []),
                 )
-            ].copy()
+            ]
             _sel_statuses = st.session_state.get("map_queue_status_filter_v4", _status_opts)
             if _sel_statuses:
-                qv = qv[qv["Status"].astype(str).isin(_sel_statuses)].copy()
+                qv = qv[qv["Status"].astype(str).isin(_sel_statuses)]
             q_text = str(st.session_state.get("map_queue_search_v4", "")).strip().lower()
             if q_text:
                 qv = qv[
                     qv["TFL Entity"].astype(str).str.lower().str.contains(q_text, na=False)
                     | qv["Source Query"].astype(str).str.lower().str.contains(q_text, na=False)
-                ].copy()
+                ]
 
             q_sort = st.session_state.get("map_queue_sort_v4", "Lead Score")
             if q_sort == "Signal Score":
@@ -10970,7 +11090,7 @@ def _page_map_address_full_pass():
                 qv = qv.sort_values(["Lead Score", "Signal Score", "High"], ascending=[False, False, False])
             qv = qv.reset_index(drop=True)
 
-            # ── docket KPIs ──────────────────────────────────────────
+            # -- docket KPIs ------------------------------------------
             docket_entities = int(qv["TFL Entity"].astype(str).nunique()) if not qv.empty else 0
             docket_t1 = int((qv["Priority"].astype(str) == "Tier 1").sum()) if not qv.empty else 0
             docket_avg = float(qv["Lead Score"].mean()) if not qv.empty else 0.0
@@ -10994,7 +11114,7 @@ def _page_map_address_full_pass():
                 unsafe_allow_html=True,
             )
 
-            # ── docket priority distribution chart ───────────────────
+            # -- docket priority distribution chart -------------------
             if not qv.empty and len(qv) > 1:
                 tier_counts = qv["Priority"].value_counts().reset_index()
                 tier_counts = tier_counts.set_axis(["Priority", "Count"], axis=1)
@@ -11028,7 +11148,7 @@ def _page_map_address_full_pass():
                 st.plotly_chart(fig_tier, use_container_width=True, key="mp5_docket_pie")
                 st.markdown("</div>", unsafe_allow_html=True)
 
-            # ── docket scatter + source bar ──────────────────────────
+            # -- docket scatter + source bar --------------------------
             if not qv.empty and len(qv) > 1:
                 _dq_left, _dq_right = st.columns(2, gap="medium")
                 with _dq_left:
@@ -11121,7 +11241,7 @@ def _page_map_address_full_pass():
                 label="Download Case Docket CSV",
             )
 
-            # ── bulk status update + notes ───────────────────────────
+            # -- bulk status update + notes ---------------------------
             st.markdown(
                 '<div class="mp5-action-strip" style="margin-top:10px">'
                 '<span style="font-weight:600;font-size:.82rem;">Case Management</span>'
@@ -11131,7 +11251,7 @@ def _page_map_address_full_pass():
                 unsafe_allow_html=True,
             )
 
-            # ── docket actions ───────────────────────────────────────
+            # -- docket actions ---------------------------------------
             open_opts = [
                 str(v).strip()
                 for v in qv.get("TFL Entity", pd.Series(dtype=object)).dropna().astype(str).tolist()
@@ -11219,7 +11339,7 @@ def _page_map_address_full_pass():
                     st.session_state.map_watchlist = []
                     st.rerun()
 
-            # ── draw area & search map for docket ────────────────────
+            # -- draw area & search map for docket --------------------
             st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
             with st.expander("\U0001F5FA Draw Area & Search — Investigate Docket Addresses", expanded=False):
                 st.markdown(
@@ -11300,7 +11420,7 @@ def _page_map_address_full_pass():
                             st.session_state.map_batch_input_v4 = new_lines
                         st.info("Addresses added to Batch Triage. Switch to the **Address Forensics** tab and expand Batch Address Triage.")
 
-            # ── docket cross-navigation strip ────────────────────────
+            # -- docket cross-navigation strip ------------------------
             st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
             st.markdown(
                 '<div class="mp5-crosslink">'
@@ -11386,7 +11506,7 @@ def _page_map_address_full_pass():
                             unsafe_allow_html=True,
                         )
 
-    # ── workspace links ──────────────────────────────────────────────
+    # -- workspace links ----------------------------------------------
     _render_workspace_links(
         "map_rebuild_next_v4",
         [
@@ -11396,463 +11516,11 @@ def _page_map_address_full_pass():
         ],
     )
 
+@_safe_page("Map & Address Rebuild")
 def _page_map_address_rebuild():
     # Route to the full redesign workspace implementation.
     _page_map_address_full_pass()
-    return
 
-    _render_page_intro(
-        kicker="Geospatial Investigation Studio",
-        title="Map & Address Intelligence",
-        subtitle="Coverage diagnostics, address-level overlap evidence, and ranked investigative leads.",
-        pills=["Coverage parity", "Evidence ranking", "Case queue"],
-    )
-    _render_workspace_guide(
-        question="At this location, which taxpayer-funded entities have the strongest overlap signal and should move first into case review?",
-        steps=[
-            "Set scope and thresholds.",
-            "Anchor context in Coverage Intelligence.",
-            "Run Address Lab and apply evidence filters.",
-            "Promote high-signal entities to Case Queue.",
-        ],
-        method_note="Boundary overlap is stronger than name-anchored overlap.",
-    )
-    if not PATH:
-        st.error("Data path not configured. Set DATA_PATH.")
-        st.stop()
-    if not _is_url(PATH) and not os.path.exists(PATH):
-        st.error("Data path not found. Set DATA_PATH or place the parquet file in ./data.")
-        st.stop()
-
-    with st.spinner("Loading workbook..."):
-        data = load_workbook(PATH)
-    base = data["Lobby_TFL_Client_All"]
-    tfl_sessions = set(base.get("Session", pd.Series(dtype=object)).dropna().astype(str).str.strip().unique().tolist())
-
-    defaults = {
-        "map_scope": "This Session",
-        "map_session": None,
-        "map_basemap_label": next(iter(MAP_BASEMAP_OPTIONS.keys())),
-        "map_geocode_floor": 82,
-        "map_subdivision_types_filter": [],
-        "map_min_match_count": 1,
-        "map_subdivision_map_cap": 650,
-        "map_selected_subdivision_context": {},
-        "map_overlap_input_mode": "Street Address",
-        "map_overlap_address_input": "",
-        "map_overlap_address_query": "",
-        "map_overlap_query_lat": None,
-        "map_overlap_query_lon": None,
-        "map_overlap_coord_lat": 31.0,
-        "map_overlap_coord_lon": -99.0,
-        "map_overlap_confidence_filter": [],
-        "map_overlap_entity_filter": "",
-        "map_probe_min_high": 0.0,
-        "map_distance_cap_miles": 160,
-        "map_watchlist": [],
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = [] if isinstance(v, list) else ({} if isinstance(v, dict) else v)
-    if st.session_state.get("map_basemap_label") not in MAP_BASEMAP_OPTIONS:
-        st.session_state.map_basemap_label = next(iter(MAP_BASEMAP_OPTIONS.keys()))
-
-    sessions = base.get("Session", pd.Series(dtype=object)).dropna().astype(str).str.strip().unique().tolist()
-    sessions = sorted([s for s in sessions if s and s.lower() not in {"none", "nan", "null"}], key=_session_sort_key)
-    if not sessions:
-        st.error("No sessions found in workbook.")
-        st.stop()
-    default_session = _default_session_from_list(sessions)
-    if str(st.session_state.get("map_session", "")).strip().lower() in {"", "none", "nan", "null"}:
-        st.session_state.map_session = default_session
-
-    def _open_client(entity_name: str) -> None:
-        val = str(entity_name).strip()
-        if not val:
-            return
-        st.session_state.client_query = val
-        st.session_state.client_query_input = val
-        st.session_state.client_name = ""
-        st.session_state.client_session = st.session_state.map_session
-        st.session_state.client_scope = st.session_state.map_scope
-        st.switch_page(_client_page)
-
-    def _miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        try:
-            d_lat = math.radians(float(lat2) - float(lat1))
-            d_lon = math.radians(float(lon2) - float(lon1))
-            a = math.sin(d_lat / 2) ** 2 + math.cos(math.radians(float(lat1))) * math.cos(math.radians(float(lat2))) * (math.sin(d_lon / 2) ** 2)
-            return 3958.7613 * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
-        except Exception:
-            return float("nan")
-
-    c1, c2, c3, c4 = st.columns([1.6, 1.2, 1.1, 1.1], gap="small")
-    with c1:
-        labels = [_session_label(s) for s in sessions]
-        label_map = dict(zip(labels, sessions))
-        cur = _session_label(st.session_state.map_session)
-        if cur not in labels:
-            cur = _session_label(default_session)
-        picked = st.selectbox("Session", labels, index=labels.index(cur), key="map_session_select_v2")
-        st.session_state.map_session = label_map.get(picked, default_session)
-    with c2:
-        st.session_state.map_scope = st.radio("Scope", ["This Session", "All Sessions"], index=0 if st.session_state.map_scope == "This Session" else 1, key="map_scope_radio_v2", horizontal=True)
-    with c3:
-        st.selectbox("Map style", list(MAP_BASEMAP_OPTIONS.keys()), key="map_basemap_label")
-    with c4:
-        st.slider("Geocode floor", 60, 99, key="map_geocode_floor")
-
-    s1, s2 = st.columns([1.2, 1.2], gap="small")
-    with s1:
-        st.number_input("Min entity high", min_value=0.0, step=25000.0, key="map_probe_min_high")
-    with s2:
-        st.slider("Distance cap (mi)", 10, 300, key="map_distance_cap_miles")
-
-    d = base.copy()
-    d["Session"] = d["Session"].astype(str).str.strip()
-    sess = _tfl_session_for_filter(st.session_state.map_session, tfl_sessions)
-    if st.session_state.map_scope == "This Session" and sess is not None:
-        d = d[d["Session"] == str(sess)].copy()
-    d = ensure_cols(d, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0, "LobbyShort": ""})
-    d = d[d["Client"].fillna("").astype(str).str.strip() != ""].copy()
-    totals = d.groupby("Client", as_index=False).agg(
-        Low=("Low_num", "sum"),
-        High=("High_num", "sum"),
-        Lobbyists=("LobbyShort", lambda s: s.dropna().astype(str).nunique()),
-        IsTFL=("IsTFL", "max"),
-    ) if not d.empty else pd.DataFrame(columns=["Client", "Low", "High", "Lobbyists", "IsTFL"])
-    tfl_spend = totals[totals.get("IsTFL", 0) == 1].copy() if not totals.empty else pd.DataFrame()
-    if not tfl_spend.empty:
-        tfl_spend["Client"] = tfl_spend["Client"].fillna("").astype(str).str.strip()
-        tfl_spend = tfl_spend[tfl_spend["Client"] != ""].copy()
-        tfl_spend["Low"] = pd.to_numeric(tfl_spend["Low"], errors="coerce").fillna(0.0)
-        tfl_spend["High"] = pd.to_numeric(tfl_spend["High"], errors="coerce").fillna(0.0)
-        tfl_spend["Entity Type"] = tfl_spend["Client"].map(classify_requested_entity_type)
-
-    names = tuple(sorted({str(v).strip() for v in tfl_spend.get("Client", pd.Series(dtype=object)).dropna().astype(str).tolist() if str(v).strip()}))
-    subdivision_matches = build_tfl_political_subdivision_matches(names) if names else pd.DataFrame()
-    subdivision_matches = _attach_subdivision_spend_totals(subdivision_matches, totals)
-    if not subdivision_matches.empty:
-        subdivision_matches["match_count"] = pd.to_numeric(subdivision_matches.get("match_count", 0), errors="coerce").fillna(0).astype(int)
-        subdivision_matches["high_total"] = pd.to_numeric(subdivision_matches.get("high_total", 0.0), errors="coerce").fillna(0.0)
-
-    matched_clients = set()
-    if not subdivision_matches.empty:
-        for vals in subdivision_matches.get("match_clients", pd.Series(dtype=object)).tolist():
-            if isinstance(vals, list):
-                matched_clients.update({str(v).strip() for v in vals if str(v).strip()})
-    total_tfl = int(tfl_spend["Client"].astype(str).nunique()) if not tfl_spend.empty else 0
-    mapped_high = float(pd.to_numeric(tfl_spend[tfl_spend["Client"].astype(str).isin(matched_clients)]["High"], errors="coerce").fillna(0.0).sum()) if not tfl_spend.empty and matched_clients else 0.0
-    total_high = float(pd.to_numeric(tfl_spend.get("High", 0.0), errors="coerce").fillna(0.0).sum()) if not tfl_spend.empty else 0.0
-    m1, m2, m3 = st.columns(3, gap="small")
-    with m1:
-        st.metric("Mapped Entities", f"{len(matched_clients):,}", delta=f"{(len(matched_clients) / total_tfl) if total_tfl else 0.0:.1%} coverage")
-    with m2:
-        st.metric("Coverage by Spend", f"{(mapped_high / total_high) if total_high else 0.0:.1%}")
-    with m3:
-        st.metric("Unmapped Entities", f"{max(0, total_tfl - len(matched_clients)):,}")
-
-    tab_cov, tab_lab, tab_watch = st.tabs(["Coverage Intelligence", "Address Lab", "Case Queue"])
-
-    with tab_cov:
-        st.caption("Filter mapped subdivisions, inspect concentration, and set context for Address Lab.")
-        if subdivision_matches.empty:
-            st.info("No subdivision matches found for current scope.")
-        else:
-            all_types = sorted({str(v).strip() for v in subdivision_matches.get("subdivision_type", pd.Series(dtype=object)).dropna().tolist() if str(v).strip()})
-            selected_types = [str(v) for v in st.session_state.get("map_subdivision_types_filter", []) if str(v) in all_types] or list(all_types)
-            st.session_state.map_subdivision_types_filter = selected_types
-            max_match = int(max(1, pd.to_numeric(subdivision_matches.get("match_count", 1), errors="coerce").fillna(1).max()))
-            st.session_state.map_min_match_count = min(max(1, int(st.session_state.get("map_min_match_count", 1))), max_match)
-            ctype, cmin, ccap = st.columns([1.8, 1.0, 1.0], gap="small")
-            with ctype:
-                st.multiselect("Subdivision types", all_types, key="map_subdivision_types_filter")
-            with cmin:
-                st.slider("Min matched entities", 1, max_match, key="map_min_match_count")
-            with ccap:
-                st.number_input("Map point cap", min_value=100, max_value=1400, step=50, key="map_subdivision_map_cap")
-
-            filtered_cov = subdivision_matches.copy()
-            filtered_cov = filtered_cov[filtered_cov["subdivision_type"].astype(str).isin(st.session_state.map_subdivision_types_filter)].copy()
-            filtered_cov = filtered_cov[pd.to_numeric(filtered_cov["match_count"], errors="coerce").fillna(0) >= int(st.session_state.get("map_min_match_count", 1))].copy()
-            filtered_cov["_signal"] = filtered_cov["high_total"] * (
-                1 + pd.to_numeric(filtered_cov["match_count"], errors="coerce").fillna(0).map(lambda x: math.log1p(max(float(x), 0.0)))
-            )
-            filtered_cov = filtered_cov.sort_values(["_signal", "high_total"], ascending=[False, False]).drop(columns=["_signal"], errors="ignore")
-
-            left, right = st.columns([1.65, 1.0], gap="large")
-            with left:
-                if filtered_cov.empty:
-                    st.warning("No subdivisions remain after filters.")
-                else:
-                    render_subdivision_map_legend(filtered_cov["subdivision_type"].value_counts().to_dict())
-                    cap = max(100, min(1400, int(st.session_state.get("map_subdivision_map_cap", 650) or 650)))
-                    active_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.get("map_basemap_label", ""), "gray-vector")
-                    render_tfl_subdivision_arcgis_map(filtered_cov.head(cap), height=620, basemap=active_basemap)
-            with right:
-                labels, rows = [], []
-                for row in filtered_cov.itertuples(index=False):
-                    code = str(getattr(row, "subdivision_code", "")).strip() or "N/A"
-                    labels.append(f"{row.subdivision_type} | {row.subdivision_name} ({code})")
-                    rows.append(row)
-                options = [""] + labels
-                if st.session_state.get("map_subdivision_pick", "") not in options:
-                    st.session_state.map_subdivision_pick = ""
-                pick = st.selectbox("Context anchor", options, key="map_subdivision_pick")
-                if st.button("Set Active Context", key="map_set_context_btn_v2", width="stretch", disabled=not bool(pick)) and pick in labels:
-                    row = rows[labels.index(pick)]
-                    clients = sorted({str(v).strip() for v in (getattr(row, "match_clients", []) if isinstance(getattr(row, "match_clients", []), list) else []) if str(v).strip()})
-                    st.session_state.map_selected_subdivision_context = {
-                        "subdivision_type": str(getattr(row, "subdivision_type", "")).strip(),
-                        "subdivision_name": str(getattr(row, "subdivision_name", "")).strip(),
-                        "subdivision_code": str(getattr(row, "subdivision_code", "")).strip(),
-                        "clients": clients,
-                    }
-                    st.rerun()
-                if st.button("Clear Context", key="map_clear_context_btn_v2", width="stretch"):
-                    st.session_state.map_selected_subdivision_context = {}
-                    st.rerun()
-                ctx = st.session_state.get("map_selected_subdivision_context", {})
-                if isinstance(ctx, dict) and str(ctx.get("subdivision_name", "")).strip():
-                    st.markdown(
-                        f"<div class='mapx-ctx'><strong>{html.escape(str(ctx.get('subdivision_type', '')), quote=True)}</strong><br>{html.escape(str(ctx.get('subdivision_name', '')), quote=True)} ({html.escape(str(ctx.get('subdivision_code', '') or 'N/A'), quote=True)})</div>",
-                        unsafe_allow_html=True,
-                    )
-                cov_view = filtered_cov[["subdivision_type", "subdivision_name", "subdivision_code", "match_count", "high_total"]].rename(
-                    columns={"subdivision_type": "Type", "subdivision_name": "Subdivision", "subdivision_code": "Code", "match_count": "Matched Entities", "high_total": "Matched High"}
-                )
-                st.dataframe(cov_view, width="stretch", height=320, hide_index=True)
-                _ = export_dataframe(cov_view, "coverage_intelligence_rows.csv", label="Download coverage CSV")
-    with tab_lab:
-        st.caption("Run an address or coordinate probe, filter by evidence quality, and rank investigative leads.")
-        ctx = st.session_state.get("map_selected_subdivision_context", {}) if isinstance(st.session_state.get("map_selected_subdivision_context", {}), dict) else {}
-        selected_type = str(ctx.get("subdivision_type", "")).strip()
-        selected_name = str(ctx.get("subdivision_name", "")).strip()
-        selected_clients = [str(v).strip() for v in ctx.get("clients", []) if str(v).strip()] if isinstance(ctx.get("clients", []), list) else []
-        if selected_name:
-            st.markdown(f"<div class='mapx-ctx'>Active context: <strong>{html.escape(selected_type, quote=True)}</strong> | {html.escape(selected_name, quote=True)}</div>", unsafe_allow_html=True)
-
-        if st.session_state.get("map_overlap_input_mode") not in {"Street Address", "Coordinates"}:
-            st.session_state.map_overlap_input_mode = "Street Address"
-        mode = st.radio("Lookup mode", ["Street Address", "Coordinates"], key="map_overlap_input_mode", horizontal=True)
-        analysis_point = None
-
-        if mode == "Street Address":
-            with st.form("map_addr_form_v2"):
-                st.text_input("Street address", key="map_overlap_address_input", placeholder="e.g., 1100 Congress Ave, Austin, TX")
-                run_addr = st.form_submit_button("Run Address Analysis")
-            if run_addr:
-                q = str(st.session_state.get("map_overlap_address_input", "")).strip()
-                st.session_state.map_overlap_address_query = q
-                if q:
-                    recent = [q] + [str(v).strip() for v in st.session_state.get("map_recent_addresses", []) if str(v).strip() and str(v).strip().lower() != q.lower()]
-                    st.session_state.map_recent_addresses = recent[:8]
-            recent_options = [str(v).strip() for v in st.session_state.get("map_recent_addresses", []) if str(v).strip()]
-            if recent_options:
-                recent_pick = st.selectbox("Recent queries", [""] + recent_options, key="map_overlap_recent_pick_v2")
-                if st.button("Use Recent", key="map_use_recent_btn_v2") and recent_pick:
-                    st.session_state.map_overlap_address_query = recent_pick
-            active_query = str(st.session_state.get("map_overlap_address_query", "")).strip()
-            if active_query:
-                geo = geocode_address_arcgis(active_query)
-                if geo:
-                    analysis_point = {
-                        "query": active_query,
-                        "matched_address": str(geo.get("matched_address", active_query)).strip(),
-                        "lat": float(geo.get("lat", 0.0)),
-                        "lon": float(geo.get("lon", 0.0)),
-                        "score": float(geo.get("score", 0.0)),
-                    }
-                    if analysis_point["score"] < float(st.session_state.get("map_geocode_floor", 82)):
-                        st.warning(f"Geocode score {analysis_point['score']:.1f} is below floor {int(st.session_state.get('map_geocode_floor', 82))}.")
-                else:
-                    st.warning("Address could not be geocoded.")
-        else:
-            with st.form("map_coord_form_v2"):
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.number_input("Latitude", min_value=25.0, max_value=37.0, step=0.0001, format="%.6f", key="map_overlap_coord_lat")
-                with c2:
-                    st.number_input("Longitude", min_value=-107.0, max_value=-93.0, step=0.0001, format="%.6f", key="map_overlap_coord_lon")
-                run_coord = st.form_submit_button("Run Coordinate Analysis")
-            if run_coord:
-                st.session_state.map_overlap_query_lat = float(st.session_state.get("map_overlap_coord_lat", 31.0))
-                st.session_state.map_overlap_query_lon = float(st.session_state.get("map_overlap_coord_lon", -99.0))
-            if st.session_state.get("map_overlap_query_lat") is not None and st.session_state.get("map_overlap_query_lon") is not None:
-                lat_q = float(st.session_state.get("map_overlap_query_lat"))
-                lon_q = float(st.session_state.get("map_overlap_query_lon"))
-                analysis_point = {"query": f"{lat_q:.6f}, {lon_q:.6f}", "matched_address": f"Coordinates: {lat_q:.6f}, {lon_q:.6f}", "lat": lat_q, "lon": lon_q, "score": None}
-
-        if analysis_point is None:
-            st.info("Run an address or coordinate query to generate overlap evidence.")
-        else:
-            overlap_sub = query_texas_subdivisions_for_point(round(float(analysis_point["lon"]), 6), round(float(analysis_point["lat"]), 6))
-            overlap_points = build_overlap_map_points(overlap_subdivisions=overlap_sub, subdivision_matches=subdivision_matches)
-            overlap_spend = build_address_overlap_spending_rows(overlap_subdivisions=overlap_sub, subdivision_matches=subdivision_matches, tfl_spending=tfl_spend)
-            if overlap_spend.empty:
-                active_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.get("map_basemap_label", ""), "gray-vector")
-                render_address_overlap_arcgis_map(float(analysis_point["lon"]), float(analysis_point["lat"]), str(analysis_point.get("matched_address", analysis_point.get("query", ""))), overlap_points, height=520, basemap=active_basemap)
-                st.info("No matched entities for this query.")
-            else:
-                rows = overlap_spend.copy()
-                rows["Low"] = pd.to_numeric(rows["Low"], errors="coerce").fillna(0.0)
-                rows["High"] = pd.to_numeric(rows["High"], errors="coerce").fillna(0.0)
-                rows["Mid"] = pd.to_numeric(rows["Mid"], errors="coerce").fillna(0.0)
-                rows["Entity Type"] = rows.get("Entity Type", "").fillna("").astype(str).str.strip()
-                rows.loc[rows["Entity Type"] == "", "Entity Type"] = rows.loc[rows["Entity Type"] == "", "TFL Entity"].map(classify_requested_entity_type)
-                dist_lookup = {}
-                if isinstance(overlap_points, pd.DataFrame) and not overlap_points.empty:
-                    for p in overlap_points.itertuples(index=False):
-                        key = (str(getattr(p, "subdivision_type", "")).strip(), str(getattr(p, "subdivision_name", "")).strip(), str(getattr(p, "subdivision_code", "")).strip())
-                        dist_lookup[key] = _miles(float(analysis_point["lat"]), float(analysis_point["lon"]), float(getattr(p, "lat", 0.0)), float(getattr(p, "lon", 0.0)))
-                rows["Distance Miles"] = rows.apply(lambda r: dist_lookup.get((str(r.get("Subdivision Type", "")).strip(), str(r.get("Subdivision", "")).strip(), str(r.get("Code", "")).strip()), float("nan")), axis=1)
-                rows["Row Signal"] = rows["High"] * rows["Match Confidence"].map({"High": 1.0, "Medium": 0.72, "Low": 0.46, "Unknown": 0.28}).fillna(0.25)
-                rows["Row Signal"] = rows["Row Signal"] * rows["Distance Miles"].apply(lambda d: 0.5 if pd.isna(d) else 1.0 / (1.0 + (max(float(d), 0.0) / 75.0)))
-
-                conf_opts = [c for c in ["High", "Medium", "Low", "Unknown"] if c in rows["Match Confidence"].astype(str).value_counts().to_dict()]
-                method_opts = sorted({str(v).strip() for v in rows["Match Method"].dropna().astype(str).tolist() if str(v).strip()})
-                st.session_state.map_overlap_confidence_filter = [str(v) for v in st.session_state.get("map_overlap_confidence_filter", []) if str(v) in conf_opts] or list(conf_opts)
-                st.session_state.map_overlap_method_filter = [str(v) for v in st.session_state.get("map_overlap_method_filter", []) if str(v) in method_opts] or list(method_opts)
-                with st.expander("Evidence filters", expanded=True):
-                    e1, e2 = st.columns([1.3, 1.3], gap="small")
-                    with e1:
-                        st.multiselect("Confidence", conf_opts, key="map_overlap_confidence_filter")
-                        st.multiselect("Method", method_opts, key="map_overlap_method_filter")
-                    with e2:
-                        st.text_input("Entity contains", key="map_overlap_entity_filter")
-                        st.checkbox("Focus active subdivision", key="map_overlap_focus_selected_subdivision", disabled=not bool(selected_name))
-                        st.checkbox("Focus active context entities", key="map_overlap_focus_selected_clients", disabled=not bool(selected_clients))
-
-                filtered = rows.copy()
-                filtered = filtered[filtered["Match Confidence"].astype(str).isin(st.session_state.get("map_overlap_confidence_filter", []))].copy()
-                filtered = filtered[filtered["Match Method"].astype(str).isin(st.session_state.get("map_overlap_method_filter", []))].copy()
-                q_entity = str(st.session_state.get("map_overlap_entity_filter", "")).strip().lower()
-                if q_entity:
-                    filtered = filtered[filtered["TFL Entity"].astype(str).str.lower().str.contains(q_entity, na=False)].copy()
-                min_high = float(st.session_state.get("map_probe_min_high", 0.0) or 0.0)
-                if min_high > 0:
-                    filtered = filtered[filtered["High"] >= min_high].copy()
-                dist_cap = float(st.session_state.get("map_distance_cap_miles", 160) or 160)
-                filtered = filtered[filtered["Distance Miles"].isna() | (pd.to_numeric(filtered["Distance Miles"], errors="coerce").fillna(dist_cap + 1) <= dist_cap)].copy()
-                if st.session_state.get("map_overlap_focus_selected_subdivision", False) and selected_name:
-                    filtered = filtered[(filtered["Subdivision Type"].astype(str) == selected_type) & (filtered["Subdivision"].astype(str) == selected_name)].copy()
-                if st.session_state.get("map_overlap_focus_selected_clients", False) and selected_clients:
-                    focus_set = {v.lower() for v in selected_clients}
-                    filtered = filtered[filtered["TFL Entity"].astype(str).str.lower().isin(focus_set)].copy()
-                filtered = filtered.sort_values(["Row Signal", "High"], ascending=[False, False])
-
-                st.metric("Filtered overlap rows", f"{len(filtered):,}")
-                active_basemap = MAP_BASEMAP_OPTIONS.get(st.session_state.get("map_basemap_label", ""), "gray-vector")
-                render_address_overlap_arcgis_map(float(analysis_point["lon"]), float(analysis_point["lat"]), str(analysis_point.get("matched_address", analysis_point.get("query", ""))), overlap_points, height=540, basemap=active_basemap)
-                probe_view = filtered[["Subdivision Type", "Subdivision", "Entity Type", "TFL Entity", "Match Method", "Match Confidence", "Low", "High", "Mid", "Distance Miles", "Row Signal"]].rename(columns={"Mid": "Midpoint"})
-                st.dataframe(probe_view, width="stretch", height=300, hide_index=True)
-                _ = export_dataframe(filtered, "address_lab_filtered_rows.csv", label="Download filtered overlap CSV")
-
-                leads = (
-                    filtered.groupby("TFL Entity", as_index=False)
-                    .agg(EntityType=("Entity Type", lambda s: next((str(v).strip() for v in s if str(v).strip()), "")), High=("High", "sum"), Low=("Low", "sum"), Midpoint=("Mid", "sum"), OverlapRows=("TFL Entity", "size"), HighRows=("Match Confidence", lambda s: int((s.astype(str) == "High").sum())), SignalScore=("Row Signal", "sum"))
-                )
-                if not leads.empty:
-                    leads["HighShare"] = leads["HighRows"] / leads["OverlapRows"].replace(0, 1)
-                    max_signal = float(leads["SignalScore"].max() or 0.0)
-                    leads["LeadScore"] = ((leads["SignalScore"] / max_signal * 100.0) if max_signal > 0 else 0.0) * 0.75 + leads["HighShare"] * 100.0 * 0.25
-                    leads["Priority"] = leads["LeadScore"].map(lambda v: "Tier 1" if float(v) >= 78 else ("Tier 2" if float(v) >= 56 else "Tier 3"))
-                    leads = leads.sort_values(["LeadScore", "SignalScore", "High"], ascending=[False, False, False])
-                    st.dataframe(leads[["Priority", "TFL Entity", "EntityType", "Low", "High", "Midpoint", "LeadScore", "SignalScore", "HighShare", "OverlapRows"]].rename(columns={"EntityType": "Entity Type", "LeadScore": "Lead Score", "SignalScore": "Signal Score", "HighShare": "High Confidence Share"}), width="stretch", height=250, hide_index=True)
-                    _ = export_dataframe(leads, "address_lab_ranked_leads.csv", label="Download ranked leads CSV")
-                    add_opts = [str(v).strip() for v in leads["TFL Entity"].dropna().astype(str).tolist() if str(v).strip()]
-                    add_col, btn_col = st.columns([3.0, 1.0], gap="small")
-                    with add_col:
-                        add_pick = st.multiselect("Promote lead(s) to Case Queue", add_opts, key="map_watch_add_from_probe_v2")
-                    with btn_col:
-                        add_btn = st.button("Add To Queue", key="map_watch_add_btn_v2", width="stretch")
-                    if add_btn and add_pick:
-                        watch = st.session_state.get("map_watchlist", [])
-                        existing = {str(r.get("TFL Entity", "")).strip().lower() for r in watch if isinstance(r, dict)}
-                        stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-                        for entity in add_pick:
-                            k = str(entity).strip().lower()
-                            if not k or k in existing:
-                                continue
-                            row = leads[leads["TFL Entity"].astype(str) == str(entity)].head(1)
-                            if row.empty:
-                                continue
-                            rec = row.iloc[0]
-                            watch.append(
-                                {
-                                    "Added": stamp,
-                                    "TFL Entity": str(entity).strip(),
-                                    "Priority": str(rec.get("Priority", "Tier 3")),
-                                    "Lead Score": float(rec.get("LeadScore", 0.0) or 0.0),
-                                    "Signal Score": float(rec.get("SignalScore", 0.0) or 0.0),
-                                    "High": float(rec.get("High", 0.0) or 0.0),
-                                    "High Confidence Share": float(rec.get("HighShare", 0.0) or 0.0),
-                                    "Overlap Rows": int(rec.get("OverlapRows", 0) or 0),
-                                    "Source Query": str(analysis_point.get("query", "")),
-                                }
-                            )
-                            existing.add(k)
-                        st.session_state.map_watchlist = watch
-                        st.success(f"Case Queue now includes {len(watch):,} entities.")
-                    open_entity = st.selectbox("Open lead in Client Look-Up", add_opts, key="map_open_client_pick_v2") if add_opts else ""
-                    if st.button("Open Client", key="map_open_client_from_probe_btn_v2", width="stretch") and open_entity:
-                        _open_client(open_entity)
-    with tab_watch:
-        watch = st.session_state.get("map_watchlist", [])
-        if not isinstance(watch, list) or not watch:
-            st.info("Case Queue is empty. Add entities from Address Lab.")
-        else:
-            wd = pd.DataFrame(watch).copy()
-            if "Priority" not in wd.columns:
-                wd["Priority"] = "Tier 3"
-            if "Lead Score" not in wd.columns:
-                wd["Lead Score"] = pd.to_numeric(wd.get("Signal Score", 0.0), errors="coerce").fillna(0.0)
-            if "Signal Score" not in wd.columns:
-                wd["Signal Score"] = pd.to_numeric(wd.get("Lead Score", 0.0), errors="coerce").fillna(0.0)
-            if "High" not in wd.columns:
-                wd["High"] = 0.0
-            if "High Confidence Share" not in wd.columns:
-                wd["High Confidence Share"] = 0.0
-            if "Overlap Rows" not in wd.columns:
-                wd["Overlap Rows"] = 0
-            if "Source Query" not in wd.columns:
-                wd["Source Query"] = ""
-            wd["Lead Score"] = pd.to_numeric(wd["Lead Score"], errors="coerce").fillna(0.0)
-            wd["Signal Score"] = pd.to_numeric(wd["Signal Score"], errors="coerce").fillna(0.0)
-            wd["High"] = pd.to_numeric(wd["High"], errors="coerce").fillna(0.0)
-            wd["High Confidence Share"] = pd.to_numeric(wd["High Confidence Share"], errors="coerce").fillna(0.0)
-            wd = wd.sort_values(["Lead Score", "Signal Score", "High"], ascending=[False, False, False]).reset_index(drop=True)
-
-            w1, w2, w3 = st.columns(3, gap="small")
-            with w1:
-                st.metric("Queued Entities", f"{wd['TFL Entity'].astype(str).nunique():,}")
-            with w2:
-                st.metric("Tier 1 Count", f"{int((wd['Priority'].astype(str) == 'Tier 1').sum()):,}")
-            with w3:
-                st.metric("Total High", fmt_usd(float(wd["High"].sum())))
-
-            st.dataframe(wd, width="stretch", height=340, hide_index=True)
-            _ = export_dataframe(wd, "case_queue.csv", label="Download case queue CSV")
-
-            open_opts = [str(v).strip() for v in wd.get("TFL Entity", pd.Series(dtype=object)).dropna().astype(str).tolist() if str(v).strip()]
-            open_pick = st.selectbox("Open queued entity in Client Look-Up", open_opts, key="map_watch_open_entity_v2") if open_opts else ""
-            b1, b2 = st.columns(2, gap="small")
-            with b1:
-                if st.button("Open Client", key="map_watch_open_btn_v2", width="stretch") and open_pick:
-                    _open_client(open_pick)
-            with b2:
-                if st.button("Clear Queue", key="map_watch_clear_btn_v2", width="stretch"):
-                    st.session_state.map_watchlist = []
-                    st.rerun()
-
-    _render_workspace_links(
-        "map_rebuild_next_v2",
-        [
-            ("Open Clients", _client_page, "Validate ranked entities at filing level."),
-            ("Open Lobbyists", _lobby_page, "Reconnect findings to statewide concentration."),
-            ("Open Legislators", _member_page, "Attach overlap findings to bill and witness context."),
-        ],
-    )
 
 # Lobby content renders in the main body below; this stub keeps navigation wiring intact.
 _about_page = st.Page(_page_about, title="Start Here", url_path="about", default=True)
@@ -12022,6 +11690,7 @@ nav_skip_submit = False
 # =========================================================
 _RE_NONWORD = re.compile(r"[^\w]+", flags=re.UNICODE)
 _TITLE_WORDS = {"MR", "MRS", "MS", "MISS", "DR", "HON", "JR", "SR", "II", "III", "IV"}
+_RE_TITLE_WORDS = re.compile(r"\b(" + "|".join(_TITLE_WORDS) + r")\b\.?", re.IGNORECASE)
 _NICKNAME_MAP = {
     "CHUCK": {"CHARLES"},
     "CHARLIE": {"CHARLES"},
@@ -12046,9 +11715,9 @@ def norm_name_series(s: pd.Series) -> pd.Series:
 
 def clean_filer_name_series(s: pd.Series) -> pd.Series:
     s = s.fillna("").astype(str)
-    s = s.str.replace(r"\([^)]*\)", "", regex=True)
-    s = s.str.replace(r"\b(" + "|".join(_TITLE_WORDS) + r")\b\.?", "", regex=True, flags=re.IGNORECASE)
-    s = s.str.replace(r"\s+", " ", regex=True).str.strip()
+    s = s.str.replace(_RE_PARENS, "", regex=True)
+    s = s.str.replace(_RE_TITLE_WORDS, "", regex=True)
+    s = s.str.replace(_RE_WHITESPACE, " ", regex=True).str.strip()
     return s
 
 def clean_person_name(name: str) -> str:
@@ -12057,9 +11726,9 @@ def clean_person_name(name: str) -> str:
     s = str(name).replace("\u00A0", " ").strip()
     if not s:
         return ""
-    s = re.sub(r"\([^)]*\)", "", s)
-    s = re.sub(r"\b(" + "|".join(_TITLE_WORDS) + r")\b\.?", "", s, flags=re.IGNORECASE)
-    s = re.sub(r"\s+", " ", s).strip()
+    s = _RE_PARENS.sub("", s)
+    s = _RE_TITLE_WORDS.sub("", s)
+    s = _RE_WHITESPACE.sub(" ", s).strip()
     return s
 
 def _arcgis_get_json(url: str, params: dict | None = None, timeout: int = 30, _retries: int = 3) -> dict:
@@ -12093,6 +11762,7 @@ def _looks_like_school_district_name(value: str) -> bool:
     s = _canonical_school_district_name(value)
     return bool(s) and ("SCHOOL DISTRICT" in s)
 
+@functools.lru_cache(maxsize=2048)
 def _school_district_root_key(value: str) -> str:
     s = _canonical_school_district_name(value)
     if not s:
@@ -12116,6 +11786,7 @@ def _looks_like_county_name(value: str) -> bool:
     s = _canonical_county_name(value)
     return bool(s) and ("COUNTY" in s)
 
+@functools.lru_cache(maxsize=512)
 def _county_root_key(value: str) -> str:
     s = _canonical_county_name(value)
     if not s:
@@ -12135,6 +11806,7 @@ def _canonical_city_name(value: str) -> str:
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
+@functools.lru_cache(maxsize=4096)
 def _canonical_subdivision_text(value: str) -> str:
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return ""
@@ -12178,6 +11850,7 @@ def _subdivision_root_from_patterns(value: str, remove_patterns: list[str]) -> s
     s = re.sub(r"\s+", " ", s).strip()
     return norm_name(s)
 
+@functools.lru_cache(maxsize=2048)
 def classify_requested_entity_type(value: str) -> str:
     s = _canonical_subdivision_text(value)
     if not s:
@@ -12236,6 +11909,7 @@ def classify_requested_entity_type(value: str) -> str:
         return "Appraisal District"
     return ""
 
+@functools.lru_cache(maxsize=512)
 def _canonical_water_district_type(value: str) -> str:
     s = _canonical_subdivision_text(value)
     if not s:
@@ -12275,6 +11949,7 @@ def _looks_like_city_name(value: str) -> bool:
 def _looks_like_entity_type(value: str, entity_type: str) -> bool:
     return classify_requested_entity_type(value) == str(entity_type).strip()
 
+@functools.lru_cache(maxsize=2048)
 def _city_root_key(value: str) -> str:
     s = _canonical_city_name(value)
     if not s:
@@ -12395,6 +12070,7 @@ def _match_preview(values: list[str], limit: int = 6) -> str:
         return f"{preview}, +{len(values) - limit} more"
     return preview
 
+@st.cache_data(show_spinner=False, ttl=600, max_entries=8)
 def _attach_subdivision_spend_totals(matches: pd.DataFrame, client_totals: pd.DataFrame) -> pd.DataFrame:
     out = matches.copy() if isinstance(matches, pd.DataFrame) else pd.DataFrame()
     if out.empty:
@@ -12408,12 +12084,12 @@ def _attach_subdivision_spend_totals(matches: pd.DataFrame, client_totals: pd.Da
         return out
 
     totals = ensure_cols(client_totals.copy(), {"Client": "", "Low": 0.0, "High": 0.0, "IsTFL": 0})
-    totals = totals[totals["IsTFL"] == 1].copy()
+    totals = totals[totals["IsTFL"] == 1]
     if totals.empty:
         return out
 
     totals["Client"] = totals["Client"].fillna("").astype(str).str.strip()
-    totals = totals[totals["Client"] != ""].copy()
+    totals = totals[totals["Client"] != ""]
     if totals.empty:
         return out
     totals["Low"] = pd.to_numeric(totals["Low"], errors="coerce").fillna(0.0)
@@ -12444,8 +12120,11 @@ def _attach_subdivision_spend_totals(matches: pd.DataFrame, client_totals: pd.Da
                 high_total += float(high_v)
         low_vals.append(low_total)
         high_vals.append(high_total)
-    out["low_total"] = low_vals
-    out["high_total"] = high_vals
+    out["low_total"] = pd.array(low_vals, dtype="float64")
+    out["high_total"] = pd.array(high_vals, dtype="float64")
+    out["match_count"] = out.get("match_clients", pd.Series(dtype=object)).map(
+        lambda v: len(v) if isinstance(v, list) else 0
+    ).astype("int64")
     return out
 
 @st.cache_data(show_spinner=False, ttl=43200, max_entries=2)
@@ -13595,7 +13274,7 @@ def build_tfl_water_district_type_matches(tfl_client_names: tuple[str, ...]) -> 
         if subtype == "Navigation District":
             # Use the dedicated statewide navigation-district layer for this type.
             continue
-        subset = water[water["type_label"].astype(str) == subtype].copy()
+        subset = water[water["type_label"].astype(str) == subtype]
         if subset.empty:
             continue
         piece = _build_layer_subdivision_matches(
@@ -13841,27 +13520,42 @@ def build_tfl_political_subdivision_matches(tfl_client_names: tuple[str, ...]) -
     ]
     if not tfl_client_names:
         return pd.DataFrame(columns=cols)
-    parts = [
-        build_tfl_school_district_matches(tfl_client_names).rename(
+
+    # PERFORMANCE: run all build_tfl_* functions concurrently so cold-start
+    # ArcGIS fetch calls overlap instead of running sequentially.
+    def _school():
+        return build_tfl_school_district_matches(tfl_client_names).rename(
             columns={"district_name": "subdivision_name", "district_code": "subdivision_code"}
-        ).assign(subdivision_type="School District"),
-        build_tfl_county_matches(tfl_client_names),
-        build_tfl_city_matches(tfl_client_names),
-        build_tfl_junior_college_matches(tfl_client_names),
-        build_tfl_groundwater_district_matches(tfl_client_names),
-        build_tfl_water_district_type_matches(tfl_client_names),
-        build_tfl_transit_authority_matches(tfl_client_names),
-        build_tfl_port_authority_matches(tfl_client_names),
-        build_tfl_regional_mobility_authority_matches(tfl_client_names),
-        build_tfl_navigation_district_matches(tfl_client_names),
-        build_tfl_name_anchored_special_matches(tfl_client_names),
+        ).assign(subdivision_type="School District")
+
+    builders = [
+        _school,
+        lambda: build_tfl_county_matches(tfl_client_names),
+        lambda: build_tfl_city_matches(tfl_client_names),
+        lambda: build_tfl_junior_college_matches(tfl_client_names),
+        lambda: build_tfl_groundwater_district_matches(tfl_client_names),
+        lambda: build_tfl_water_district_type_matches(tfl_client_names),
+        lambda: build_tfl_transit_authority_matches(tfl_client_names),
+        lambda: build_tfl_port_authority_matches(tfl_client_names),
+        lambda: build_tfl_regional_mobility_authority_matches(tfl_client_names),
+        lambda: build_tfl_navigation_district_matches(tfl_client_names),
+        lambda: build_tfl_name_anchored_special_matches(tfl_client_names),
     ]
-    parts = [p for p in parts if isinstance(p, pd.DataFrame) and not p.empty]
+    parts: list[pd.DataFrame] = []
+    with ThreadPoolExecutor(max_workers=len(builders)) as pool:
+        futures = {pool.submit(fn): fn for fn in builders}
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                if isinstance(result, pd.DataFrame) and not result.empty:
+                    parts.append(result)
+            except Exception:
+                pass
     if not parts:
         return pd.DataFrame(columns=cols)
     out = pd.concat(parts, ignore_index=True)
     keep = [c for c in cols if c in out.columns]
-    out = out[keep].copy()
+    out = out[keep]
     return _merge_subdivision_match_rows(out)
 
 @st.cache_data(show_spinner=False, ttl=86400, max_entries=256)
@@ -13997,7 +13691,7 @@ def query_texas_subdivisions_for_point(lon: float, lat: float) -> pd.DataFrame:
         "f": "json",
     }
 
-    # ── Helper closures (one per layer) ──────────────────────────
+    # -- Helper closures (one per layer) --------------------------
     def _fetch_school_districts() -> list[dict]:
         result: list[dict] = []
         try:
@@ -14200,7 +13894,7 @@ def query_texas_subdivisions_for_point(lon: float, lat: float) -> pd.DataFrame:
             pass
         return result
 
-    # ── Fire all queries concurrently ────────────────────────────
+    # -- Fire all queries concurrently ----------------------------
     fetchers = [
         _fetch_school_districts, _fetch_counties, _fetch_cities,
         _fetch_water_districts, _fetch_groundwater, _fetch_rma,
@@ -14221,6 +13915,7 @@ def query_texas_subdivisions_for_point(lon: float, lat: float) -> pd.DataFrame:
     out = pd.DataFrame(rows, columns=cols).drop_duplicates()
     return out.sort_values(["subdivision_type", "subdivision_name"], ascending=[True, True])
 
+@functools.lru_cache(maxsize=4096)
 def _subdivision_name_key(subdivision_type: str, subdivision_name: str) -> str:
     t = str(subdivision_type).strip().lower()
     if t == "school district":
@@ -14270,8 +13965,8 @@ def _subdivision_numeric_code_key(subdivision_code: str) -> str:
 
 def _prepare_subdivision_match_pool(pool: pd.DataFrame, subdivision_type: str) -> pd.DataFrame:
     if pool.empty:
-        return pool.copy()
-    out = pool.copy()
+        return pool
+    out = pool
     code_series = (
         out["subdivision_code"].astype(str)
         if "subdivision_code" in out.columns
@@ -14300,33 +13995,33 @@ def _pick_overlap_subdivision_matches(
 
     code_key = _subdivision_code_key(subdivision_code)
     if code_key and "_code_key" in pool.columns:
-        picked = pool[pool["_code_key"].astype(str) == code_key].copy()
+        picked = pool[pool["_code_key"].astype(str) == code_key]
         if not picked.empty:
             return picked, "Spatial boundary (code)"
 
     numeric_code_key = _subdivision_numeric_code_key(subdivision_code)
     if numeric_code_key and "_code_numeric_key" in pool.columns:
-        picked = pool[pool["_code_numeric_key"].astype(str) == numeric_code_key].copy()
+        picked = pool[pool["_code_numeric_key"].astype(str) == numeric_code_key]
         if not picked.empty:
             return picked, "Spatial boundary (code)"
 
     name_key = _subdivision_name_key(subdivision_type, subdivision_name)
     if name_key and "_name_key" in pool.columns:
-        picked = pool[pool["_name_key"].astype(str) == name_key].copy()
+        picked = pool[pool["_name_key"].astype(str) == name_key]
         if not picked.empty:
             return picked, "Spatial boundary (name)"
 
         # Conservative fuzzy fallback for minor naming deltas between ArcGIS layers and matched records.
         if len(name_key) >= 6:
-            name_pool = pool[pool["_name_key"].astype(str) != ""].copy()
+            name_pool = pool[pool["_name_key"].astype(str) != ""]
             if not name_pool.empty:
                 name_pool["_name_score"] = name_pool["_name_key"].astype(str).map(
                     lambda x: difflib.SequenceMatcher(None, name_key, str(x)).ratio()
                 )
-                name_pool = name_pool[name_pool["_name_score"] >= 0.90].copy()
+                name_pool = name_pool[name_pool["_name_score"] >= 0.90]
                 if not name_pool.empty:
                     best_score = float(name_pool["_name_score"].max())
-                    picked = name_pool[name_pool["_name_score"] >= max(0.90, best_score - 0.03)].copy()
+                    picked = name_pool[name_pool["_name_score"] >= max(0.90, best_score - 0.03)]
                     if not picked.empty:
                         return picked.drop(columns=["_name_score"], errors="ignore"), "Spatial boundary (fuzzy)"
 
@@ -14342,6 +14037,7 @@ def _match_confidence_from_method(match_method: str) -> str:
         return "Low"
     return "Unknown"
 
+@st.cache_data(show_spinner=False, ttl=600, max_entries=8)
 def build_address_overlap_spending_rows(
     overlap_subdivisions: pd.DataFrame,
     subdivision_matches: pd.DataFrame,
@@ -14367,7 +14063,7 @@ def build_address_overlap_spending_rows(
     spend = tfl_spending.copy()
     spend = ensure_cols(spend, {"Client": "", "Low": 0.0, "High": 0.0, "Lobbyists": 0})
     spend["Client"] = spend["Client"].fillna("").astype(str).str.strip()
-    spend = spend[spend["Client"] != ""].copy()
+    spend = spend[spend["Client"] != ""]
     if spend.empty:
         return pd.DataFrame(columns=cols)
     spend["Low"] = pd.to_numeric(spend["Low"], errors="coerce").fillna(0.0)
@@ -14396,7 +14092,7 @@ def build_address_overlap_spending_rows(
         n = str(overlap.subdivision_name).strip()
         c = str(overlap.subdivision_code).strip()
         if t not in pool_cache:
-            base_pool = subdivision_matches[subdivision_matches["subdivision_type"].astype(str) == t].copy()
+            base_pool = subdivision_matches[subdivision_matches["subdivision_type"].astype(str) == t]
             pool_cache[t] = _prepare_subdivision_match_pool(base_pool, t)
         pool = pool_cache.get(t, pd.DataFrame())
         if pool.empty:
@@ -14627,7 +14323,7 @@ def build_overlap_map_points(
         if subdivision_type not in pool_cache:
             base_pool = subdivision_matches[
                 subdivision_matches["subdivision_type"].astype(str) == subdivision_type
-            ].copy()
+            ]
             pool_cache[subdivision_type] = _prepare_subdivision_match_pool(base_pool, subdivision_type)
 
         pool = pool_cache.get(subdivision_type, pd.DataFrame())
@@ -14682,7 +14378,7 @@ def build_overlap_map_points(
         special_types = set(SPECIAL_NAME_ANCHORED_ENTITY_TYPES) | {"Housing Authority"}
         special_matches = subdivision_matches[
             subdivision_matches["subdivision_type"].astype(str).isin(special_types)
-        ].copy()
+        ]
         county_lookup_keys = tuple(sorted(overlap_county_keys))
         city_lookup_keys = tuple(sorted(overlap_city_keys))
         for row in special_matches.itertuples(index=False):
@@ -15239,7 +14935,7 @@ def render_address_overlap_arcgis_map(
     arcgis_html = f"""
 <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/dark/main.css"/>
 <style>
-  /* ── Dark popup theme ── */
+  /* -- Dark popup theme -- */
   .esri-popup__main-container {{
     background: rgba(13,23,36,0.96) !important;
     color: rgba(220,230,240,0.95) !important;
@@ -15254,10 +14950,10 @@ def render_address_overlap_arcgis_map(
   .esri-popup__button:hover {{ color: #fff !important; background: rgba(100,180,255,0.18) !important; }}
   .esri-popup__pointer-direction {{ background: rgba(13,23,36,0.96) !important; }}
 
-  /* ── Sketch toolbar styling ── */
+  /* -- Sketch toolbar styling -- */
   .esri-sketch {{ background: rgba(13,23,36,0.92) !important; border-radius: 8px !important; border: 1px solid rgba(100,140,180,0.22) !important; }}
 
-  /* ── Legend — bottom-right, compact ── */
+  /* -- Legend — bottom-right, compact -- */
   #tfl-addr-legend {{
     position: absolute; bottom: 36px; right: 12px; z-index: 90;
     background: rgba(10,20,32,0.92); border: 1px solid rgba(100,140,180,0.18);
@@ -15276,7 +14972,7 @@ def render_address_overlap_arcgis_map(
     border: 1px solid rgba(255,255,255,0.18);
   }}
 
-  /* ── Loading overlay ── */
+  /* -- Loading overlay -- */
   @keyframes tfl-pulse {{ 0%,100% {{ transform:scale(1); opacity:0.92; }} 50% {{ transform:scale(1.35); opacity:0.45; }} }}
   #tfl-addr-loading {{
     position:absolute; top:0; left:0; width:100%; height:100%;
@@ -15295,7 +14991,7 @@ def render_address_overlap_arcgis_map(
   }}
   @keyframes tfl-ld-spin {{ 0%{{transform:rotate(0deg)}} 100%{{transform:rotate(360deg)}} }}
 
-  /* ── Coordinate bar ── */
+  /* -- Coordinate bar -- */
   #tfl-addr-coord {{
     position:absolute; bottom:10px; left:50%; transform:translateX(-50%); z-index:90;
     background:rgba(10,16,26,0.85); border:1px solid rgba(100,140,180,0.15);
@@ -15305,7 +15001,7 @@ def render_address_overlap_arcgis_map(
     white-space:nowrap; letter-spacing:0.04em;
   }}
 
-  /* ── Lasso/selection feedback ── */
+  /* -- Lasso/selection feedback -- */
   #tfl-addr-sel-info {{
     position:absolute; bottom:36px; left:12px; z-index:90;
     background:rgba(10,16,26,0.92); border:1px solid rgba(0,180,255,0.25);
@@ -15363,7 +15059,7 @@ def render_address_overlap_arcgis_map(
   ], function(Map, MapView, FeatureLayer, GraphicsLayer, Graphic, Home, ScaleBar, BasemapToggle, Compass, Fullscreen, Search, Locate, Sketch, Expand, geometryEngine) {{
     const map = new Map({{ basemap: baseMapId }});
 
-    /* ── Reference boundary layers ── */
+    /* -- Reference boundary layers -- */
     const countyLayer = new FeatureLayer({{
       url: "{TEA_ARCGIS_COUNTY_LAYER_URL}",
       outFields: ["FENAME", "FIPS"],
@@ -15404,7 +15100,7 @@ def render_address_overlap_arcgis_map(
       opacity: 0.20
     }});
 
-    /* ── Texas House & Senate district boundaries ── */
+    /* -- Texas House & Senate district boundaries -- */
     const houseLayer = new FeatureLayer({{
       url: "{TEXAS_HOUSE_DISTRICTS_LAYER_URL}",
       outFields: ["*"],
@@ -15512,7 +15208,7 @@ def render_address_overlap_arcgis_map(
       }}
     }}));
 
-    /* ── Zoom-dependent label visibility ── */
+    /* -- Zoom-dependent label visibility -- */
     const updateLabels = () => {{
       const z = Number(view.zoom || 0);
       countyLayer.labelsVisible = z >= 6;
@@ -15523,7 +15219,7 @@ def render_address_overlap_arcgis_map(
     }};
     view.watch("zoom", updateLabels);
 
-    /* ── Widgets ── */
+    /* -- Widgets -- */
     const home = new Home({{ view }});
     const basemapToggle = new BasemapToggle({{ view, nextBasemap: baseMapId === "hybrid" ? "gray-vector" : "hybrid" }});
     const scaleBar = new ScaleBar({{ view, unit: "dual" }});
@@ -15695,7 +15391,7 @@ def render_tfl_school_district_arcgis_map(matches: pd.DataFrame, height: int = 6
     arcgis_html = f"""
 <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/dark/main.css"/>
 <style>
-  /* ── Dark popup theme ── */
+  /* -- Dark popup theme -- */
   .esri-popup__main-container {{
     background: rgba(13,23,36,0.96) !important;
     color: rgba(220,230,240,0.95) !important;
@@ -15914,7 +15610,7 @@ def render_tfl_school_district_arcgis_map(matches: pd.DataFrame, height: int = 6
     }};
     view.watch("zoom", updateLabels);
 
-    /* ── Widgets ── */
+    /* -- Widgets -- */
     const home = new Home({{ view }});
     const basemapToggle = new BasemapToggle({{ view, nextBasemap: baseMapId === "hybrid" ? "gray-vector" : "hybrid" }});
     const scaleBar = new ScaleBar({{ view, unit: "dual" }});
@@ -16090,7 +15786,7 @@ def render_tfl_subdivision_arcgis_map(
     arcgis_html = f"""
 <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/dark/main.css"/>
 <style>
-  /* ── Dark popup theme ── */
+  /* -- Dark popup theme -- */
   .esri-popup__main-container {{
     background: rgba(13,23,36,0.96) !important;
     color: rgba(220,230,240,0.95) !important;
@@ -16185,7 +15881,7 @@ def render_tfl_subdivision_arcgis_map(
     text-transform:uppercase; letter-spacing:0.08em; margin-bottom:3px;
   }}
 
-  /* ── Address Collector Panel ── */
+  /* -- Address Collector Panel -- */
   #tfl-sub-collector {{
     position:absolute; bottom:40px; left:12px; z-index:95;
     background:rgba(10,20,32,0.94); border:1px solid rgba(30,144,255,0.22);
@@ -16248,7 +15944,7 @@ def render_tfl_subdivision_arcgis_map(
     display:none;
   }}
 
-  /* ── Toast Notification System ── */
+  /* -- Toast Notification System -- */
   #tfl-sub-toast-container {{
     position:absolute; bottom:50px; left:50%; transform:translateX(-50%); z-index:200;
     display:flex; flex-direction:column-reverse; align-items:center; gap:8px;
@@ -16274,7 +15970,7 @@ def render_tfl_subdivision_arcgis_map(
   @keyframes tfl-toast-in {{ 0%{{opacity:0;transform:translateY(16px);}} 100%{{opacity:1;transform:translateY(0);}} }}
   @keyframes tfl-toast-out {{ 0%{{opacity:1;transform:translateY(0);}} 100%{{opacity:0;transform:translateY(-12px);}} }}
 
-  /* ── Stats ribbon ── */
+  /* -- Stats ribbon -- */
   #tfl-sub-stats {{
     position:absolute; top:10px; left:56px; z-index:90;
     background:rgba(10,16,26,0.88); border:1px solid rgba(100,140,180,0.15);
@@ -16287,7 +15983,7 @@ def render_tfl_subdivision_arcgis_map(
   #tfl-sub-stats .stat-val {{ font-weight:700; color:rgba(100,200,255,0.95); }}
   #tfl-sub-stats .stat-sep {{ color:rgba(100,140,180,0.30); }}
 
-  /* ── Hover tooltip ── */
+  /* -- Hover tooltip -- */
   #tfl-sub-tooltip {{
     position:absolute; z-index:110; pointer-events:none;
     background:rgba(10,16,26,0.94); border:1px solid rgba(100,180,255,0.22);
@@ -16301,7 +15997,7 @@ def render_tfl_subdivision_arcgis_map(
   #tfl-sub-tooltip .tt-val {{ font-size:10px; color:rgba(100,200,255,0.85); margin-top:2px; }}
   #tfl-sub-tooltip .tt-type {{ font-size:9px; color:rgba(150,175,200,0.55); margin-top:1px; }}
 
-  /* ── Address delete button ── */
+  /* -- Address delete button -- */
   #tfl-sub-collector .dc-del {{
     flex-shrink:0; width:16px; height:16px; border-radius:50%; margin-left:auto;
     background:rgba(255,80,80,0.08); border:1px solid rgba(255,80,80,0.20);
@@ -16397,7 +16093,7 @@ def render_tfl_subdivision_arcgis_map(
   ], function(Map, MapView, FeatureLayer, GraphicsLayer, Graphic, Home, ScaleBar, BasemapToggle, Compass, Fullscreen, Search, Locate, Sketch, Expand, geometryEngine) {{
     const map = new Map({{ basemap: baseMapId }});
 
-    /* ── Address collector state ── */
+    /* -- Address collector state -- */
     const collectedAddresses = [];
     const pinsLayer = new GraphicsLayer();
     const geocodeUrl = "{ARCGIS_GEOCODER_URL}";
@@ -16488,7 +16184,7 @@ def render_tfl_subdivision_arcgis_map(
       ui: {{ padding: {{ top: 10, right: 10, bottom: 30, left: 10 }} }}
     }});
 
-    /* ── Address collector helper functions ── */
+    /* -- Address collector helper functions -- */
     function updateCollectorUI() {{
       const listEl = document.getElementById("tfl-sub-addr-list");
       const countEl = document.getElementById("tfl-sub-addr-count");
@@ -16648,7 +16344,7 @@ def render_tfl_subdivision_arcgis_map(
     }};
     view.watch("zoom", updateLabels);
 
-    /* ── Widgets ── */
+    /* -- Widgets -- */
     const home = new Home({{ view }});
     const basemapToggle = new BasemapToggle({{ view, nextBasemap: baseMapId === "hybrid" ? "gray-vector" : "hybrid" }});
     const scaleBar = new ScaleBar({{ view, unit: "dual" }});
@@ -16801,7 +16497,7 @@ def render_tfl_subdivision_arcgis_map(
       }});
     }});
 
-    /* ── Send to Forensics (first address) ── */
+    /* -- Send to Forensics (first address) -- */
     document.getElementById("tfl-sub-send-forensics-btn").addEventListener("click", () => {{
       if (collectedAddresses.length === 0) {{ showToast("No addresses collected yet", "warn"); return; }}
       const payload = {{
@@ -16820,7 +16516,7 @@ def render_tfl_subdivision_arcgis_map(
       showToast("Sent to Address Forensics", "success");
     }});
 
-    /* ── Send All to Batch ── */
+    /* -- Send All to Batch -- */
     document.getElementById("tfl-sub-send-batch-btn").addEventListener("click", () => {{
       if (collectedAddresses.length === 0) {{ showToast("No addresses collected yet", "warn"); return; }}
       const payload = {{
@@ -16991,7 +16687,7 @@ def filter_filer_rows(
 
     d = df.copy()
     if session is not None:
-        d = d[d["Session"].astype(str).str.strip() == str(session)].copy()
+        d = d[d["Session"].astype(str).str.strip() == str(session)]
     if d.empty:
         return d
 
@@ -17090,7 +16786,7 @@ def filter_filer_rows(
 
         ok = loose_ok
 
-    return d[ok].copy()
+    return d.loc[ok]
 
 def filter_filer_rows_multi(
     df: pd.DataFrame,
@@ -17102,15 +16798,15 @@ def filter_filer_rows_multi(
     loose: bool = False,
 ) -> pd.DataFrame:
     if df.empty or not lobbyshorts:
-        return df.iloc[0:0].copy()
+        return df.iloc[0:0]
 
     lobbyshorts_set = {str(s).strip() for s in lobbyshorts if str(s).strip()}
     if not lobbyshorts_set:
-        return df.iloc[0:0].copy()
+        return df.iloc[0:0]
 
     d = df.copy()
     if session is not None:
-        d = d[d["Session"].astype(str).str.strip() == str(session)].copy()
+        d = d[d["Session"].astype(str).str.strip() == str(session)]
     if d.empty:
         return d
 
@@ -17166,7 +16862,7 @@ def filter_filer_rows_multi(
             )
             ok = loose_ok
 
-    d = d[ok].copy()
+    d = d.loc[ok]
     if d.empty:
         return d
 
@@ -17387,10 +17083,12 @@ def amount_display(exact, low, high, code=None) -> str:
     return ""
 
 def ensure_cols(df: pd.DataFrame, cols_with_defaults: dict) -> pd.DataFrame:
+    missing = {c: v for c, v in cols_with_defaults.items() if c not in df.columns}
+    if not missing:
+        return df  # No copy needed when all columns present
     out = df.copy()
-    for c, default in cols_with_defaults.items():
-        if c not in out.columns:
-            out[c] = default
+    for c, default in missing.items():
+        out[c] = default
     return out
 
 _SESSION_BASE_YEAR = 2023
@@ -18074,7 +17772,7 @@ def _build_report_payload(
     if "Session" in base.columns:
         base["Session"] = base["Session"].astype(str).str.strip()
         if not scope_all and tfl_session:
-            base = base[base["Session"] == tfl_session].copy()
+            base = base[base["Session"] == tfl_session]
 
     base["IsTFL"] = pd.to_numeric(base.get("IsTFL", 0), errors="coerce").fillna(0).astype(int)
     base["Low_num"] = pd.to_numeric(base.get("Low_num", 0), errors="coerce").fillna(0.0)
@@ -18129,7 +17827,7 @@ def _build_report_payload(
     def _top_clients(df: pd.DataFrame, is_tfl: int, limit: int = 5) -> list[dict]:
         if df.empty or "Client" not in df.columns:
             return []
-        subset = df[df["IsTFL"] == is_tfl].copy()
+        subset = df[df["IsTFL"] == is_tfl]
         subset["Client"] = subset["Client"].fillna("").astype(str).str.strip()
         subset = subset[subset["Client"] != ""]
         if subset.empty:
@@ -18141,8 +17839,8 @@ def _build_report_payload(
             .head(limit)
         )
         return [
-            {"Client": row["Client"], "Low": float(row["Low"]), "High": float(row["High"])}
-            for _, row in grouped.iterrows()
+            {"Client": row.Client, "Low": float(row.Low), "High": float(row.High)}
+            for row in grouped.itertuples(index=False)
         ]
 
     top_clients_tfl = _top_clients(base, 1, limit=5)
@@ -18182,7 +17880,7 @@ def _build_report_payload(
 
     chart_entity_types = "No taxpayer-funded clients found."
     entity_type_counts = []
-    tfl_clients = base[base["IsTFL"] == 1].copy()
+    tfl_clients = base[base["IsTFL"] == 1]
     if not tfl_clients.empty:
         clients = _series_from(tfl_clients, "Client").dropna().astype(str).str.strip()
         clients = clients[(clients != "") & (~clients.str.lower().isin(["nan", "none", "null"]))].drop_duplicates()
@@ -18214,7 +17912,7 @@ def _build_report_payload(
     wit = Wit_All if isinstance(Wit_All, pd.DataFrame) else pd.DataFrame()
     if not wit.empty and "LobbyShort" in wit.columns:
         if session_val is not None and "Session" in wit.columns:
-            wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)].copy()
+            wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)]
         if not wit.empty:
             pos = bill_position_from_flags(wit)
             if not pos.empty:
@@ -18251,7 +17949,7 @@ def _build_report_payload(
                         ),
                     ]
                 )
-                against = pos[pos["Position"].astype(str).str.contains("Against", case=False, na=False)].copy()
+                against = pos[pos["Position"].astype(str).str.contains("Against", case=False, na=False)]
 
     top_bills = []
     if not against.empty:
@@ -18267,23 +17965,23 @@ def _build_report_payload(
 
         bill_info = Bill_Status_All if isinstance(Bill_Status_All, pd.DataFrame) else pd.DataFrame()
         if not bill_info.empty and "Session" in bill_info.columns and session_val is not None:
-            bill_info = bill_info[bill_info["Session"].astype(str).str.strip() == str(session_val)].copy()
+            bill_info = bill_info[bill_info["Session"].astype(str).str.strip() == str(session_val)]
         keep_cols = [c for c in ["Bill", "Caption", "Status"] if c in bill_info.columns]
         if keep_cols:
             bill_info = bill_info[keep_cols].drop_duplicates(subset=["Bill"])
         counts = counts.merge(bill_info, on="Bill", how="left") if keep_cols else counts
 
-        for _, row in counts.iterrows():
-            bill_id = str(row.get("Bill", "")).strip() or "-"
-            caption = str(row.get("Caption", "")).strip() or "-"
-            status = str(row.get("Status", "")).strip()
+        for row in counts.itertuples(index=False):
+            bill_id = str(getattr(row, "Bill", "")).strip() or "-"
+            caption = str(getattr(row, "Caption", "")).strip() or "-"
+            status = str(getattr(row, "Status", "")).strip()
             summary = f"Status: {status}" if status else "Status: Unknown"
             top_bills.append(
                 {
                     "id": bill_id,
                     "caption": caption,
-                    "tfl": int(row.get("tfl", 0) or 0),
-                    "private": int(row.get("private", 0) or 0),
+                    "tfl": int(getattr(row, "tfl", 0) or 0),
+                    "private": int(getattr(row, "private", 0) or 0),
                     "summary": summary,
                 }
             )
@@ -18303,10 +18001,10 @@ def _build_report_payload(
     bill_sub = Bill_Sub_All if isinstance(Bill_Sub_All, pd.DataFrame) else pd.DataFrame()
     if not against.empty and not bill_sub.empty and {"Bill", "Subject"}.issubset(bill_sub.columns):
         if "Session" in bill_sub.columns and session_val is not None:
-            bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+            bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)]
         merged = against[["Bill"]].merge(bill_sub[["Bill", "Subject"]], on="Bill", how="left")
         merged["Subject"] = merged["Subject"].fillna("").astype(str).str.strip()
-        merged = merged[merged["Subject"] != ""].copy()
+        merged = merged[merged["Subject"] != ""]
         if not merged.empty:
             subject_counts = (
                 merged.groupby("Subject")
@@ -18440,7 +18138,7 @@ def _build_report_payload(
     if isinstance(short_to_names, dict) and short_to_names:
         lobbyshort_to_name = {k: (v[0] if v else k) for k, v in short_to_names.items()}
     if not lobbyshort_to_name and isinstance(Lobby_TFL_Client_All, pd.DataFrame) and not Lobby_TFL_Client_All.empty:
-        tmp = Lobby_TFL_Client_All[["LobbyShort", "Lobby Name"]].dropna().copy()
+        tmp = Lobby_TFL_Client_All[["LobbyShort", "Lobby Name"]].dropna()
         tmp["LobbyShort"] = tmp["LobbyShort"].astype(str).str.strip()
         tmp["Lobby Name"] = tmp["Lobby Name"].astype(str).str.strip()
         lobbyshort_to_name = (
@@ -18466,7 +18164,7 @@ def _build_report_payload(
                 {"Client": "", "LobbyShort": "", "Low_num": 0.0, "High_num": 0.0, "IsTFL": 0, "Lobby Name": ""},
             ).copy()
             client_rows["ClientNorm"] = client_rows["Client"].map(norm_name)
-            client_rows = client_rows[client_rows["ClientNorm"] == norm_name(client_name)].copy()
+            client_rows = client_rows[client_rows["ClientNorm"] == norm_name(client_name)]
 
             focus_section = {"title": f"Client - {client_name}", "summary": "", "metrics": [], "bullets": [], "charts": []}
             if client_rows.empty:
@@ -18522,9 +18220,9 @@ def _build_report_payload(
                 bill_list_all = []
                 sub_counts = pd.DataFrame()
                 if lobbyshorts and not wit.empty and "LobbyShort" in wit.columns:
-                    wit = wit[wit["LobbyShort"].astype(str).str.strip().isin(lobbyshorts)].copy()
+                    wit = wit[wit["LobbyShort"].astype(str).str.strip().isin(lobbyshorts)]
                     if session_val is not None and "Session" in wit.columns:
-                        wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)].copy()
+                        wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)]
                     if not wit.empty:
                         pos = bill_position_from_flags(wit)
                         bill_count = int(pos["Bill"].nunique()) if not pos.empty else 0
@@ -18539,7 +18237,7 @@ def _build_report_payload(
 
                         bs = Bill_Status_All if isinstance(Bill_Status_All, pd.DataFrame) else pd.DataFrame()
                         if not bs.empty and "Session" in bs.columns and session_val is not None:
-                            bs = bs[bs["Session"].astype(str).str.strip() == str(session_val)].copy()
+                            bs = bs[bs["Session"].astype(str).str.strip() == str(session_val)]
                         if bill_list_all and not bs.empty and "Bill" in bs.columns:
                             status_counts = _top_counts(
                                 bs[bs["Bill"].astype(str).isin(bill_list_all)].get(
@@ -18562,7 +18260,7 @@ def _build_report_payload(
                                         on="Bill",
                                         how="left",
                                     )
-                                for _, row in bill_counts.iterrows():
+                                for row in bill_counts.to_dict("records"):
                                     bill = str(row.get("Bill", "")).strip()
                                     count = int(row.get("Witness Rows", 0) or 0)
                                     caption = _truncate_text(row.get("Caption", ""), 70)
@@ -18577,7 +18275,7 @@ def _build_report_payload(
                         bill_sub = Bill_Sub_All if isinstance(Bill_Sub_All, pd.DataFrame) else pd.DataFrame()
                         if bill_list_all and not bill_sub.empty and {"Bill", "Subject"}.issubset(bill_sub.columns):
                             if session_val is not None and "Session" in bill_sub.columns:
-                                bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+                                bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)]
                             sub_counts = (
                                 bill_sub[bill_sub["Bill"].astype(str).isin(bill_list_all)]
                                 .groupby("Subject")
@@ -18587,7 +18285,7 @@ def _build_report_payload(
                                 .head(5)
                             )
                             policy_count = int(sub_counts["Subject"].nunique()) if not sub_counts.empty else 0
-                            for _, row in sub_counts.iterrows():
+                            for row in sub_counts.to_dict("records"):
                                 subject = _truncate_text(row.get("Subject", ""), 60)
                                 mentions = int(row.get("Mentions", 0) or 0)
                                 if subject:
@@ -18623,15 +18321,15 @@ def _build_report_payload(
                     focus_section["bullets"].append(f"Bill outcomes (selected session): {status_summary}")
 
                 if not lobby_sub_all.empty:
-                    lobby_sub = lobby_sub_all.copy()
+                    lobby_sub = lobby_sub_all
                     if "Session" in lobby_sub.columns and session_val is not None:
-                        lobby_sub = lobby_sub[lobby_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+                        lobby_sub = lobby_sub[lobby_sub["Session"].astype(str).str.strip() == str(session_val)]
                     if "LobbyShortNorm" in lobby_sub.columns:
-                        lobby_sub = lobby_sub[lobby_sub["LobbyShortNorm"].isin(lobbyshort_norms)].copy()
+                        lobby_sub = lobby_sub[lobby_sub["LobbyShortNorm"].isin(lobbyshort_norms)]
                     elif "LobbyShort" in lobby_sub.columns:
-                        lobby_sub = lobby_sub[lobby_sub["LobbyShort"].astype(str).str.strip().isin(lobbyshorts)].copy()
+                        lobby_sub = lobby_sub[lobby_sub["LobbyShort"].astype(str).str.strip().isin(lobbyshorts)]
                     else:
-                        lobby_sub = lobby_sub.iloc[0:0].copy()
+                        lobby_sub = lobby_sub.iloc[0:0]
                     if not lobby_sub.empty:
                         lobby_sub = lobby_sub.assign(
                             Subject=lobby_sub.get("Subject Matter", "").fillna("").astype(str).str.strip(),
@@ -18653,7 +18351,7 @@ def _build_report_payload(
                             focus_section["bullets"].append(f"Reported subject matters: {topics}")
 
                 if not staff_all.empty and lobbyist_norms:
-                    staff_df = staff_all.copy()
+                    staff_df = staff_all
                     staff_session_mask = (
                         staff_df["Session"].astype(str).str.strip() == str(session_val)
                         if "Session" in staff_df.columns and session_val is not None
@@ -18672,8 +18370,8 @@ def _build_report_payload(
                     if lobbyshort_norms:
                         match_mask = match_mask | staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)).isin(lobbyshort_norms)
 
-                    staff_pick = staff_df[match_mask].copy()
-                    staff_pick_session = staff_df[staff_session_mask & match_mask].copy()
+                    staff_pick = staff_df[match_mask]
+                    staff_pick_session = staff_df[staff_session_mask & match_mask]
                     if not staff_pick.empty:
                         staff_rows = int(len(staff_pick))
                         staff_legs = int(staff_pick.get("Legislator", pd.Series(dtype=object)).nunique()) if "Legislator" in staff_pick.columns else 0
@@ -18799,8 +18497,8 @@ def _build_report_payload(
             lobby_rows = ensure_cols(
                 base,
                 {"Client": "", "LobbyShort": "", "Low_num": 0.0, "High_num": 0.0, "IsTFL": 0},
-            ).copy()
-            lobby_rows = lobby_rows[lobby_rows["LobbyShort"].astype(str).str.strip() == lobbyshort].copy()
+            )
+            lobby_rows = lobby_rows[lobby_rows["LobbyShort"].astype(str).str.strip() == lobbyshort]
 
             focus_section = {"title": f"Lobbyist - {display_name}", "summary": "", "metrics": [], "bullets": [], "charts": []}
             if lobby_rows.empty:
@@ -18837,9 +18535,9 @@ def _build_report_payload(
 
                 wit = Wit_All if isinstance(Wit_All, pd.DataFrame) else pd.DataFrame()
                 if not wit.empty and "LobbyShort" in wit.columns:
-                    wit = wit[wit["LobbyShort"].astype(str).str.strip() == lobbyshort].copy()
+                    wit = wit[wit["LobbyShort"].astype(str).str.strip() == lobbyshort]
                     if session_val is not None and "Session" in wit.columns:
-                        wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)].copy()
+                        wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)]
                     if not wit.empty:
                         pos = bill_position_from_flags(wit)
                         bill_count = int(pos["Bill"].nunique()) if not pos.empty else 0
@@ -18854,7 +18552,7 @@ def _build_report_payload(
 
                         bs = Bill_Status_All if isinstance(Bill_Status_All, pd.DataFrame) else pd.DataFrame()
                         if not bs.empty and "Session" in bs.columns and session_val is not None:
-                            bs = bs[bs["Session"].astype(str).str.strip() == str(session_val)].copy()
+                            bs = bs[bs["Session"].astype(str).str.strip() == str(session_val)]
                         if bill_list_all and not bs.empty and "Bill" in bs.columns:
                             status_counts = _top_counts(
                                 bs[bs["Bill"].astype(str).isin(bill_list_all)].get(
@@ -18877,7 +18575,7 @@ def _build_report_payload(
                                         on="Bill",
                                         how="left",
                                     )
-                                for _, row in bill_counts.iterrows():
+                                for row in bill_counts.to_dict("records"):
                                     bill = str(row.get("Bill", "")).strip()
                                     count = int(row.get("Witness Rows", 0) or 0)
                                     caption = _truncate_text(row.get("Caption", ""), 70)
@@ -18892,7 +18590,7 @@ def _build_report_payload(
                         bill_sub = Bill_Sub_All if isinstance(Bill_Sub_All, pd.DataFrame) else pd.DataFrame()
                         if bill_list_all and not bill_sub.empty and {"Bill", "Subject"}.issubset(bill_sub.columns):
                             if session_val is not None and "Session" in bill_sub.columns:
-                                bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+                                bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)]
                             sub_counts = (
                                 bill_sub[bill_sub["Bill"].astype(str).isin(bill_list_all)]
                                 .groupby("Subject")
@@ -18902,7 +18600,7 @@ def _build_report_payload(
                                 .head(5)
                             )
                             policy_count = int(sub_counts["Subject"].nunique()) if not sub_counts.empty else 0
-                            for _, row in sub_counts.iterrows():
+                            for row in sub_counts.to_dict("records"):
                                 subject = _truncate_text(row.get("Subject", ""), 60)
                                 mentions = int(row.get("Mentions", 0) or 0)
                                 if subject:
@@ -18958,15 +18656,15 @@ def _build_report_payload(
                     focus_section["bullets"].append(f"Bill outcomes (selected session): {status_summary}")
 
                 if not lobby_sub_all.empty:
-                    lobby_sub = lobby_sub_all.copy()
+                    lobby_sub = lobby_sub_all
                     if "Session" in lobby_sub.columns and session_val is not None:
-                        lobby_sub = lobby_sub[lobby_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+                        lobby_sub = lobby_sub[lobby_sub["Session"].astype(str).str.strip() == str(session_val)]
                     if "LobbyShortNorm" in lobby_sub.columns:
-                        lobby_sub = lobby_sub[lobby_sub["LobbyShortNorm"] == lobbyshort_norm].copy()
+                        lobby_sub = lobby_sub[lobby_sub["LobbyShortNorm"] == lobbyshort_norm]
                     elif "LobbyShort" in lobby_sub.columns:
-                        lobby_sub = lobby_sub[lobby_sub["LobbyShort"].astype(str).str.strip() == lobbyshort].copy()
+                        lobby_sub = lobby_sub[lobby_sub["LobbyShort"].astype(str).str.strip() == lobbyshort]
                     else:
-                        lobby_sub = lobby_sub.iloc[0:0].copy()
+                        lobby_sub = lobby_sub.iloc[0:0]
                     if not lobby_sub.empty:
                         lobby_sub = lobby_sub.assign(
                             Subject=lobby_sub.get("Subject Matter", "").fillna("").astype(str).str.strip(),
@@ -18988,7 +18686,7 @@ def _build_report_payload(
                             focus_section["bullets"].append(f"Reported subject matters: {topics}")
 
                 if not staff_all.empty and lobbyist_norms:
-                    staff_df = staff_all.copy()
+                    staff_df = staff_all
                     staff_session_mask = (
                         staff_df["Session"].astype(str).str.strip() == str(session_val)
                         if "Session" in staff_df.columns and session_val is not None
@@ -19006,8 +18704,8 @@ def _build_report_payload(
                             staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)) == lobbyshort_norm
                         )
 
-                    staff_pick = staff_df[match_mask].copy()
-                    staff_pick_session = staff_df[staff_session_mask & match_mask].copy()
+                    staff_pick = staff_df[match_mask]
+                    staff_pick_session = staff_df[staff_session_mask & match_mask]
                     if not staff_pick.empty:
                         staff_rows = int(len(staff_pick))
                         staff_legs = int(staff_pick.get("Legislator", pd.Series(dtype=object)).nunique()) if "Legislator" in staff_pick.columns else 0
@@ -19113,10 +18811,10 @@ def _build_report_payload(
             if authored_all.empty:
                 focus_section["summary"] = "No authored bill data was available for the selected session."
             else:
-                authored = authored_all.copy()
-                authored = authored[authored["AuthorNorm"] == norm_name(member_name)].copy()
+                authored = authored_all
+                authored = authored[authored["AuthorNorm"] == norm_name(member_name)]
                 if session_val is not None and "Session" in authored.columns:
-                    authored = authored[authored["Session"].astype(str).str.strip() == str(session_val)].copy()
+                    authored = authored[authored["Session"].astype(str).str.strip() == str(session_val)]
 
                 bill_count = int(authored["Bill"].nunique()) if not authored.empty else 0
                 passed = int((authored.get("Status", pd.Series(dtype=object)) == "Passed").sum()) if not authored.empty else 0
@@ -19127,8 +18825,8 @@ def _build_report_payload(
                 witness = pd.DataFrame()
                 if bill_list and not wit.empty:
                     if session_val is not None and "Session" in wit.columns:
-                        wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)].copy()
-                    wit = wit[wit["Bill"].astype(str).isin(bill_list)].copy() if "Bill" in wit.columns else wit.iloc[0:0].copy()
+                        wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)]
+                    wit = wit[wit["Bill"].astype(str).isin(bill_list)] if "Bill" in wit.columns else wit.iloc[0:0]
                     witness = bill_position_from_flags(wit) if not wit.empty else pd.DataFrame()
                     if not witness.empty:
                         witness = witness.merge(tfl_flag, on="LobbyShort", how="left")
@@ -19158,13 +18856,13 @@ def _build_report_payload(
 
                 top_bills_lines = []
                 if not authored.empty:
-                    authored_unique = authored.drop_duplicates(subset=["Bill"]).copy()
+                    authored_unique = authored.drop_duplicates(subset=["Bill"])
                     status_rank = authored_unique.get("Status", pd.Series(dtype=object)).map(
                         {"Passed": 0, "Failed": 1}
                     ).fillna(2)
                     authored_unique = authored_unique.assign(_rank=status_rank)
                     top_authored = authored_unique.sort_values(["_rank", "Bill"]).head(5)
-                    for _, row in top_authored.iterrows():
+                    for row in top_authored.to_dict("records"):
                         bill = str(row.get("Bill", "")).strip()
                         status = str(row.get("Status", "")).strip()
                         caption = _truncate_text(row.get("Caption", ""), 70)
@@ -19181,7 +18879,7 @@ def _build_report_payload(
                 bill_sub = Bill_Sub_All if isinstance(Bill_Sub_All, pd.DataFrame) else pd.DataFrame()
                 if bill_list and not bill_sub.empty and {"Bill", "Subject"}.issubset(bill_sub.columns):
                     if session_val is not None and "Session" in bill_sub.columns:
-                        bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+                        bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)]
                     sub_counts = (
                         bill_sub[bill_sub["Bill"].astype(str).isin(bill_list)]
                         .groupby("Subject")
@@ -19191,7 +18889,7 @@ def _build_report_payload(
                         .head(5)
                     )
                     policy_count = int(sub_counts["Subject"].nunique()) if not sub_counts.empty else 0
-                    for _, row in sub_counts.iterrows():
+                    for row in sub_counts.to_dict("records"):
                         subject = _truncate_text(row.get("Subject", ""), 60)
                         mentions = int(row.get("Mentions", 0) or 0)
                         if subject:
@@ -19219,7 +18917,7 @@ def _build_report_payload(
                         )
                         top_lobby_lines = []
                         top_lobby_chart = []
-                        for _, row in top_lobby.iterrows():
+                        for row in top_lobby.to_dict("records"):
                             short = str(row.get("LobbyShort", "")).strip()
                             rows = int(row.get("Rows", 0) or 0)
                             label = lobbyshort_to_name.get(short, short)
@@ -19301,7 +18999,7 @@ def _build_report_payload(
 
                 staff_matches = pd.DataFrame()
                 if not staff_all.empty and "Legislator" in staff_all.columns:
-                    staff_df = staff_all.copy()
+                    staff_df = staff_all
                     leg_norm = norm_name_series(staff_df["Legislator"])
                     leg_last_norm = last_name_norm_series(staff_df["Legislator"])
                     leg_init_key = staff_df["Legislator"].fillna("").astype(str).map(_last_first_initial_key)
@@ -19317,7 +19015,7 @@ def _build_report_payload(
                     if full_norm:
                         match = match | leg_norm.str.contains(full_norm, na=False)
 
-                    staff_matches = staff_df[match].copy()
+                    staff_matches = staff_df[match]
 
                 if not staff_matches.empty:
                     focus_section["metrics"].append(("Staff history rows", f"{len(staff_matches):,}"))
@@ -19331,7 +19029,7 @@ def _build_report_payload(
 
                 staff_lobbyists = pd.DataFrame()
                 if not staff_matches.empty and "Staffer" in staff_matches.columns:
-                    tmp_short = Lobby_TFL_Client_All[["LobbyShort"]].dropna().copy()
+                    tmp_short = Lobby_TFL_Client_All[["LobbyShort"]].dropna()
                     tmp_short["InitialKey"] = tmp_short["LobbyShort"].map(_last_first_initial_key)
                     init_counts = (
                         tmp_short.groupby(["InitialKey", "LobbyShort"])
@@ -19353,9 +19051,9 @@ def _build_report_payload(
                             return str(initial_to_short[init_key])
                         return ""
 
-                    staff_lobbyists = staff_matches.copy()
+                    staff_lobbyists = staff_matches
                     staff_lobbyists["LobbyShort"] = staff_lobbyists["Staffer"].fillna("").astype(str).map(map_staffer)
-                    staff_lobbyists = staff_lobbyists[staff_lobbyists["LobbyShort"].astype(str).str.strip() != ""].copy()
+                    staff_lobbyists = staff_lobbyists[staff_lobbyists["LobbyShort"].astype(str).str.strip() != ""]
                     if not staff_lobbyists.empty:
                         focus_section["metrics"].append(
                             ("Staffers who became lobbyists", f"{staff_lobbyists['Staffer'].nunique():,}")
@@ -19398,12 +19096,12 @@ def _build_report_payload(
             if not bs.empty and "Bill" in bs.columns:
                 bs = bs.copy()
                 if session_val is not None and "Session" in bs.columns:
-                    bs = bs[bs["Session"].astype(str).str.strip() == str(session_val)].copy()
+                    bs = bs[bs["Session"].astype(str).str.strip() == str(session_val)]
                 try:
                     bs["BillNorm"] = bs["Bill"].astype(str).map(normalize_bill)
                 except Exception:
                     bs["BillNorm"] = bs["Bill"].astype(str).str.strip()
-                bs_match = bs[bs["BillNorm"] == bill_id].copy()
+                bs_match = bs[bs["BillNorm"] == bill_id]
                 if not bs_match.empty:
                     caption = str(bs_match.get("Caption", pd.Series([""])).iloc[0]).strip()
                     status = str(bs_match.get("Status", pd.Series([""])).iloc[0]).strip()
@@ -19418,12 +19116,12 @@ def _build_report_payload(
             if not wit.empty and "Bill" in wit.columns:
                 wit = wit.copy()
                 if session_val is not None and "Session" in wit.columns:
-                    wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)].copy()
+                    wit = wit[wit["Session"].astype(str).str.strip() == str(session_val)]
                 try:
                     wit["Bill"] = wit["Bill"].astype(str).map(normalize_bill)
                 except Exception:
                     wit["Bill"] = wit["Bill"].astype(str).str.strip()
-                wit = wit[wit["Bill"] == bill_id].copy()
+                wit = wit[wit["Bill"] == bill_id]
                 if not wit.empty:
                     pos = bill_position_from_flags(wit)
                     if not pos.empty:
@@ -19452,7 +19150,7 @@ def _build_report_payload(
                     name_map = {}
                     lt = Lobby_TFL_Client_All if isinstance(Lobby_TFL_Client_All, pd.DataFrame) else pd.DataFrame()
                     if not lt.empty and {"LobbyShort", "Lobby Name"}.issubset(lt.columns):
-                        tmp = lt[["LobbyShort", "Lobby Name"]].dropna().copy()
+                        tmp = lt[["LobbyShort", "Lobby Name"]].dropna()
                         tmp["LobbyShort"] = tmp["LobbyShort"].astype(str).str.strip()
                         tmp["Lobby Name"] = tmp["Lobby Name"].astype(str).str.strip()
                         name_map = (
@@ -19468,7 +19166,7 @@ def _build_report_payload(
                         .sort_values("Rows", ascending=False)
                         .head(5)
                     )
-                    for _, row in counts.iterrows():
+                    for row in counts.to_dict("records"):
                         short = str(row.get("LobbyShort", "")).strip()
                         rows = int(row.get("Rows", 0) or 0)
                         name = name_map.get(short, "")
@@ -19518,7 +19216,7 @@ def _build_report_payload(
             bill_sub = Bill_Sub_All if isinstance(Bill_Sub_All, pd.DataFrame) else pd.DataFrame()
             if not bill_sub.empty and {"Bill", "Subject"}.issubset(bill_sub.columns):
                 if session_val is not None and "Session" in bill_sub.columns:
-                    bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+                    bill_sub = bill_sub[bill_sub["Session"].astype(str).str.strip() == str(session_val)]
                 bill_sub = bill_sub.copy()
                 bill_sub["BillNorm"] = bill_sub["Bill"].astype(str).map(normalize_bill)
                 sub_rows = bill_sub[bill_sub["BillNorm"] == bill_id]
@@ -20367,7 +20065,7 @@ def _apply_numeric_heatmap(
             rgb_lo=rgb_lo,
             rgb_hi=rgb_hi,
         )
-        out = out.applymap(fn, subset=[col])
+        out = out.map(fn, subset=[col])
     return out
 
 @st.cache_data(show_spinner=False, ttl=300, max_entries=8)
@@ -20378,16 +20076,14 @@ def bill_position_from_flags(df: pd.DataFrame) -> pd.DataFrame:
         df.groupby(["Session", "Bill", "LobbyShort"], as_index=False)
           .agg(IsFor=("IsFor", "max"), IsAgainst=("IsAgainst", "max"), IsOn=("IsOn", "max"))
     )
-    def pos_row(r):
-        p = []
-        if int(r.get("IsFor", 0) or 0) == 1:
-            p.append("For")
-        if int(r.get("IsAgainst", 0) or 0) == 1:
-            p.append("Against")
-        if int(r.get("IsOn", 0) or 0) == 1:
-            p.append("On")
-        return ", ".join(p)
-    agg["Position"] = agg.apply(pos_row, axis=1)
+    _is_for = agg["IsFor"].fillna(0).astype(int) == 1
+    _is_against = agg["IsAgainst"].fillna(0).astype(int) == 1
+    _is_on = agg["IsOn"].fillna(0).astype(int) == 1
+    _parts = pd.Series("", index=agg.index)
+    _parts = _parts.where(~_is_for, "For")
+    _parts = _parts + (_is_against & (_parts != "")).map({True: ", ", False: ""}) + _is_against.map({True: "Against", False: ""})
+    _parts = _parts + (_is_on & (_parts != "")).map({True: ", ", False: ""}) + _is_on.map({True: "On", False: ""})
+    agg["Position"] = _parts
     return agg[["Session", "Bill", "LobbyShort", "Position"]]
 
 @st.cache_data(show_spinner=False, ttl=300, max_entries=8)
@@ -20404,12 +20100,12 @@ def build_bills_with_status(
     if bill_pos.empty:
         return pd.DataFrame(columns=["Session", "Bill", "Position", "Author", "Caption", "Status", "Fiscal Impact H", "Fiscal Impact S"])
 
-    bills = bill_pos.copy()
+    bills = bill_pos
     if not bill_status_all.empty and {"Session", "Bill"}.issubset(bill_status_all.columns):
         bills = bill_pos.merge(bill_status_all, on=["Session", "Bill"], how="left")
 
     if not fiscal_impact.empty and {"Session", "Bill", "Version", "EstimatedTwoYearNetImpactGR"}.issubset(fiscal_impact.columns):
-        fi = fiscal_impact[fiscal_impact["Session"].astype(str).str.strip() == str(session_val)].copy()
+        fi = fiscal_impact[fiscal_impact["Session"].astype(str).str.strip() == str(session_val)]
         fi["Version"] = fi["Version"].astype(str).str.upper().str.strip()
         fi["EstimatedTwoYearNetImpactGR"] = pd.to_numeric(fi["EstimatedTwoYearNetImpactGR"], errors="coerce").fillna(0)
         fi_p = (
@@ -20431,9 +20127,9 @@ def build_policy_mentions(bills: pd.DataFrame, bill_sub_all: pd.DataFrame, sessi
     if "Subject" not in bill_sub_all.columns:
         return pd.DataFrame(columns=["Subject", "Mentions", "Share"])
 
-    bill_subjects = bill_sub_all.copy()
+    bill_subjects = bill_sub_all
     if "Session" in bill_subjects.columns:
-        bill_subjects = bill_subjects[bill_subjects["Session"].astype(str).str.strip() == str(session_val)].copy()
+        bill_subjects = bill_subjects[bill_subjects["Session"].astype(str).str.strip() == str(session_val)]
     bill_subjects = bill_subjects.merge(
         bills[["Bill"]].drop_duplicates(), on=["Bill"], how="inner"
     )
@@ -20461,21 +20157,21 @@ def build_lobby_subject_counts(
     if lobby_sub_all.empty:
         return pd.DataFrame(columns=["Topic", "Mentions"]), 0.0
 
-    lobby_sub = lobby_sub_all.copy()
+    lobby_sub = lobby_sub_all
     if "Session" in lobby_sub.columns:
-        lobby_sub = lobby_sub[lobby_sub["Session"].astype(str).str.strip() == str(session_val)].copy()
+        lobby_sub = lobby_sub[lobby_sub["Session"].astype(str).str.strip() == str(session_val)]
     elif "session" in lobby_sub.columns:
-        lobby_sub = lobby_sub[lobby_sub["session"].astype(str).str.strip() == str(session_val)].copy()
+        lobby_sub = lobby_sub[lobby_sub["session"].astype(str).str.strip() == str(session_val)]
 
     if selected_filer_ids and "FilerID" in lobby_sub.columns:
         fid = pd.to_numeric(lobby_sub["FilerID"], errors="coerce").fillna(-1).astype(int)
-        lobby_sub = lobby_sub[fid.isin(selected_filer_ids)].copy()
+        lobby_sub = lobby_sub[fid.isin(selected_filer_ids)]
     elif "LobbyShortNorm" in lobby_sub.columns:
-        lobby_sub = lobby_sub[lobby_sub["LobbyShortNorm"] == lobbyshort_norm].copy()
+        lobby_sub = lobby_sub[lobby_sub["LobbyShortNorm"] == lobbyshort_norm]
     elif "LobbyShort" in lobby_sub.columns:
-        lobby_sub = lobby_sub[lobby_sub["LobbyShort"].astype(str).str.strip() == lobbyshort].copy()
+        lobby_sub = lobby_sub[lobby_sub["LobbyShort"].astype(str).str.strip() == lobbyshort]
     else:
-        lobby_sub = lobby_sub.iloc[0:0].copy()
+        lobby_sub = lobby_sub.iloc[0:0]
 
     if lobby_sub.empty:
         return pd.DataFrame(columns=["Topic", "Mentions"]), 0.0
@@ -20516,13 +20212,13 @@ def build_lobbyist_trend(
 ) -> pd.DataFrame:
     if df.empty or not lobbyshort:
         return pd.DataFrame(columns=["Session", "Funding", "Mid", "SessionBase", "SessionLabel"])
-    d = df.copy()
-    d = d[d.get("LobbyShort", pd.Series(dtype=object)).astype(str).str.strip() == str(lobbyshort)].copy()
+    d = df
+    d = d[d.get("LobbyShort", pd.Series(dtype=object)).astype(str).str.strip() == str(lobbyshort)]
     if d.empty:
         return pd.DataFrame(columns=["Session", "Funding", "Mid", "SessionBase", "SessionLabel"])
     if filer_ids and "FilerID" in d.columns:
         fid = pd.to_numeric(d["FilerID"], errors="coerce").fillna(-1).astype(int)
-        d = d[fid.isin(filer_ids)].copy()
+        d = d[fid.isin(filer_ids)]
     d = ensure_cols(d, {"IsTFL": 0, "Low_num": 0.0, "High_num": 0.0, "Session": ""})
     d["Session"] = d["Session"].astype(str).str.strip()
     d["Low_num"] = pd.to_numeric(d["Low_num"], errors="coerce").fillna(0)
@@ -20534,8 +20230,8 @@ def build_lobbyist_trend(
     )
     g["Funding"] = g["IsTFL"].map({1: "Taxpayer Funded", 0: "Private"}).fillna("Private")
     g["SessionBase"] = _session_base_number_series(g["Session"])
-    g = g[g["SessionBase"].notna()].copy()
-    g["SessionLabel"] = g["SessionBase"].apply(_session_base_label)
+    g = g[g["SessionBase"].notna()]
+    g["SessionLabel"] = g["SessionBase"].map(_session_base_label)
     return g[["Session", "Funding", "Mid", "SessionBase", "SessionLabel"]]
 
 @st.cache_data(show_spinner=False, ttl=300, max_entries=8)
@@ -20544,7 +20240,7 @@ def build_top_clients(lt: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
         return pd.DataFrame(columns=["Client", "Funding", "Low", "High", "Mid"])
     d = lt.copy()
     d["Client"] = d["Client"].fillna("").astype(str).str.strip()
-    d = d[d["Client"] != ""].copy()
+    d = d[d["Client"] != ""]
     if d.empty:
         return pd.DataFrame(columns=["Client", "Funding", "Low", "High", "Mid"])
     d = ensure_cols(d, {"IsTFL": 0, "Low_num": 0.0, "High_num": 0.0})
@@ -20565,6 +20261,7 @@ def _candidate_label(short_code: str, short_to_names: dict) -> str:
         return f"{short_code} - {names[0]}"
     return short_code
 
+@st.cache_data(show_spinner=False, ttl=300, max_entries=16)
 def resolve_lobbyshort(user_text: str, lobby_index: pd.DataFrame, name_to_short: dict,
                        known_shorts: set[str], short_to_names: dict) -> tuple[str, list[str]]:
     q = (user_text or "").strip()
@@ -20691,6 +20388,7 @@ def resolve_lobbyshort(user_text: str, lobby_index: pd.DataFrame, name_to_short:
 
     return "", suggestions
 
+@st.cache_data(show_spinner=False, ttl=300, max_entries=16)
 def resolve_lobbyshort_from_wit(user_text: str, wit_all: pd.DataFrame, session_val: str | None) -> tuple[str, list[str]]:
     q = (user_text or "").strip()
     if not q or wit_all.empty or "LobbyShort" not in wit_all.columns:
@@ -20698,11 +20396,11 @@ def resolve_lobbyshort_from_wit(user_text: str, wit_all: pd.DataFrame, session_v
 
     d = wit_all
     if session_val is not None and "Session" in d.columns:
-        d = d[d["Session"].astype(str).str.strip() == str(session_val)].copy()
+        d = d[d["Session"].astype(str).str.strip() == str(session_val)]
     if d.empty:
         return "", []
 
-    d = d[d["LobbyShort"].notna() & (d["LobbyShort"].astype(str).str.strip() != "")].copy()
+    d = d[d["LobbyShort"].notna() & (d["LobbyShort"].astype(str).str.strip() != "")]
     if d.empty:
         return "", []
 
@@ -20786,6 +20484,7 @@ def lobby_candidate_key(cand: dict) -> str:
         return f"name:{norm_name(name)}"
     return "unknown"
 
+@st.cache_data(show_spinner=False, ttl=300, max_entries=32)
 def lobbyist_autocomplete_candidates(query: str, lobbyist_index: pd.DataFrame, limit: int = 12) -> list[dict]:
     q = (query or "").strip()
     if not q or lobbyist_index.empty:
@@ -20802,12 +20501,12 @@ def lobbyist_autocomplete_candidates(query: str, lobbyist_index: pd.DataFrame, l
     q_initial = info.get("first_initial", "")
     q_first_variants = _nickname_variants(q_first) if q_first else set()
 
-    d = lobbyist_index.copy()
-    d["Score"] = 0
+    d = lobbyist_index
+    scores = pd.Series(0, index=d.index, dtype="int16")
 
     def apply_score(mask: pd.Series, value: int) -> None:
         if mask.any():
-            d.loc[mask, "Score"] = d.loc[mask, "Score"].where(d.loc[mask, "Score"] > value, value)
+            scores.loc[mask] = scores.loc[mask].clip(lower=value)
 
     if q_norm:
         apply_score(d["LobbyNameNorm"] == q_norm, 100)
@@ -20854,20 +20553,21 @@ def lobbyist_autocomplete_candidates(query: str, lobbyist_index: pd.DataFrame, l
             else:
                 apply_score(d["LobbyNameNorm"].isin(close), 70)
 
-    d = d[d["Score"] > 0].copy()
-    if d.empty:
+    hit = scores > 0
+    if not hit.any():
         return []
 
-    d = d.sort_values(["Score", "Lobby Name", "LobbyShort"], ascending=[False, True, True])
+    d_hit = d.loc[hit].assign(Score=scores.loc[hit])
+    d_hit = d_hit.sort_values(["Score", "Lobby Name", "LobbyShort"], ascending=[False, True, True])
     out = []
-    for _, row in d.head(limit).iterrows():
-        label = format_lobbyist_label(row.get("Lobby Name", ""), row.get("LobbyShort", ""), row.get("FilerID", None))
+    for rec in d_hit.head(limit).to_dict("records"):
+        label = format_lobbyist_label(rec.get("Lobby Name", ""), rec.get("LobbyShort", ""), rec.get("FilerID", None))
         out.append({
             "label": label,
-            "lobbyshort": row.get("LobbyShort", ""),
-            "filerid": row.get("FilerID", None),
-            "name": row.get("Lobby Name", ""),
-            "score": int(row.get("Score", 0)),
+            "lobbyshort": rec.get("LobbyShort", ""),
+            "filerid": rec.get("FilerID", None),
+            "name": rec.get("Lobby Name", ""),
+            "score": int(rec.get("Score", 0)),
         })
     return out
 
@@ -20875,13 +20575,14 @@ def lobbyist_autocomplete_candidates(query: str, lobbyist_index: pd.DataFrame, l
 def build_client_index(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "Client" not in df.columns:
         return pd.DataFrame(columns=["Client", "ClientNorm"])
-    base = df[["Client"]].dropna().copy()
+    base = df[["Client"]].dropna()
     base["Client"] = base["Client"].astype(str).str.strip()
     base = base[base["Client"] != ""].drop_duplicates()
     base["ClientNorm"] = base["Client"].map(norm_name)
     base = base[base["ClientNorm"] != ""].drop_duplicates()
     return base
 
+@st.cache_data(show_spinner=False, ttl=300, max_entries=32)
 def resolve_client_name(user_text: str, client_index: pd.DataFrame) -> tuple[str, list[str]]:
     q = (user_text or "").strip()
     if not q or client_index.empty:
@@ -20938,7 +20639,7 @@ def build_author_bill_index(bs: pd.DataFrame) -> pd.DataFrame:
     d["AuthorList"] = d["AuthorRaw"].map(_split_authors)
     d = d.explode("AuthorList")
     d["Author"] = d["AuthorList"].fillna("").astype(str).str.strip()
-    d = d[d["Author"].astype(str).str.strip() != ""].copy()
+    d = d[d["Author"].astype(str).str.strip() != ""]
     d["AuthorNorm"] = d["Author"].map(norm_name)
 
     cols = [c for c in ["Session", "Bill", "Author", "AuthorNorm", "Status", "Caption", "Link", "Chamber"] if c in d.columns]
@@ -20948,11 +20649,12 @@ def build_author_bill_index(bs: pd.DataFrame) -> pd.DataFrame:
 def build_member_index(author_bills: pd.DataFrame) -> pd.DataFrame:
     if author_bills.empty or "Author" not in author_bills.columns:
         return pd.DataFrame(columns=["Member", "MemberNorm"])
-    base = author_bills[["Author", "AuthorNorm"]].dropna().copy()
+    base = author_bills[["Author", "AuthorNorm"]].dropna()
     base = base.rename(columns={"Author": "Member", "AuthorNorm": "MemberNorm"})
     base = base[base["Member"].astype(str).str.strip() != ""].drop_duplicates()
     return base
 
+@st.cache_data(show_spinner=False, ttl=300, max_entries=32)
 def resolve_member_name(user_text: str, member_index: pd.DataFrame) -> tuple[str, list[str]]:
     q = (user_text or "").strip()
     if not q or member_index.empty:
@@ -21049,7 +20751,7 @@ def build_lobbyist_index(df: pd.DataFrame) -> pd.DataFrame:
             "FilerID",
         ])
 
-    base = df[["LobbyShort", "Lobby Name", "FilerID"]].dropna(subset=["LobbyShort", "Lobby Name"]).copy()
+    base = df[["LobbyShort", "Lobby Name", "FilerID"]].dropna(subset=["LobbyShort", "Lobby Name"])
     base["LobbyShort"] = base["LobbyShort"].astype(str).str.strip()
     base["Lobby Name"] = base["Lobby Name"].astype(str).str.strip()
     base = base[(base["LobbyShort"] != "") & (base["Lobby Name"] != "")]
@@ -21163,15 +20865,15 @@ def build_member_activities(
     lobbyshort_to_name = lobbyshort_to_name or {}
 
     def keep(df: pd.DataFrame) -> pd.DataFrame:
-        d = df.copy()
+        d = df
         if session is not None and "Session" in d.columns:
-            d = d[d["Session"].astype(str).str.strip() == str(session)].copy()
+            d = d[d["Session"].astype(str).str.strip() == str(session)]
         if d.empty:
             return d
         mask = member_match_mask(d, member_info)
         if not mask.any():
-            return d.iloc[0:0].copy()
-        d = d[mask].copy()
+            return d.iloc[0:0]
+        d = d[mask]
         d = map_filer_to_lobbyshort(d, name_to_short, filerid_to_short)
         return d
 
@@ -21196,7 +20898,7 @@ def build_member_activities(
             "Filer": d.get("filerName", "").fillna("").astype(str),
             "Member": member_name,
             "Description": d.get("restaurantName", "").fillna("").astype(str),
-            "Amount": d.apply(lambda r: amount_display(r.get("activityExactAmount"), r.get("activityAmountRangeLow"), r.get("activityAmountRangeHigh"), r.get("activityAmountCd")), axis=1),
+            "Amount": _vectorized_amount_display(d.get("activityExactAmount", pd.Series([""] * len(d))), d.get("activityAmountRangeLow", pd.Series([""] * len(d))), d.get("activityAmountRangeHigh", pd.Series([""] * len(d))), d.get("activityAmountCd", pd.Series([""] * len(d)))),
         }))
 
     d = keep(df_ent)
@@ -21211,7 +20913,7 @@ def build_member_activities(
             "Filer": d.get("filerName", "").fillna("").astype(str),
             "Member": member_name,
             "Description": d.get("entertainmentName", "").fillna("").astype(str),
-            "Amount": d.apply(lambda r: amount_display(r.get("activityExactAmount"), r.get("activityAmountRangeLow"), r.get("activityAmountRangeHigh"), r.get("activityAmountCd")), axis=1),
+            "Amount": _vectorized_amount_display(d.get("activityExactAmount", pd.Series([""] * len(d))), d.get("activityAmountRangeLow", pd.Series([""] * len(d))), d.get("activityAmountRangeHigh", pd.Series([""] * len(d))), d.get("activityAmountCd", pd.Series([""] * len(d)))),
         }))
 
     d = keep(df_tran)
@@ -21246,7 +20948,7 @@ def build_member_activities(
             "Filer": d.get("filerName", "").fillna("").astype(str),
             "Member": member_name,
             "Description": d.get("activityDescription", "").fillna("").astype(str),
-            "Amount": d.apply(lambda r: amount_display(r.get("activityExactAmount"), r.get("activityAmountRangeLow"), r.get("activityAmountRangeHigh"), r.get("activityAmountCd")), axis=1),
+            "Amount": _vectorized_amount_display(d.get("activityExactAmount", pd.Series([""] * len(d))), d.get("activityAmountRangeLow", pd.Series([""] * len(d))), d.get("activityAmountRangeHigh", pd.Series([""] * len(d))), d.get("activityAmountCd", pd.Series([""] * len(d)))),
         }))
 
     d = keep(df_evnt)
@@ -21276,7 +20978,7 @@ def build_member_activities(
             "Filer": d.get("filerName", "").fillna("").astype(str),
             "Member": member_name,
             "Description": d.get("activityDescription", "").fillna("").astype(str),
-            "Amount": d.apply(lambda r: amount_display(r.get("activityExactAmount"), r.get("activityAmountRangeLow"), r.get("activityAmountRangeHigh"), r.get("activityAmountCd")), axis=1),
+            "Amount": _vectorized_amount_display(d.get("activityExactAmount", pd.Series([""] * len(d))), d.get("activityAmountRangeLow", pd.Series([""] * len(d))), d.get("activityAmountRangeHigh", pd.Series([""] * len(d))), d.get("activityAmountCd", pd.Series([""] * len(d)))),
         }))
 
     if not out:
@@ -21314,25 +21016,25 @@ def render_bill_search_results(bill_query: str, session_val: str | None, tfl_ses
     d = wit_all.copy()
     d["Session"] = d["Session"].astype(str).str.strip()
     if session_val is not None:
-        d = d[d["Session"] == str(session_val)].copy()
+        d = d[d["Session"] == str(session_val)]
 
     d_bill_norm = d["Bill"].astype(str).str.upper().str.replace(r"\s+", " ", regex=True)
-    d = d[d_bill_norm == q].copy()
+    d = d[d_bill_norm == q]
     total_rows = len(d)
-    d = d[d["LobbyShort"].notna() & (d["LobbyShort"].astype(str).str.strip() != "")].copy()
+    d = d[d["LobbyShort"].notna() & (d["LobbyShort"].astype(str).str.strip() != "")]
     if "LobbyShortNorm" not in d.columns:
         d["LobbyShortNorm"] = norm_name_series(d["LobbyShort"])
 
     tfl = lobby_tfl_client_all.copy()
     tfl["Session"] = tfl["Session"].astype(str).str.strip()
     if tfl_session_val is not None:
-        tfl = tfl[tfl["Session"] == str(tfl_session_val)].copy()
+        tfl = tfl[tfl["Session"] == str(tfl_session_val)]
     tfl = ensure_cols(tfl, {"LobbyShort": ""})
     if "LobbyShortNorm" not in tfl.columns:
         tfl["LobbyShortNorm"] = norm_name_series(tfl["LobbyShort"])
     lobbyshort_set = set(tfl["LobbyShortNorm"].dropna().unique().tolist())
     if lobbyshort_set:
-        d = d[d["LobbyShortNorm"].isin(lobbyshort_set)].copy()
+        d = d[d["LobbyShortNorm"].isin(lobbyshort_set)]
         if not tfl.empty:
             norm_to_short = (
                 tfl[["LobbyShortNorm", "LobbyShort"]]
@@ -21357,14 +21059,14 @@ def render_bill_search_results(bill_query: str, session_val: str | None, tfl_ses
     bs = bill_status_all.copy()
     bs["Session"] = bs["Session"].astype(str).str.strip()
     if session_val is not None:
-        bs = bs[bs["Session"] == str(session_val)].copy()
+        bs = bs[bs["Session"] == str(session_val)]
 
     merged = pos.merge(bs, on=["Session", "Bill"], how="left")
     merged["Lobbyist"] = merged["LobbyShort"].map(lambda s: _candidate_label(str(s), short_to_names))
     tfl = lobby_tfl_client_all.copy()
     tfl["Session"] = tfl["Session"].astype(str).str.strip()
     if tfl_session_val is not None:
-        tfl = tfl[tfl["Session"] == str(tfl_session_val)].copy()
+        tfl = tfl[tfl["Session"] == str(tfl_session_val)]
     tfl = ensure_cols(tfl, {"LobbyShort": "", "IsTFL": 0})
     tfl_flag = (
         tfl.groupby("LobbyShort", as_index=False)["IsTFL"]
@@ -21453,7 +21155,7 @@ def safe_read_excel_xf(xf: pd.ExcelFile, sheet_name: str, cols: list[str]) -> pd
         try:
             df = xf.parse(sheet_name=sheet_name)
             keep = [c for c in cols if c in df.columns]
-            return df[keep].copy()
+            return df[keep]
         except Exception:
             return pd.DataFrame(columns=cols)
 
@@ -21474,11 +21176,11 @@ def read_parquet_cols(path: Path, cols: list[str]) -> pd.DataFrame:
         try:
             df = pd.read_parquet(path)
             keep = [c for c in cols if c in df.columns]
-            return df[keep].copy() if keep else df
+            return df[keep] if keep else df
         except Exception:
             return pd.DataFrame(columns=cols)
 
-@st.cache_resource(show_spinner=False, ttl=600, max_entries=2)
+@st.cache_resource(show_spinner=False, ttl=3600, max_entries=2)
 def load_workbook(path: str) -> dict:
     cfg = {
         "Wit_All": ["session", "bill", "position", "LobbyShort", "name", "org"],
@@ -21590,7 +21292,7 @@ def load_workbook(path: str) -> dict:
     # Normalize parquet schema differences
     wit = data.get("Wit_All")
     if isinstance(wit, pd.DataFrame):
-        wit = wit.copy()
+        wit = wit
         if "session" in wit.columns and "Session" not in wit.columns:
             wit = wit.rename(columns={"session": "Session"})
         if "bill" in wit.columns and "Bill" not in wit.columns:
@@ -21612,19 +21314,19 @@ def load_workbook(path: str) -> dict:
 
     bs = data.get("Bill_Status_All")
     if isinstance(bs, pd.DataFrame):
-        bs = bs.copy()
+        bs = bs
         if "Authors" in bs.columns and "Author" not in bs.columns:
             bs["Author"] = bs["Authors"]
         data["Bill_Status_All"] = bs
 
     fi = data.get("Fiscal_Impact")
     if isinstance(fi, pd.DataFrame):
-        fi = fi.copy()
+        fi = fi
         data["Fiscal_Impact"] = fi
 
     lt = data.get("Lobby_TFL_Client_All")
     if isinstance(lt, pd.DataFrame):
-        lt = lt.copy()
+        lt = lt
         if "IsTFL" not in lt.columns and "TFL?" in lt.columns:
             lt["IsTFL"] = lt["TFL?"].astype(str).str.upper().isin(["Y", "YES", "TRUE", "1"]).astype(int)
         if "IsTFL" in lt.columns:
@@ -21633,7 +21335,7 @@ def load_workbook(path: str) -> dict:
 
     staff = data.get("Staff_All")
     if isinstance(staff, pd.DataFrame) and not staff.empty:
-        staff = staff.copy()
+        staff = staff
         # Rename session column if needed
         if "session" in staff.columns and "Session" not in staff.columns:
             staff = staff.rename(columns={"session": "Session"})
@@ -21672,7 +21374,7 @@ def load_workbook(path: str) -> dict:
 
     ls = data.get("Lobby_Sub_All")
     if isinstance(ls, pd.DataFrame):
-        ls = ls.copy()
+        ls = ls
         if "Session" not in ls.columns:
             if "legislative_session" in ls.columns:
                 ls = ls.rename(columns={"legislative_session": "Session"})
@@ -21687,7 +21389,7 @@ def load_workbook(path: str) -> dict:
 
     pf = data.get("Lobbyist_Pol_Funds")
     if isinstance(pf, pd.DataFrame):
-        pf = pf.copy()
+        pf = pf
         if "Session" not in pf.columns and "legislative_session" in pf.columns:
             pf = pf.rename(columns={"legislative_session": "Session"})
         if "LobbyShort" not in pf.columns:
@@ -21719,7 +21421,7 @@ def load_workbook(path: str) -> dict:
             return
         if name_col not in df.columns or short_col not in df.columns:
             return
-        tmp = df[[name_col, short_col]].copy()
+        tmp = df[[name_col, short_col]]
         tmp = tmp.rename(columns={name_col: "Lobby Name", short_col: "LobbyShort"})
         tmp["FilerID"] = df[fid_col] if fid_col in df.columns else pd.NA
         lobby_name_rows.append(tmp)
@@ -21754,7 +21456,7 @@ def load_workbook(path: str) -> dict:
             .tolist()
         )
 
-        tmp = lobbyist_index[["LobbyShort", "Lobby Name"]].dropna().copy()
+        tmp = lobbyist_index[["LobbyShort", "Lobby Name"]].dropna()
         tmp["LobbyShort"] = tmp["LobbyShort"].astype(str)
         short_to_names = (
             tmp.groupby("LobbyShort")["Lobby Name"]
@@ -21780,7 +21482,7 @@ def load_workbook(path: str) -> dict:
             name_to_short = dict(zip(counts["Key"], counts["LobbyShort"]))
 
         # Map last name + first initial to LobbyShort (helps when names don't match exactly)
-        tmp_short = lobbyist_index[["LobbyShort"]].dropna().copy()
+        tmp_short = lobbyist_index[["LobbyShort"]].dropna()
         tmp_short["InitialKey"] = tmp_short["LobbyShort"].map(_last_first_initial_key)
         tmp_short = tmp_short[tmp_short["InitialKey"].astype(str).str.strip() != ""]
         if not tmp_short.empty:
@@ -21803,7 +21505,7 @@ def load_workbook(path: str) -> dict:
     # Map witness list names/orgs to LobbyShort where possible
     wit = data.get("Wit_All")
     if isinstance(wit, pd.DataFrame) and not wit.empty:
-        wit = wit.copy()
+        wit = wit
         if "LobbyShort" not in wit.columns:
             wit["LobbyShort"] = ""
         name_series = wit.get("name", pd.Series([""] * len(wit))).fillna("").astype(str)
@@ -21844,11 +21546,12 @@ def load_workbook(path: str) -> dict:
     ls = data.get("Lobby_Sub_All")
     if isinstance(ls, pd.DataFrame) and not ls.empty and filerid_to_short:
         if "FilerID" in ls.columns and "LobbyShort" in ls.columns:
-            ls = ls.copy()
+            ls = ls
             fid = pd.to_numeric(ls["FilerID"], errors="coerce").fillna(-1).astype(int)
             missing = ls["LobbyShort"].isna() | ls["LobbyShort"].astype(str).str.strip().eq("")
             ls.loc[missing, "LobbyShort"] = fid.map(filerid_to_short)
             data["Lobby_Sub_All"] = ls
+    gc.collect()
     return data
 
 DATA_SOURCE_LABELS = {
@@ -21874,6 +21577,7 @@ DATA_SOURCE_LABELS = {
 def _source_label(key: str) -> str:
     return DATA_SOURCE_LABELS.get(key, key)
 
+@st.cache_data(show_spinner=False, ttl=3600, hash_funcs={dict: id})
 def data_health_table(data: dict) -> pd.DataFrame:
     order = [
         "Wit_All",
@@ -21956,9 +21660,9 @@ def build_activities(df_food, df_ent, df_tran, df_gift, df_evnt, df_awrd,
             "Date": date,
             "Type": "Food",
             "Filer": d.get("filerName", "").fillna("").astype(str),
-            "Member": d.apply(lambda r: person_display(r.get("recipientNameOrganization"), r.get("recipientNameLast"), r.get("recipientNameFirst")), axis=1),
+            "Member": _vectorized_person_display(d.get("recipientNameOrganization", pd.Series([""] * len(d))), d.get("recipientNameLast", pd.Series([""] * len(d))), d.get("recipientNameFirst", pd.Series([""] * len(d)))),
             "Description": d.get("restaurantName", "").fillna("").astype(str),
-            "Amount": d.apply(lambda r: amount_display(r.get("activityExactAmount"), r.get("activityAmountRangeLow"), r.get("activityAmountRangeHigh"), r.get("activityAmountCd")), axis=1),
+            "Amount": _vectorized_amount_display(d.get("activityExactAmount", pd.Series([""] * len(d))), d.get("activityAmountRangeLow", pd.Series([""] * len(d))), d.get("activityAmountRangeHigh", pd.Series([""] * len(d))), d.get("activityAmountCd", pd.Series([""] * len(d)))),
         }))
 
     d = keep(df_ent)
@@ -21969,9 +21673,9 @@ def build_activities(df_food, df_ent, df_tran, df_gift, df_evnt, df_awrd,
             "Date": date,
             "Type": "Entertainment",
             "Filer": d.get("filerName", "").fillna("").astype(str),
-            "Member": d.apply(lambda r: person_display(r.get("recipientNameOrganization"), r.get("recipientNameLast"), r.get("recipientNameFirst")), axis=1),
+            "Member": _vectorized_person_display(d.get("recipientNameOrganization", pd.Series([""] * len(d))), d.get("recipientNameLast", pd.Series([""] * len(d))), d.get("recipientNameFirst", pd.Series([""] * len(d)))),
             "Description": d.get("entertainmentName", "").fillna("").astype(str),
-            "Amount": d.apply(lambda r: amount_display(r.get("activityExactAmount"), r.get("activityAmountRangeLow"), r.get("activityAmountRangeHigh"), r.get("activityAmountCd")), axis=1),
+            "Amount": _vectorized_amount_display(d.get("activityExactAmount", pd.Series([""] * len(d))), d.get("activityAmountRangeLow", pd.Series([""] * len(d))), d.get("activityAmountRangeHigh", pd.Series([""] * len(d))), d.get("activityAmountCd", pd.Series([""] * len(d)))),
         }))
 
     d = keep(df_tran)
@@ -21987,7 +21691,7 @@ def build_activities(df_food, df_ent, df_tran, df_gift, df_evnt, df_awrd,
             "Date": date,
             "Type": "Travel",
             "Filer": d.get("filerName", "").fillna("").astype(str),
-            "Member": d.apply(lambda r: person_display(r.get("recipientNameOrganization"), r.get("recipientNameLast"), r.get("recipientNameFirst")), axis=1),
+            "Member": _vectorized_person_display(d.get("recipientNameOrganization", pd.Series([""] * len(d))), d.get("recipientNameLast", pd.Series([""] * len(d))), d.get("recipientNameFirst", pd.Series([""] * len(d)))),
             "Description": desc2,
             "Amount": "",
         }))
@@ -22000,9 +21704,9 @@ def build_activities(df_food, df_ent, df_tran, df_gift, df_evnt, df_awrd,
             "Date": date,
             "Type": "Gift",
             "Filer": d.get("filerName", "").fillna("").astype(str),
-            "Member": d.apply(lambda r: person_display(r.get("recipientNameOrganization"), r.get("recipientNameLast"), r.get("recipientNameFirst")), axis=1),
+            "Member": _vectorized_person_display(d.get("recipientNameOrganization", pd.Series([""] * len(d))), d.get("recipientNameLast", pd.Series([""] * len(d))), d.get("recipientNameFirst", pd.Series([""] * len(d)))),
             "Description": d.get("activityDescription", "").fillna("").astype(str),
-            "Amount": d.apply(lambda r: amount_display(r.get("activityExactAmount"), r.get("activityAmountRangeLow"), r.get("activityAmountRangeHigh"), r.get("activityAmountCd")), axis=1),
+            "Amount": _vectorized_amount_display(d.get("activityExactAmount", pd.Series([""] * len(d))), d.get("activityAmountRangeLow", pd.Series([""] * len(d))), d.get("activityAmountRangeHigh", pd.Series([""] * len(d))), d.get("activityAmountCd", pd.Series([""] * len(d)))),
         }))
 
     d = keep(df_evnt)
@@ -22013,7 +21717,7 @@ def build_activities(df_food, df_ent, df_tran, df_gift, df_evnt, df_awrd,
             "Date": date,
             "Type": "Event",
             "Filer": d.get("filerName", "").fillna("").astype(str),
-            "Member": d.apply(lambda r: person_display(r.get("recipientNameOrganization"), r.get("recipientNameLast"), r.get("recipientNameFirst")), axis=1),
+            "Member": _vectorized_person_display(d.get("recipientNameOrganization", pd.Series([""] * len(d))), d.get("recipientNameLast", pd.Series([""] * len(d))), d.get("recipientNameFirst", pd.Series([""] * len(d)))),
             "Description": d.get("activityDescription", "").fillna("").astype(str),
             "Amount": "",
         }))
@@ -22026,9 +21730,9 @@ def build_activities(df_food, df_ent, df_tran, df_gift, df_evnt, df_awrd,
             "Date": date,
             "Type": "Award",
             "Filer": d.get("filerName", "").fillna("").astype(str),
-            "Member": d.apply(lambda r: person_display(r.get("recipientNameOrganization"), r.get("recipientNameLast"), r.get("recipientNameFirst")), axis=1),
+            "Member": _vectorized_person_display(d.get("recipientNameOrganization", pd.Series([""] * len(d))), d.get("recipientNameLast", pd.Series([""] * len(d))), d.get("recipientNameFirst", pd.Series([""] * len(d)))),
             "Description": d.get("activityDescription", "").fillna("").astype(str),
-            "Amount": d.apply(lambda r: amount_display(r.get("activityExactAmount"), r.get("activityAmountRangeLow"), r.get("activityAmountRangeHigh"), r.get("activityAmountCd")), axis=1),
+            "Amount": _vectorized_amount_display(d.get("activityExactAmount", pd.Series([""] * len(d))), d.get("activityAmountRangeLow", pd.Series([""] * len(d))), d.get("activityAmountRangeHigh", pd.Series([""] * len(d))), d.get("activityAmountCd", pd.Series([""] * len(d)))),
         }))
 
     if not out:
@@ -22090,9 +21794,9 @@ def build_activities_multi(
             "Type": "Food",
             "Lobbyist": lobbyist_display(d),
             "Filer": d.get("filerName", "").fillna("").astype(str),
-            "Member": d.apply(lambda r: person_display(r.get("recipientNameOrganization"), r.get("recipientNameLast"), r.get("recipientNameFirst")), axis=1),
+            "Member": _vectorized_person_display(d.get("recipientNameOrganization", pd.Series([""] * len(d))), d.get("recipientNameLast", pd.Series([""] * len(d))), d.get("recipientNameFirst", pd.Series([""] * len(d)))),
             "Description": d.get("restaurantName", "").fillna("").astype(str),
-            "Amount": d.apply(lambda r: amount_display(r.get("activityExactAmount"), r.get("activityAmountRangeLow"), r.get("activityAmountRangeHigh"), r.get("activityAmountCd")), axis=1),
+            "Amount": _vectorized_amount_display(d.get("activityExactAmount", pd.Series([""] * len(d))), d.get("activityAmountRangeLow", pd.Series([""] * len(d))), d.get("activityAmountRangeHigh", pd.Series([""] * len(d))), d.get("activityAmountCd", pd.Series([""] * len(d)))),
         }))
 
     d = keep(df_ent)
@@ -22104,9 +21808,9 @@ def build_activities_multi(
             "Type": "Entertainment",
             "Lobbyist": lobbyist_display(d),
             "Filer": d.get("filerName", "").fillna("").astype(str),
-            "Member": d.apply(lambda r: person_display(r.get("recipientNameOrganization"), r.get("recipientNameLast"), r.get("recipientNameFirst")), axis=1),
+            "Member": _vectorized_person_display(d.get("recipientNameOrganization", pd.Series([""] * len(d))), d.get("recipientNameLast", pd.Series([""] * len(d))), d.get("recipientNameFirst", pd.Series([""] * len(d)))),
             "Description": d.get("entertainmentName", "").fillna("").astype(str),
-            "Amount": d.apply(lambda r: amount_display(r.get("activityExactAmount"), r.get("activityAmountRangeLow"), r.get("activityAmountRangeHigh"), r.get("activityAmountCd")), axis=1),
+            "Amount": _vectorized_amount_display(d.get("activityExactAmount", pd.Series([""] * len(d))), d.get("activityAmountRangeLow", pd.Series([""] * len(d))), d.get("activityAmountRangeHigh", pd.Series([""] * len(d))), d.get("activityAmountCd", pd.Series([""] * len(d)))),
         }))
 
     d = keep(df_tran)
@@ -22123,7 +21827,7 @@ def build_activities_multi(
             "Type": "Travel",
             "Lobbyist": lobbyist_display(d),
             "Filer": d.get("filerName", "").fillna("").astype(str),
-            "Member": d.apply(lambda r: person_display(r.get("recipientNameOrganization"), r.get("recipientNameLast"), r.get("recipientNameFirst")), axis=1),
+            "Member": _vectorized_person_display(d.get("recipientNameOrganization", pd.Series([""] * len(d))), d.get("recipientNameLast", pd.Series([""] * len(d))), d.get("recipientNameFirst", pd.Series([""] * len(d)))),
             "Description": desc2,
             "Amount": "",
         }))
@@ -22137,9 +21841,9 @@ def build_activities_multi(
             "Type": "Gift",
             "Lobbyist": lobbyist_display(d),
             "Filer": d.get("filerName", "").fillna("").astype(str),
-            "Member": d.apply(lambda r: person_display(r.get("recipientNameOrganization"), r.get("recipientNameLast"), r.get("recipientNameFirst")), axis=1),
+            "Member": _vectorized_person_display(d.get("recipientNameOrganization", pd.Series([""] * len(d))), d.get("recipientNameLast", pd.Series([""] * len(d))), d.get("recipientNameFirst", pd.Series([""] * len(d)))),
             "Description": d.get("activityDescription", "").fillna("").astype(str),
-            "Amount": d.apply(lambda r: amount_display(r.get("activityExactAmount"), r.get("activityAmountRangeLow"), r.get("activityAmountRangeHigh"), r.get("activityAmountCd")), axis=1),
+            "Amount": _vectorized_amount_display(d.get("activityExactAmount", pd.Series([""] * len(d))), d.get("activityAmountRangeLow", pd.Series([""] * len(d))), d.get("activityAmountRangeHigh", pd.Series([""] * len(d))), d.get("activityAmountCd", pd.Series([""] * len(d)))),
         }))
 
     d = keep(df_evnt)
@@ -22151,7 +21855,7 @@ def build_activities_multi(
             "Type": "Event",
             "Lobbyist": lobbyist_display(d),
             "Filer": d.get("filerName", "").fillna("").astype(str),
-            "Member": d.apply(lambda r: person_display(r.get("recipientNameOrganization"), r.get("recipientNameLast"), r.get("recipientNameFirst")), axis=1),
+            "Member": _vectorized_person_display(d.get("recipientNameOrganization", pd.Series([""] * len(d))), d.get("recipientNameLast", pd.Series([""] * len(d))), d.get("recipientNameFirst", pd.Series([""] * len(d)))),
             "Description": d.get("activityDescription", "").fillna("").astype(str),
             "Amount": "",
         }))
@@ -22165,9 +21869,9 @@ def build_activities_multi(
             "Type": "Award",
             "Lobbyist": lobbyist_display(d),
             "Filer": d.get("filerName", "").fillna("").astype(str),
-            "Member": d.apply(lambda r: person_display(r.get("recipientNameOrganization"), r.get("recipientNameLast"), r.get("recipientNameFirst")), axis=1),
+            "Member": _vectorized_person_display(d.get("recipientNameOrganization", pd.Series([""] * len(d))), d.get("recipientNameLast", pd.Series([""] * len(d))), d.get("recipientNameFirst", pd.Series([""] * len(d)))),
             "Description": d.get("activityDescription", "").fillna("").astype(str),
-            "Amount": d.apply(lambda r: amount_display(r.get("activityExactAmount"), r.get("activityAmountRangeLow"), r.get("activityAmountRangeHigh"), r.get("activityAmountCd")), axis=1),
+            "Amount": _vectorized_amount_display(d.get("activityExactAmount", pd.Series([""] * len(d))), d.get("activityAmountRangeLow", pd.Series([""] * len(d))), d.get("activityAmountRangeHigh", pd.Series([""] * len(d))), d.get("activityAmountCd", pd.Series([""] * len(d)))),
         }))
 
     if not out:
@@ -23243,7 +22947,7 @@ def build_all_lobbyists_overview_fast(df: pd.DataFrame, session_val: str | None,
     d["Session"] = d["Session"].astype(str).str.strip()
 
     if scope_val == "This Session" and session_val is not None:
-        d = d[d["Session"] == str(session_val)].copy()
+        d = d[d["Session"] == str(session_val)]
 
     d = ensure_cols(d, {"IsTFL": 0, "LobbyShort": "", "Client": "", "Low_num": 0.0, "High_num": 0.0})
 
@@ -23488,9 +23192,9 @@ with tab_all:
         trend_base = Lobby_TFL_Client_All.copy()
         trend_base["Session"] = trend_base["Session"].astype(str).str.strip()
         trend_base = ensure_cols(trend_base, {"IsTFL": 0, "Low_num": 0.0, "High_num": 0.0})
-        trend_base = trend_base[trend_base["IsTFL"] == 1].copy()
+        trend_base = trend_base[trend_base["IsTFL"] == 1]
         trend_base["SessionBase"] = _session_base_number_series(trend_base["Session"])
-        trend_base = trend_base[trend_base["SessionBase"].between(85, 89)].copy()
+        trend_base = trend_base[trend_base["SessionBase"].between(85, 89)]
         if not trend_base.empty:
             trend_base["Low_num"] = pd.to_numeric(trend_base["Low_num"], errors="coerce").fillna(0)
             trend_base["High_num"] = pd.to_numeric(trend_base["High_num"], errors="coerce").fillna(0)
@@ -23498,7 +23202,7 @@ with tab_all:
                 trend_base.groupby("SessionBase", as_index=False)
                 .agg(Low=("Low_num", "sum"), High=("High_num", "sum"))
             )
-            trend_group["SessionLabel"] = trend_group["SessionBase"].apply(_session_base_label)
+            trend_group["SessionLabel"] = trend_group["SessionBase"].map(_session_base_label)
             trend_long = trend_group.melt(
                 id_vars=["SessionBase", "SessionLabel"],
                 value_vars=["Low", "High"],
@@ -23536,9 +23240,9 @@ with tab_all:
         t1, t2 = st.columns(2)
         with t1:
             st.markdown('<div class="section-title">Top 5 Taxpayer Funded<br>Lobbyists</div>', unsafe_allow_html=True)
-            top_lobbyists = all_pivot.copy()
+            top_lobbyists = all_pivot
             if not top_lobbyists.empty:
-                top_lobbyists = top_lobbyists[top_lobbyists.get("Clients_TFL", 0) > 0].copy()
+                top_lobbyists = top_lobbyists[top_lobbyists.get("Clients_TFL", 0) > 0]
                 top_lobbyists = top_lobbyists.sort_values(["High_TFL", "Low_TFL"], ascending=[False, False]).head(5)
                 lobby_display = (
                     Lobby_TFL_Client_All[["LobbyShort", "Lobby Name"]]
@@ -23552,19 +23256,19 @@ with tab_all:
                         .str.replace(r"\s+", " ", regex=True),
                     )
                 )
+                _lnc = lobby_display["LobbyNameClean"]
+                _has_comma = _lnc.str.contains(",", na=False)
+                _sp = _lnc.str.split(",", n=1, expand=True)
+                _first = _sp[1].str.strip().fillna("") if 1 in _sp.columns else pd.Series("", index=_lnc.index)
+                _last = _sp[0].str.strip()
+                _display = (_first + " " + _last).str.strip()
                 lobby_display = lobby_display.assign(
-                    LobbyNameDisplay=lobby_display["LobbyNameClean"].apply(
-                        lambda x: " ".join(
-                            ([x.split(",", 1)[1].strip(), x.split(",", 1)[0].strip()] if "," in x else [x])
-                        )
-                    )
+                    LobbyNameDisplay=_display.where(_has_comma, _lnc)
                 )
                 lobby_display = lobby_display[["LobbyShort", "LobbyNameDisplay"]].drop_duplicates()
                 top_lobbyists = top_lobbyists.merge(lobby_display, on="LobbyShort", how="left")
                 top_lobbyists["Lobbyist"] = top_lobbyists["LobbyNameDisplay"].fillna(top_lobbyists["LobbyShort"])
-                top_lobbyists["Taxpayer Funded Total"] = top_lobbyists.apply(
-                    lambda r: f"{fmt_usd(r.get('Low_TFL', 0.0))} - {fmt_usd(r.get('High_TFL', 0.0))}", axis=1
-                )
+                top_lobbyists["Taxpayer Funded Total"] = top_lobbyists["Low_TFL"].map(fmt_usd) + " - " + top_lobbyists["High_TFL"].map(fmt_usd)
                 st.dataframe(
                     top_lobbyists[["Lobbyist", "Taxpayer Funded Total"]],
                     width="stretch",
@@ -23579,9 +23283,9 @@ with tab_all:
             clients = Lobby_TFL_Client_All.copy()
             clients["Session"] = clients["Session"].astype(str).str.strip()
             if st.session_state.scope == "This Session" and tfl_session_val is not None:
-                clients = clients[clients["Session"] == str(tfl_session_val)].copy()
+                clients = clients[clients["Session"] == str(tfl_session_val)]
             clients = ensure_cols(clients, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0})
-            clients = clients[clients["IsTFL"] == 1].copy()
+            clients = clients[clients["IsTFL"] == 1]
             if not clients.empty:
                 top_clients = (
                     clients.groupby("Client", as_index=False)
@@ -23589,9 +23293,7 @@ with tab_all:
                     .sort_values(["High", "Low"], ascending=[False, False])
                     .head(5)
                 )
-                top_clients["Taxpayer Funded Total"] = top_clients.apply(
-                    lambda r: f"{fmt_usd(r.get('Low', 0.0))} - {fmt_usd(r.get('High', 0.0))}", axis=1
-                )
+                top_clients["Taxpayer Funded Total"] = top_clients["Low"].map(fmt_usd) + " - " + top_clients["High"].map(fmt_usd)
                 st.dataframe(
                     top_clients[["Client", "Taxpayer Funded Total"]],
                     width="stretch",
@@ -23629,7 +23331,7 @@ with tab_all:
                 help="Show lobbyists with both taxpayer-funded and private clients.",
             )
 
-        view = all_pivot.copy()
+        view = all_pivot
         view["Total_Low"] = view["Low_TFL"] + view["Low_Private"]
         view["Total_High"] = view["High_TFL"] + view["High_Private"]
         view["TFL_Mid"] = (view["Low_TFL"] + view["High_TFL"]) / 2
@@ -23638,13 +23340,13 @@ with tab_all:
         view["TFL_Share"] = view["TFL_Mid"] / view["Total_Mid"].where(view["Total_Mid"] != 0, 1)
         view["TFL_Share"] = view["TFL_Share"].fillna(0)
         if flt.strip():
-            view = view[view["LobbyShort"].astype(str).str.contains(flt.strip(), case=False, na=False)].copy()
+            view = view[view["LobbyShort"].astype(str).str.contains(flt.strip(), case=False, na=False)]
         if only_tfl:
-            view = view[view.get("Only_TFL", False)].copy()
+            view = view[view.get("Only_TFL", False)]
         if only_private:
-            view = view[view.get("Only_Private", False)].copy()
+            view = view[view.get("Only_Private", False)]
         if mixed_only:
-            view = view[view.get("Mixed", False)].copy()
+            view = view[view.get("Mixed", False)]
 
         threshold_col1, threshold_col2 = st.columns(2)
         with threshold_col1:
@@ -23675,16 +23377,16 @@ with tab_all:
             share_threshold = share_opts.get(share_choice, 0.0)
 
         if min_mid > 0:
-            view = view[view["Total_Mid"] >= min_mid].copy()
+            view = view[view["Total_Mid"] >= min_mid]
         if share_threshold > 0:
-            view = view[view["TFL_Share"] >= share_threshold].copy()
+            view = view[view["TFL_Share"] >= share_threshold]
 
-        view_disp = view.copy()
+        view_disp = view
         for c in ["Low_TFL", "High_TFL", "Low_Private", "High_Private"]:
             if c in view_disp.columns:
-                view_disp[c] = view_disp[c].astype(float).apply(lambda x: fmt_usd(x))
+                view_disp[c] = view_disp[c].astype(float).map(fmt_usd)
         if "Total_Mid" in view_disp.columns:
-            view_disp["Total_Mid"] = view_disp["Total_Mid"].astype(float).apply(lambda x: fmt_usd(x))
+            view_disp["Total_Mid"] = view_disp["Total_Mid"].astype(float).map(fmt_usd)
         if "TFL_Share" in view_disp.columns:
             view_disp["TFL_Share"] = (
                 (view_disp["TFL_Share"].fillna(0) * 100).round(0).astype("Int64").astype(str) + "%"
@@ -23824,7 +23526,7 @@ else:
             wit_all = wit_all.copy()
             wit_all["LobbyShortNorm"] = norm_name_series(wit_all["LobbyShort"])
         session_col = wit_all["Session"].astype(str).str.strip()
-        base_wit = wit_all[session_col == session].copy()
+        base_wit = wit_all[session_col == session]
         witness_match_note = ""
         if selected_names:
             name_variants = set()
@@ -23864,22 +23566,22 @@ else:
                     name_mask = name_mask & (short_mask | (short_norm == ""))
 
             if name_mask.any():
-                wit = base_wit[name_mask].copy()
+                wit = base_wit[name_mask]
                 wit["LobbyShort"] = lobbyshort
                 wit["LobbyShortNorm"] = lobbyshort_norm
                 witness_match_note = "Witness list filtered to the selected name."
             else:
-                wit = base_wit.iloc[0:0].copy()
+                wit = base_wit.iloc[0:0]
                 witness_match_note = "No witness-list rows matched the selected name. Clear the specific match to see all rows for that last name + first initial."
         else:
             if "LobbyShortNorm" in base_wit.columns:
-                wit = base_wit[base_wit["LobbyShortNorm"] == lobbyshort_norm].copy()
+                wit = base_wit[base_wit["LobbyShortNorm"] == lobbyshort_norm]
                 if not wit.empty:
                     wit["LobbyShort"] = lobbyshort
             else:
                 wit = base_wit[
                     base_wit["LobbyShort"].astype(str).str.strip() == lobbyshort
-                ].copy()
+                ]
 
         bills = build_bills_with_status(wit, Bill_Status_All, Fiscal_Impact, session)
         mentions = build_policy_mentions(bills, Bill_Sub_All, session)
@@ -23900,7 +23602,7 @@ else:
             )
             bill_subjects = bill_subjects[
                 bill_subjects["Subject"].fillna("").astype(str).str.strip() != ""
-            ].copy()
+            ]
 
         # Lobbyist-reported subject matters (Lobby_Sub_All)
         lobby_sub_counts, subject_non_empty = build_lobby_subject_counts(
@@ -23916,10 +23618,10 @@ else:
         lt = Lobby_TFL_Client_All[
             (Lobby_TFL_Client_All["Session"].astype(str).str.strip() == tfl_session) &
             (Lobby_TFL_Client_All["LobbyShort"].astype(str).str.strip() == lobbyshort)
-        ].copy()
+        ]
         if selected_filer_ids and "FilerID" in lt.columns:
             fid = pd.to_numeric(lt["FilerID"], errors="coerce").fillna(-1).astype(int)
-            lt = lt[fid.isin(selected_filer_ids)].copy()
+            lt = lt[fid.isin(selected_filer_ids)]
         lt = ensure_cols(lt, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0})
 
         has_tfl = bool((lt["IsTFL"] == 1).any()) if not lt.empty else False
@@ -23956,8 +23658,8 @@ else:
             if lobby_last_norm:
                 match_mask = match_mask | (staff_df.get("StaffLastNorm", pd.Series(False, index=staff_df.index)) == lobby_last_norm)
 
-        staff_pick = staff_df[match_mask].copy()
-        staff_pick_session = staff_df[staff_session & match_mask].copy()
+        staff_pick = staff_df[match_mask]
+        staff_pick_session = staff_df[staff_session & match_mask]
 
         @st.cache_data(show_spinner=False, ttl=300, max_entries=4)
         def staff_metrics(staff_rows: pd.DataFrame, bills_df: pd.DataFrame, session_val: str, bs_all: pd.DataFrame) -> pd.DataFrame:
@@ -23966,7 +23668,7 @@ else:
 
             legs = sorted(staff_rows["Legislator"].dropna().astype(str).unique().tolist())
             out = []
-            bs = bs_all[bs_all["Session"].astype(str).str.strip() == str(session_val)].copy()
+            bs = bs_all[bs_all["Session"].astype(str).str.strip() == str(session_val)]
 
             for leg in legs:
                 authored = bs[bs["Author"].fillna("").astype(str).str.contains(leg, case=False, na=False)][["Session", "Bill", "Status"]]
@@ -24394,14 +24096,14 @@ else:
                     placeholder="e.g., HB 4 or Bettencourt or housing",
                     help="Filter bills by bill number, author, or caption text.",
                 )
-                filtered = bills.copy()
+                filtered = bills
                 if st.session_state.bill_search.strip():
                     q = st.session_state.bill_search.strip()
                     filtered = filtered[
                         filtered["Bill"].astype(str).str.contains(q, case=False, na=False) |
                         filtered["Author"].astype(str).str.contains(q, case=False, na=False) |
                         filtered["Caption"].astype(str).str.contains(q, case=False, na=False)
-                    ].copy()
+                    ]
 
                 f1, f2 = st.columns(2)
                 with f1:
@@ -24428,9 +24130,9 @@ else:
                     )
 
                 if status_sel:
-                    filtered = filtered[filtered["Status"].astype(str).isin(status_sel)].copy()
+                    filtered = filtered[filtered["Status"].astype(str).isin(status_sel)]
                 if pos_sel:
-                    filtered = filtered[filtered["Position"].astype(str).isin(pos_sel)].copy()
+                    filtered = filtered[filtered["Position"].astype(str).isin(pos_sel)]
 
                 bsum1, bsum2 = st.columns(2)
                 with bsum1:
@@ -24668,14 +24370,14 @@ else:
             ):
                 st.info("Policy area view needs Texas Legislature Online bill subject data with Bill and Subject columns.")
             else:
-                policy_mentions = mentions.copy()
+                policy_mentions = mentions
                 if focus_active:
                     focus_norm = {
                         re.sub(r"\s+", " ", bill.upper()).strip()
                         for bill in focus_bill_ids
                         if bill
                     }
-                    focus_subjects = bill_subjects.copy()
+                    focus_subjects = bill_subjects
                     if not focus_subjects.empty and focus_norm:
                         focus_subjects["BillNorm"] = (
                             focus_subjects["Bill"]
@@ -24685,8 +24387,8 @@ else:
                             .str.replace(r"\s+", " ", regex=True)
                             .str.strip()
                         )
-                        focus_subjects = focus_subjects[focus_subjects["BillNorm"].isin(focus_norm)].copy()
-                        focus_subjects = focus_subjects[focus_subjects["Subject"].fillna("").astype(str).str.strip() != ""].copy()
+                        focus_subjects = focus_subjects[focus_subjects["BillNorm"].isin(focus_norm)]
+                        focus_subjects = focus_subjects[focus_subjects["Subject"].fillna("").astype(str).str.strip() != ""]
                         if not focus_subjects.empty:
                             policy_mentions = (
                                 focus_subjects.groupby("Subject")["Bill"]
@@ -24710,7 +24412,7 @@ else:
                         st.info(
                             "No subjects found (Texas Legislature Online bill subject data returned 0 rows). Try another session or clear the lobbyist filter."
                         )
-                chart_mentions = policy_mentions.copy()
+                chart_mentions = policy_mentions
                 chart_mentions["SharePct"] = (chart_mentions["Share"] * 100).round(1)
                 chart_mentions = chart_mentions.sort_values("Share", ascending=False)
                 top_mentions = chart_mentions.head(20)
@@ -24756,7 +24458,7 @@ else:
                         fig_tree.update_layout(coloraxis_showscale=False)
                         st.plotly_chart(fig_tree, width="stretch", config=PLOTLY_CONFIG)
 
-                    m2 = policy_mentions.copy()
+                    m2 = policy_mentions
                     m2["Share"] = (m2["Share"] * 100).round(0).astype("Int64").astype(str) + "%"
                     m2 = m2.rename(columns={"Subject": "Policy Area"})
                     st.dataframe(m2[["Policy Area", "Mentions", "Share"]], width="stretch", height=520, hide_index=True)
@@ -24801,7 +24503,7 @@ else:
             else:
                 if subject_non_empty < 0.05:
                     st.caption("Note: Subject Matter is largely blank for this session in the source data. Showing Other Subject Matter Description or Unnamed: 0 when available.")
-                top_topics = lobby_sub_counts.head(12).copy()
+                top_topics = lobby_sub_counts.head(12)
                 max_mentions = int(top_topics["Mentions"].max()) if not top_topics.empty else 0
                 topic_chunks = [top_topics.iloc[i:i + 4] for i in range(0, len(top_topics), 4)]
                 if topic_chunks:
@@ -24876,7 +24578,7 @@ else:
             elif not staff_stats.empty:
                 st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
                 st.caption("Computed from authored bills intersected with this lobbyist's witness activity.")
-                s2 = staff_stats.copy()
+                s2 = staff_stats
                 for col in ["% Against that Failed", "% For that Passed"]:
                     s2[col] = pd.to_numeric(s2[col], errors="coerce")
                     s2[col] = (s2[col] * 100).round(0)
@@ -24906,7 +24608,7 @@ else:
                 st.info("No activity rows found for this lobbyist/session (after matching). Try a different session or clear the specific match.")
                 st.caption("If Excel still shows rows, your workbook may key activities on a different ID (e.g., filerID).")
             else:
-                filt = activities.copy()
+                filt = activities
                 t_opts = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
                 t_opts = sorted(t_opts)
                 sel_types = st.multiselect(
@@ -24916,7 +24618,7 @@ else:
                     help="Limit results to selected activity categories.",
                 )
                 if sel_types:
-                    filt = filt[filt["Type"].isin(sel_types)].copy()
+                    filt = filt[filt["Type"].isin(sel_types)]
 
                 st.session_state.activity_search = st.text_input(
                     "Search activities (filer, member, description)",
@@ -24929,7 +24631,7 @@ else:
                         filt["Filer"].astype(str).str.contains(q, case=False, na=False) |
                         filt["Member"].astype(str).str.contains(q, case=False, na=False) |
                         filt["Description"].astype(str).str.contains(q, case=False, na=False)
-                    ].copy()
+                    ]
 
                 date_parsed = pd.to_datetime(filt["Date"], errors="coerce")
                 d_from = None
@@ -24945,7 +24647,7 @@ else:
                     d_from, d_to = (_date_val if isinstance(_date_val, (list, tuple)) and len(_date_val) == 2 else (min_d, max_d))
                     if d_from and d_to:
                         mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
-                        filt = filt[mask].copy()
+                        filt = filt[mask]
 
                 a1, a2 = st.columns(2)
                 with a1:
@@ -25038,7 +24740,7 @@ else:
             elif disclosures.empty:
                 st.info("No disclosure rows found for this lobbyist/session. Try another session or clear the specific match.")
             else:
-                filt = disclosures.copy()
+                filt = disclosures
                 d_types = _clean_options(filt["Type"].dropna().astype(str).unique().tolist())
                 d_types = sorted(d_types)
                 sel_types = st.multiselect(
@@ -25048,7 +24750,7 @@ else:
                     help="Limit results to selected disclosure categories.",
                 )
                 if sel_types:
-                    filt = filt[filt["Type"].isin(sel_types)].copy()
+                    filt = filt[filt["Type"].isin(sel_types)]
 
                 st.session_state.disclosure_search = st.text_input(
                     "Search disclosures (filer, description, entity)",
@@ -25061,7 +24763,7 @@ else:
                         filt["Filer"].astype(str).str.contains(q, case=False, na=False) |
                         filt["Description"].astype(str).str.contains(q, case=False, na=False) |
                         filt["Entity"].astype(str).str.contains(q, case=False, na=False)
-                    ].copy()
+                    ]
 
                 date_parsed = pd.to_datetime(filt["Date"], errors="coerce")
                 d_from = None
@@ -25078,7 +24780,7 @@ else:
                     d_from, d_to = (_date_val if isinstance(_date_val, (list, tuple)) and len(_date_val) == 2 else (min_d, max_d))
                     if d_from and d_to:
                         mask = (date_parsed.dt.date >= d_from) & (date_parsed.dt.date <= d_to)
-                        filt = filt[mask].copy()
+                        filt = filt[mask]
 
                 d1, d2 = st.columns(2)
                 with d1:
