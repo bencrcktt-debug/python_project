@@ -3038,6 +3038,31 @@ def _page_solutions():
         ],
     )
 
+@st.cache_data(show_spinner=False, ttl=300, max_entries=4)
+def _build_category_chart_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Pre-compute expenditure-by-category data for 85th-89th TFL sessions (cached)."""
+    cat_base = df.copy()
+    cat_base["Session"] = cat_base["Session"].astype(str).str.strip()
+    cat_base = ensure_cols(cat_base, {"Client": "", "Low_num": 0.0, "High_num": 0.0, "IsTFL": 0})
+    cat_base["IsTFL"] = pd.to_numeric(cat_base["IsTFL"], errors="coerce").fillna(0)
+    cat_base = cat_base[cat_base["IsTFL"] == 1]
+    cat_base["SessionBase"] = _session_base_number_series(cat_base["Session"])
+    cat_base = cat_base[cat_base["SessionBase"].between(85, 89)]
+    cat_base = cat_base[cat_base["Client"].fillna("").astype(str).str.strip() != ""]
+    if cat_base.empty:
+        return pd.DataFrame(columns=["SessionBase", "Category", "Total", "SessionLabel"])
+    cat_base["Category"] = cat_base["Client"].map(lambda x: match_entity_type(x)[1])
+    cat_base["Low_num"] = pd.to_numeric(cat_base["Low_num"], errors="coerce").fillna(0)
+    cat_base["High_num"] = pd.to_numeric(cat_base["High_num"], errors="coerce").fillna(0)
+    cat_base["Mid"] = (cat_base["Low_num"] + cat_base["High_num"]) / 2
+    cat_group = (
+        cat_base.groupby(["SessionBase", "Category"], as_index=False)["Mid"]
+        .sum()
+        .rename(columns={"Mid": "Total"})
+    )
+    cat_group["SessionLabel"] = cat_group["SessionBase"].map(_session_base_label)
+    return cat_group
+
 @_safe_page("Clients")
 def _page_client_lookup():
     _render_page_intro(
@@ -3505,25 +3530,8 @@ def _page_client_lookup():
 
             with mix_right:
                 st.markdown('<div class="section-sub">Expenditure by Category (85th-89th, Taxpayer Funded)</div>', unsafe_allow_html=True)
-                cat_base = Lobby_TFL_Client_All.copy()
-                cat_base["Session"] = cat_base["Session"].astype(str).str.strip()
-                cat_base = ensure_cols(cat_base, {"Client": "", "Low_num": 0.0, "High_num": 0.0, "IsTFL": 0})
-                cat_base["IsTFL"] = pd.to_numeric(cat_base["IsTFL"], errors="coerce").fillna(0)
-                cat_base = cat_base[cat_base["IsTFL"] == 1]
-                cat_base["SessionBase"] = _session_base_number_series(cat_base["Session"])
-                cat_base = cat_base[cat_base["SessionBase"].between(85, 89)]
-                cat_base = cat_base[cat_base["Client"].fillna("").astype(str).str.strip() != ""]
-                if not cat_base.empty:
-                    cat_base["Category"] = cat_base["Client"].map(lambda x: match_entity_type(x)[1])
-                    cat_base["Low_num"] = pd.to_numeric(cat_base["Low_num"], errors="coerce").fillna(0)
-                    cat_base["High_num"] = pd.to_numeric(cat_base["High_num"], errors="coerce").fillna(0)
-                    cat_base["Mid"] = (cat_base["Low_num"] + cat_base["High_num"]) / 2
-                    cat_group = (
-                        cat_base.groupby(["SessionBase", "Category"], as_index=False)["Mid"]
-                        .sum()
-                        .rename(columns={"Mid": "Total"})
-                    )
-                    cat_group["SessionLabel"] = cat_group["SessionBase"].map(_session_base_label)
+                cat_group = _build_category_chart_data(Lobby_TFL_Client_All)
+                if not cat_group.empty:
                     session_order = sorted(cat_group["SessionBase"].dropna().unique().tolist())
                     session_labels = [_session_base_label(s) for s in session_order]
                     cat_order = (
@@ -3695,9 +3703,8 @@ def _page_client_lookup():
     session = str(st.session_state.client_session).strip()
     client_norm = norm_name(st.session_state.client_name)
 
-    lt_base = Lobby_TFL_Client_All.copy()
-    lt_base["ClientNorm"] = lt_base["Client"].map(norm_name)
-    client_rows_all = lt_base[lt_base["ClientNorm"] == client_norm]
+    _client_norms = norm_name_series(Lobby_TFL_Client_All["Client"])
+    client_rows_all = Lobby_TFL_Client_All[_client_norms == client_norm]
 
     tfl_session = str(tfl_session_val) if tfl_session_val is not None else session
     client_lt = client_rows_all[client_rows_all["Session"].astype(str).str.strip() == tfl_session]
@@ -7702,7 +7709,7 @@ def _page_member_lookup():
         tmp["Lobby Name"] = tmp["Lobby Name"].astype(str).str.strip()
         lobbyshort_to_name = (
             tmp.groupby("LobbyShort")["Lobby Name"]
-            .agg(lambda s: s.dropna().astype(str).iloc[0] if len(s) else "")
+            .first()
             .to_dict()
         )
 
@@ -7774,9 +7781,9 @@ def _page_member_lookup():
     staff_df = Staff_All
     staff_matches = pd.DataFrame()
     if not staff_df.empty and "Legislator" in staff_df.columns:
-        leg_norm = norm_name_series(staff_df["Legislator"])
-        leg_last_norm = last_name_norm_series(staff_df["Legislator"])
-        leg_init_key = staff_df["Legislator"].fillna("").astype(str).map(_last_first_initial_key)
+        leg_norm = staff_df.get("LegislatorNorm", norm_name_series(staff_df["Legislator"]))
+        leg_last_norm = staff_df.get("LegislatorLastNorm", last_name_norm_series(staff_df["Legislator"]))
+        leg_init_key = staff_df.get("LegislatorInitKey", staff_df["Legislator"].fillna("").astype(str).map(_last_first_initial_key))
 
         match = pd.Series(False, index=staff_df.index)
         last_norm = member_info.get("last_norm", "")
@@ -17294,6 +17301,7 @@ def export_dataframe(df: pd.DataFrame, filename: str, label: str = "Download CSV
         st.markdown(f'<div class="section-caption">CSV includes: {context_label}.</div>', unsafe_allow_html=True)
     return ""
 
+@st.cache_data(show_spinner=False, ttl=300, max_entries=16)
 def build_timeline_counts(df: pd.DataFrame, date_col: str, freq: str = "M") -> pd.DataFrame:
     if df.empty or date_col not in df.columns:
         return pd.DataFrame(columns=["Period", "Label", "Count"])
@@ -18193,7 +18201,7 @@ def _build_report_payload(
         tmp["Lobby Name"] = tmp["Lobby Name"].astype(str).str.strip()
         lobbyshort_to_name = (
             tmp.groupby("LobbyShort")["Lobby Name"]
-            .agg(lambda s: s.dropna().astype(str).iloc[0] if len(s) else "")
+            .first()
             .to_dict()
         )
 
@@ -18213,8 +18221,8 @@ def _build_report_payload(
                 base,
                 {"Client": "", "LobbyShort": "", "Low_num": 0.0, "High_num": 0.0, "IsTFL": 0, "Lobby Name": ""},
             ).copy()
-            client_rows["ClientNorm"] = client_rows["Client"].map(norm_name)
-            client_rows = client_rows[client_rows["ClientNorm"] == norm_name(client_name)]
+            _cr_norms = norm_name_series(client_rows["Client"])
+            client_rows = client_rows[_cr_norms == norm_name(client_name)]
 
             focus_section = {"title": f"Client - {client_name}", "summary": "", "metrics": [], "bullets": [], "charts": []}
             if client_rows.empty:
@@ -19205,7 +19213,7 @@ def _build_report_payload(
                         tmp["Lobby Name"] = tmp["Lobby Name"].astype(str).str.strip()
                         name_map = (
                             tmp.groupby("LobbyShort")["Lobby Name"]
-                            .agg(lambda s: s.dropna().astype(str).iloc[0] if len(s) else "")
+                            .first()
                             .to_dict()
                         )
 
@@ -22412,12 +22420,18 @@ with st.spinner("Loading workbook..."):
     data = load_workbook(PATH)
 
 Wit_All = data["Wit_All"]
+if "LobbyShort" in Wit_All.columns and "LobbyShortNorm" not in Wit_All.columns:
+    Wit_All["LobbyShortNorm"] = norm_name_series(Wit_All["LobbyShort"])
 Bill_Status_All = data["Bill_Status_All"]
 Fiscal_Impact = data["Fiscal_Impact"]
 Bill_Sub_All = data["Bill_Sub_All"]
 Lobby_Sub_All = data["Lobby_Sub_All"]
 Lobby_TFL_Client_All = data["Lobby_TFL_Client_All"]
 Staff_All = data["Staff_All"]
+if not Staff_All.empty and "Legislator" in Staff_All.columns:
+    Staff_All["LegislatorNorm"] = norm_name_series(Staff_All["Legislator"])
+    Staff_All["LegislatorLastNorm"] = last_name_norm_series(Staff_All["Legislator"])
+    Staff_All["LegislatorInitKey"] = Staff_All["Legislator"].fillna("").astype(str).map(_last_first_initial_key)
 LaCvr = data["LaCvr"]
 LaDock = data["LaDock"]
 LaI4E = data["LaI4E"]
@@ -22998,6 +23012,76 @@ _ = _render_pdf_report_section(
 )
 
 # =========================================================
+# CACHED LOBBYIST-PAGE HELPERS
+# =========================================================
+
+@st.cache_data(show_spinner=False, ttl=300, max_entries=4)
+def _build_tfl_trend_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Pre-compute TFL trend data for 85th-89th sessions (cached)."""
+    d = df.copy()
+    d["Session"] = d["Session"].astype(str).str.strip()
+    d = ensure_cols(d, {"IsTFL": 0, "Low_num": 0.0, "High_num": 0.0})
+    d = d[d["IsTFL"] == 1]
+    d["SessionBase"] = _session_base_number_series(d["Session"])
+    d = d[d["SessionBase"].between(85, 89)]
+    if d.empty:
+        return pd.DataFrame(columns=["SessionBase", "Low", "High", "SessionLabel"])
+    d["Low_num"] = pd.to_numeric(d["Low_num"], errors="coerce").fillna(0)
+    d["High_num"] = pd.to_numeric(d["High_num"], errors="coerce").fillna(0)
+    trend_group = (
+        d.groupby("SessionBase", as_index=False)
+        .agg(Low=("Low_num", "sum"), High=("High_num", "sum"))
+    )
+    trend_group["SessionLabel"] = trend_group["SessionBase"].map(_session_base_label)
+    return trend_group
+
+@st.cache_data(show_spinner=False, ttl=300, max_entries=4)
+def _build_top5_tfl_clients(df: pd.DataFrame, session_val: str | None, scope_val: str) -> pd.DataFrame:
+    """Pre-compute top-5 taxpayer-funded clients (cached)."""
+    clients = df.copy()
+    clients["Session"] = clients["Session"].astype(str).str.strip()
+    if scope_val == "This Session" and session_val is not None:
+        clients = clients[clients["Session"] == str(session_val)]
+    clients = ensure_cols(clients, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0})
+    clients = clients[clients["IsTFL"] == 1]
+    if clients.empty:
+        return pd.DataFrame(columns=["Client", "Taxpayer Funded Total"])
+    top_clients = (
+        clients.groupby("Client", as_index=False)
+        .agg(Low=("Low_num", "sum"), High=("High_num", "sum"))
+        .sort_values(["High", "Low"], ascending=[False, False])
+        .head(5)
+    )
+    top_clients["Taxpayer Funded Total"] = top_clients["Low"].map(fmt_usd) + " - " + top_clients["High"].map(fmt_usd)
+    return top_clients[["Client", "Taxpayer Funded Total"]]
+
+@st.cache_data(show_spinner=False, ttl=300, max_entries=4)
+def _build_lobby_display_names(df: pd.DataFrame) -> pd.DataFrame:
+    """Build LobbyShort → display name mapping (cached)."""
+    lobby_display = (
+        df[["LobbyShort", "Lobby Name"]]
+        .dropna()
+        .drop_duplicates()
+        .assign(
+            LobbyShort=lambda d: d["LobbyShort"].astype(str).str.strip(),
+            LobbyNameClean=lambda d: d["Lobby Name"]
+            .astype(str)
+            .str.strip()
+            .str.replace(r"\s+", " ", regex=True),
+        )
+    )
+    _lnc = lobby_display["LobbyNameClean"]
+    _has_comma = _lnc.str.contains(",", na=False)
+    _sp = _lnc.str.split(",", n=1, expand=True)
+    _first = _sp[1].str.strip().fillna("") if 1 in _sp.columns else pd.Series("", index=_lnc.index)
+    _last = _sp[0].str.strip()
+    _display = (_first + " " + _last).str.strip()
+    lobby_display = lobby_display.assign(
+        LobbyNameDisplay=_display.where(_has_comma, _lnc)
+    )
+    return lobby_display[["LobbyShort", "LobbyNameDisplay"]].drop_duplicates()
+
+# =========================================================
 # FAST ALL-LOBBYISTS OVERVIEW (cached and uses Low_num/High_num)
 # =========================================================
 @st.cache_data(show_spinner=False, ttl=300, max_entries=4)
@@ -23047,6 +23131,15 @@ def build_all_lobbyists_overview_fast(df: pd.DataFrame, session_val: str | None,
         "pri_low_total": float(pivot["Low_Private"].sum()),
         "pri_high_total": float(pivot["High_Private"].sum()),
     }
+
+    pivot["Total_Low"] = pivot["Low_TFL"] + pivot["Low_Private"]
+    pivot["Total_High"] = pivot["High_TFL"] + pivot["High_Private"]
+    pivot["TFL_Mid"] = (pivot["Low_TFL"] + pivot["High_TFL"]) / 2
+    pivot["Private_Mid"] = (pivot["Low_Private"] + pivot["High_Private"]) / 2
+    pivot["Total_Mid"] = pivot["TFL_Mid"] + pivot["Private_Mid"]
+    pivot["TFL_Share"] = pivot["TFL_Mid"] / pivot["Total_Mid"].where(pivot["Total_Mid"] != 0, 1)
+    pivot["TFL_Share"] = pivot["TFL_Share"].fillna(0)
+
     return pivot, stats
 
 all_pivot, all_stats = build_all_lobbyists_overview_fast(
@@ -23251,20 +23344,8 @@ with tab_all:
             st.info("No totals available for funding mix in this scope.")
 
         st.markdown('<div class="section-sub">Taxpayer Funded Compensation Trend (85th-89th)</div>', unsafe_allow_html=True)
-        trend_base = Lobby_TFL_Client_All.copy()
-        trend_base["Session"] = trend_base["Session"].astype(str).str.strip()
-        trend_base = ensure_cols(trend_base, {"IsTFL": 0, "Low_num": 0.0, "High_num": 0.0})
-        trend_base = trend_base[trend_base["IsTFL"] == 1]
-        trend_base["SessionBase"] = _session_base_number_series(trend_base["Session"])
-        trend_base = trend_base[trend_base["SessionBase"].between(85, 89)]
-        if not trend_base.empty:
-            trend_base["Low_num"] = pd.to_numeric(trend_base["Low_num"], errors="coerce").fillna(0)
-            trend_base["High_num"] = pd.to_numeric(trend_base["High_num"], errors="coerce").fillna(0)
-            trend_group = (
-                trend_base.groupby("SessionBase", as_index=False)
-                .agg(Low=("Low_num", "sum"), High=("High_num", "sum"))
-            )
-            trend_group["SessionLabel"] = trend_group["SessionBase"].map(_session_base_label)
+        trend_group = _build_tfl_trend_data(Lobby_TFL_Client_All)
+        if not trend_group.empty:
             trend_long = trend_group.melt(
                 id_vars=["SessionBase", "SessionLabel"],
                 value_vars=["Low", "High"],
@@ -23306,28 +23387,7 @@ with tab_all:
             if not top_lobbyists.empty:
                 top_lobbyists = top_lobbyists[top_lobbyists.get("Clients_TFL", 0) > 0]
                 top_lobbyists = top_lobbyists.sort_values(["High_TFL", "Low_TFL"], ascending=[False, False]).head(5)
-                lobby_display = (
-                    Lobby_TFL_Client_All[["LobbyShort", "Lobby Name"]]
-                    .dropna()
-                    .drop_duplicates()
-                    .assign(
-                        LobbyShort=lambda df: df["LobbyShort"].astype(str).str.strip(),
-                        LobbyNameClean=lambda df: df["Lobby Name"]
-                        .astype(str)
-                        .str.strip()
-                        .str.replace(r"\s+", " ", regex=True),
-                    )
-                )
-                _lnc = lobby_display["LobbyNameClean"]
-                _has_comma = _lnc.str.contains(",", na=False)
-                _sp = _lnc.str.split(",", n=1, expand=True)
-                _first = _sp[1].str.strip().fillna("") if 1 in _sp.columns else pd.Series("", index=_lnc.index)
-                _last = _sp[0].str.strip()
-                _display = (_first + " " + _last).str.strip()
-                lobby_display = lobby_display.assign(
-                    LobbyNameDisplay=_display.where(_has_comma, _lnc)
-                )
-                lobby_display = lobby_display[["LobbyShort", "LobbyNameDisplay"]].drop_duplicates()
+                lobby_display = _build_lobby_display_names(Lobby_TFL_Client_All)
                 top_lobbyists = top_lobbyists.merge(lobby_display, on="LobbyShort", how="left")
                 top_lobbyists["Lobbyist"] = top_lobbyists["LobbyNameDisplay"].fillna(top_lobbyists["LobbyShort"])
                 top_lobbyists["Taxpayer Funded Total"] = top_lobbyists["Low_TFL"].map(fmt_usd) + " - " + top_lobbyists["High_TFL"].map(fmt_usd)
@@ -23342,20 +23402,8 @@ with tab_all:
 
         with t2:
             st.markdown('<div class="section-title">Top 5 Taxpayer Funding<br>Governments/Entities</div>', unsafe_allow_html=True)
-            clients = Lobby_TFL_Client_All.copy()
-            clients["Session"] = clients["Session"].astype(str).str.strip()
-            if st.session_state.scope == "This Session" and tfl_session_val is not None:
-                clients = clients[clients["Session"] == str(tfl_session_val)]
-            clients = ensure_cols(clients, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0})
-            clients = clients[clients["IsTFL"] == 1]
-            if not clients.empty:
-                top_clients = (
-                    clients.groupby("Client", as_index=False)
-                    .agg(Low=("Low_num", "sum"), High=("High_num", "sum"))
-                    .sort_values(["High", "Low"], ascending=[False, False])
-                    .head(5)
-                )
-                top_clients["Taxpayer Funded Total"] = top_clients["Low"].map(fmt_usd) + " - " + top_clients["High"].map(fmt_usd)
+            top_clients = _build_top5_tfl_clients(Lobby_TFL_Client_All, tfl_session_val, st.session_state.scope)
+            if not top_clients.empty:
                 st.dataframe(
                     top_clients[["Client", "Taxpayer Funded Total"]],
                     width="stretch",
@@ -23393,14 +23441,7 @@ with tab_all:
                 help="Show lobbyists with both taxpayer-funded and private clients.",
             )
 
-        view = all_pivot
-        view["Total_Low"] = view["Low_TFL"] + view["Low_Private"]
-        view["Total_High"] = view["High_TFL"] + view["High_Private"]
-        view["TFL_Mid"] = (view["Low_TFL"] + view["High_TFL"]) / 2
-        view["Private_Mid"] = (view["Low_Private"] + view["High_Private"]) / 2
-        view["Total_Mid"] = view["TFL_Mid"] + view["Private_Mid"]
-        view["TFL_Share"] = view["TFL_Mid"] / view["Total_Mid"].where(view["Total_Mid"] != 0, 1)
-        view["TFL_Share"] = view["TFL_Share"].fillna(0)
+        view = all_pivot.copy()
         if flt.strip():
             view = view[view["LobbyShort"].astype(str).str.contains(flt.strip(), case=False, na=False)]
         if only_tfl:
@@ -23443,7 +23484,7 @@ with tab_all:
         if share_threshold > 0:
             view = view[view["TFL_Share"] >= share_threshold]
 
-        view_disp = view
+        view_disp = view.copy()
         for c in ["Low_TFL", "High_TFL", "Low_Private", "High_Private"]:
             if c in view_disp.columns:
                 view_disp[c] = view_disp[c].astype(float).map(fmt_usd)
