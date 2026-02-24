@@ -8499,40 +8499,14 @@ def _map_coverage_metrics(
     return matched_clients, total_tfl, total_high, mapped_high, mapped_rate, unmapped_count
 
 
-@_safe_page("Map & Address Full")
-def _page_map_address_full_pass():
-    """Map & Address — v5 ground-up redesign."""
-
-    # -- page header --------------------------------------------------
-    _render_page_intro(
-        kicker="Geospatial Intelligence Hub",
-        title="Map & Address",
-        subtitle=(
-            "Coverage atlas, address-level overlap forensics, and an "
-            "investigative case docket for taxpayer-funded entities."
-        ),
-        pills=["Coverage Atlas", "Address Forensics", "Case Docket"],
-    )
-    _render_workspace_guide(
-        question=(
-            "At this location, which taxpayer-funded entities show the "
-            "strongest overlap signal and should advance to case review?"
-        ),
-        steps=[
-            "Configure scope and quality thresholds.",
-            "Explore the Coverage Atlas to anchor a subdivision context.",
-            "Run Address Forensics for location-level evidence.",
-            "Promote high-signal leads into the Case Docket.",
-        ],
-        method_note=(
-            "Boundary overlap (spatial containment) is the strongest match "
-            "method. Name-anchored fallback carries lower weight."
-        ),
-    )
-
-    # -- v5 CSS design tokens -----------------------------------------
-    st.markdown(
-        """
+# =========================================================
+# PERFORMANCE: Build the ~530-line mp5 CSS string once at
+# module level instead of re-creating it on every Streamlit
+# rerun when the map-address page renders.
+# =========================================================
+@functools.lru_cache(maxsize=1)
+def _build_mp5_css() -> str:
+    return """
 <style>
 /* -- mp5 shell ------------------------------------------- */
 .mp5-glass{
@@ -9064,9 +9038,43 @@ def _page_map_address_full_pass():
   .mp5-crosslink{ flex-direction:column; align-items:flex-start; }
 }
 </style>
-""",
-        unsafe_allow_html=True,
+"""
+
+
+@_safe_page("Map & Address Full")
+def _page_map_address_full_pass():
+    """Map & Address — v5 ground-up redesign."""
+
+    # -- page header --------------------------------------------------
+    _render_page_intro(
+        kicker="Geospatial Intelligence Hub",
+        title="Map & Address",
+        subtitle=(
+            "Coverage atlas, address-level overlap forensics, and an "
+            "investigative case docket for taxpayer-funded entities."
+        ),
+        pills=["Coverage Atlas", "Address Forensics", "Case Docket"],
     )
+    _render_workspace_guide(
+        question=(
+            "At this location, which taxpayer-funded entities show the "
+            "strongest overlap signal and should advance to case review?"
+        ),
+        steps=[
+            "Configure scope and quality thresholds.",
+            "Explore the Coverage Atlas to anchor a subdivision context.",
+            "Run Address Forensics for location-level evidence.",
+            "Promote high-signal leads into the Case Docket.",
+        ],
+        method_note=(
+            "Boundary overlap (spatial containment) is the strongest match "
+            "method. Name-anchored fallback carries lower weight."
+        ),
+    )
+
+    # -- v5 CSS design tokens (PERFORMANCE: built once, cached)
+    st.markdown(_build_mp5_css(), unsafe_allow_html=True)
+
 
     # -- data gate ----------------------------------------------------
     if not PATH:
@@ -11731,6 +11739,19 @@ def clean_person_name(name: str) -> str:
     s = _RE_WHITESPACE.sub(" ", s).strip()
     return s
 
+# PERFORMANCE: shared urllib3 connection pool — keeps TCP connections alive
+# across the ~10-layer parallel ArcGIS queries instead of opening a new
+# socket for every single request.
+try:
+    import urllib3 as _urllib3
+    _ARCGIS_HTTP = _urllib3.PoolManager(
+        num_pools=16, maxsize=12, retries=False,
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=_urllib3.Timeout(connect=10, read=30),
+    )
+except ImportError:
+    _ARCGIS_HTTP = None  # type: ignore[assignment]
+
 def _arcgis_get_json(url: str, params: dict | None = None, timeout: int = 30, _retries: int = 3) -> dict:
     target = url
     if params:
@@ -11738,9 +11759,16 @@ def _arcgis_get_json(url: str, params: dict | None = None, timeout: int = 30, _r
     last_exc: Exception | None = None
     for attempt in range(_retries):
         try:
-            req = urllib.request.Request(target, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read().decode("utf-8"))
+            if _ARCGIS_HTTP is not None:
+                resp = _ARCGIS_HTTP.request(
+                    "GET", target,
+                    timeout=_urllib3.Timeout(connect=10, read=timeout),
+                )
+                return json.loads(resp.data.decode("utf-8"))
+            else:
+                req = urllib.request.Request(target, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
         except Exception as exc:
             last_exc = exc
             if attempt < _retries - 1:
@@ -14291,6 +14319,7 @@ def render_subdivision_map_legend(type_counts: dict[str, int]) -> None:
     if items:
         st.markdown(f'<div class="map-legend">{"".join(items)}</div>', unsafe_allow_html=True)
 
+@st.cache_data(show_spinner=False, ttl=600, max_entries=8)
 def build_overlap_map_points(
     overlap_subdivisions: pd.DataFrame,
     subdivision_matches: pd.DataFrame,
@@ -14890,24 +14919,43 @@ def render_address_overlap_arcgis_map(
     except Exception:
         return
 
-    point_rows = []
+    # PERFORMANCE: Vectorized point_rows builder — avoids per-row itertuples + html.escape loop
+    point_rows: list[dict] = []
+    legend_types: dict[str, str] = {}
     if isinstance(overlap_points, pd.DataFrame) and not overlap_points.empty:
-        for row in overlap_points.itertuples(index=False):
-            subdivision_type = str(getattr(row, "subdivision_type", "")).strip()
-            point_rows.append(
-                {
-                    "subdivision_type": html.escape(subdivision_type, quote=True),
-                    "subdivision_name": html.escape(str(getattr(row, "subdivision_name", "")).strip(), quote=True),
-                    "subdivision_code": html.escape(str(getattr(row, "subdivision_code", "")).strip(), quote=True),
-                    "lon": float(getattr(row, "lon", 0.0)),
-                    "lat": float(getattr(row, "lat", 0.0)),
-                    "match_count": int(getattr(row, "match_count", 0) or 0),
-                    "high_total": float(getattr(row, "high_total", 0.0) or 0.0),
-                    "match_method": html.escape(str(getattr(row, "match_method", "")).strip(), quote=True),
-                    "source_name": html.escape(str(getattr(row, "source_name", "")).strip(), quote=True),
-                    "color": _hex_to_rgba(_subdivision_color_hex(subdivision_type)),
-                }
-            )
+        _op = overlap_points.copy()
+        for col in ("subdivision_type", "subdivision_name", "subdivision_code", "match_method", "source_name"):
+            if col in _op.columns:
+                _op[col] = _op[col].fillna("").astype(str).str.strip()
+            else:
+                _op[col] = ""
+        _op["lon"] = pd.to_numeric(_op.get("lon", 0.0), errors="coerce").fillna(0.0)
+        _op["lat"] = pd.to_numeric(_op.get("lat", 0.0), errors="coerce").fillna(0.0)
+        _op["match_count"] = pd.to_numeric(_op.get("match_count", 0), errors="coerce").fillna(0).astype(int)
+        _op["high_total"] = pd.to_numeric(_op.get("high_total", 0.0), errors="coerce").fillna(0.0)
+        # Pre-compute colors and escape in bulk
+        _color_cache: dict[str, list[float]] = {}
+        for st_val in _op["subdivision_type"].unique():
+            hex_c = _subdivision_color_hex(st_val)
+            _color_cache[st_val] = _hex_to_rgba(hex_c)
+            if st_val:
+                legend_types[html.escape(st_val, quote=True)] = hex_c
+        point_rows = [
+            {
+                "subdivision_type": html.escape(r.subdivision_type, quote=True),
+                "subdivision_name": html.escape(r.subdivision_name, quote=True),
+                "subdivision_code": html.escape(r.subdivision_code, quote=True),
+                "lon": r.lon,
+                "lat": r.lat,
+                "match_count": r.match_count,
+                "high_total": r.high_total,
+                "match_method": html.escape(r.match_method, quote=True),
+                "source_name": html.escape(r.source_name, quote=True),
+                "color": _color_cache.get(r.subdivision_type, [113, 129, 145, 0.88]),
+            }
+            for r in _op.itertuples(index=False)
+        ]
+        del _op
 
     points_json = json.dumps(point_rows, ensure_ascii=True)
     address_json = json.dumps(
@@ -14920,19 +14968,13 @@ def render_address_overlap_arcgis_map(
     )
     basemap_safe = json.dumps(str(basemap).strip() or "gray-vector")
 
-    # Build legend entries from distinct subdivision types present
-    legend_types: dict[str, str] = {}
-    if point_rows:
-        for pr in point_rows:
-            st_key = pr["subdivision_type"]
-            if st_key and st_key not in legend_types:
-                legend_types[st_key] = _subdivision_color_hex(st_key)
     legend_json = json.dumps(
         [{"type": t, "color": c} for t, c in legend_types.items()],
         ensure_ascii=True,
     )
 
     arcgis_html = f"""
+<link rel="preload" href="https://js.arcgis.com/4.30/" as="script"/>
 <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/dark/main.css"/>
 <style>
   /* -- Dark popup theme -- */
@@ -15043,99 +15085,13 @@ def render_address_overlap_arcgis_map(
   require([
     "esri/Map",
     "esri/views/MapView",
-    "esri/layers/FeatureLayer",
     "esri/layers/GraphicsLayer",
     "esri/Graphic",
     "esri/widgets/Home",
     "esri/widgets/ScaleBar",
-    "esri/widgets/BasemapToggle",
-    "esri/widgets/Compass",
-    "esri/widgets/Fullscreen",
-    "esri/widgets/Search",
-    "esri/widgets/Locate",
-    "esri/widgets/Sketch",
-    "esri/widgets/Expand",
-    "esri/geometry/geometryEngine"
-  ], function(Map, MapView, FeatureLayer, GraphicsLayer, Graphic, Home, ScaleBar, BasemapToggle, Compass, Fullscreen, Search, Locate, Sketch, Expand, geometryEngine) {{
+    "esri/widgets/BasemapToggle"
+  ], function(Map, MapView, GraphicsLayer, Graphic, Home, ScaleBar, BasemapToggle) {{
     const map = new Map({{ basemap: baseMapId }});
-
-    /* -- Reference boundary layers -- */
-    const countyLayer = new FeatureLayer({{
-      url: "{TEA_ARCGIS_COUNTY_LAYER_URL}",
-      outFields: ["FENAME", "FIPS"],
-      popupEnabled: false, labelsVisible: false,
-      labelingInfo: [{{
-        labelExpressionInfo: {{ expression: "$feature.FENAME + ' County'" }},
-        symbol: {{ type: "text", color: [160, 140, 110, 0.75], haloColor: [13, 23, 36, 0.80], haloSize: 0.8,
-          font: {{ size: 11, family: "Avenir Next LT Pro", weight: "600" }} }}
-      }}],
-      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [0,0,0,0], outline: {{ color: [145, 111, 63, 0.22], width: 0.6 }} }} }},
-      opacity: 0.35
-    }});
-
-    const districtLayer = new FeatureLayer({{
-      url: "{TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL}",
-      outFields: ["FID", "NAME20", "DISTRICT"],
-      popupEnabled: false, labelsVisible: false,
-      labelingInfo: [{{
-        labelExpressionInfo: {{ expression: "$feature.NAME20" }},
-        symbol: {{ type: "text", color: [73, 112, 150, 0.65], haloColor: [13, 23, 36, 0.8], haloSize: 0.6,
-          font: {{ size: 8, family: "Avenir Next LT Pro", weight: "normal" }} }}
-      }}],
-      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [0,0,0,0], outline: {{ color: [30, 144, 255, 0.20], width: 0.5 }} }} }},
-      opacity: 0.35
-    }});
-
-    const cityLayer = new FeatureLayer({{
-      url: "{CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL}",
-      outFields: ["NAME", "BASENAME", "GEOID", "STATE"],
-      definitionExpression: "STATE = '48'",
-      popupEnabled: false, labelsVisible: false,
-      labelingInfo: [{{
-        labelExpressionInfo: {{ expression: "DefaultValue($feature.BASENAME, $feature.NAME)" }},
-        symbol: {{ type: "text", color: [165, 100, 105, 0.80], haloColor: [13, 23, 36, 0.76], haloSize: 0.7,
-          font: {{ size: 9, family: "Avenir Next LT Pro", weight: "500" }} }}
-      }}],
-      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [0,0,0,0], outline: {{ color: [158, 42, 43, 0.12], width: 0.4 }} }} }},
-      opacity: 0.20
-    }});
-
-    /* -- Texas House & Senate district boundaries -- */
-    const houseLayer = new FeatureLayer({{
-      url: "{TEXAS_HOUSE_DISTRICTS_LAYER_URL}",
-      outFields: ["*"],
-      popupEnabled: true,
-      popupTemplate: {{ title: "TX House District {{{{DISTRICT}}}}", content: "Texas House of Representatives District {{{{DISTRICT}}}}" }},
-      labelsVisible: false,
-      labelingInfo: [{{
-        labelExpressionInfo: {{ expression: "'HD ' + $feature.DISTRICT" }},
-        symbol: {{ type: "text", color: [90, 180, 130, 0.70], haloColor: [13, 23, 36, 0.75], haloSize: 0.6,
-          font: {{ size: 8, family: "Avenir Next LT Pro", weight: "600" }} }}
-      }}],
-      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [40, 180, 100, 0.03], outline: {{ color: [40, 180, 100, 0.30], width: 0.8 }} }} }},
-      opacity: 0.30, visible: false
-    }});
-
-    const senateLayer = new FeatureLayer({{
-      url: "{TEXAS_SENATE_DISTRICTS_LAYER_URL}",
-      outFields: ["*"],
-      popupEnabled: true,
-      popupTemplate: {{ title: "TX Senate District {{{{DISTRICT}}}}", content: "Texas Senate District {{{{DISTRICT}}}}" }},
-      labelsVisible: false,
-      labelingInfo: [{{
-        labelExpressionInfo: {{ expression: "'SD ' + $feature.DISTRICT" }},
-        symbol: {{ type: "text", color: [180, 130, 90, 0.70], haloColor: [13, 23, 36, 0.75], haloSize: 0.6,
-          font: {{ size: 9, family: "Avenir Next LT Pro", weight: "600" }} }}
-      }}],
-      renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [200, 140, 60, 0.03], outline: {{ color: [200, 140, 60, 0.30], width: 0.8 }} }} }},
-      opacity: 0.30, visible: false
-    }});
-
-    map.add(countyLayer);
-    map.add(districtLayer);
-    map.add(houseLayer);
-    map.add(senateLayer);
-    map.add(cityLayer);
 
     const overlapLayer = new GraphicsLayer();
     const addressLayer = new GraphicsLayer();
@@ -15164,6 +15120,7 @@ def render_address_overlap_arcgis_map(
       return '<span style="display:inline-block;padding:1px 6px;border-radius:5px;font-size:9.5px;font-weight:600;background:rgba(130,145,160,0.18);color:#8291a0;">Unknown</span>';
     }};
 
+    /* -- Render overlap points and address marker immediately (no layer fetch needed) -- */
     for (const row of overlapPoints) {{
       const g = new Graphic({{
         geometry: {{ type: "point", longitude: row.lon, latitude: row.lat }},
@@ -15208,118 +15165,13 @@ def render_address_overlap_arcgis_map(
       }}
     }}));
 
-    /* -- Zoom-dependent label visibility -- */
-    const updateLabels = () => {{
-      const z = Number(view.zoom || 0);
-      countyLayer.labelsVisible = z >= 6;
-      cityLayer.labelsVisible = z >= 7;
-      districtLayer.labelsVisible = z >= 9;
-      houseLayer.labelsVisible = z >= 8;
-      senateLayer.labelsVisible = z >= 7;
-    }};
-    view.watch("zoom", updateLabels);
-
-    /* -- Widgets -- */
+    /* -- Essential widgets (loaded in initial bundle) -- */
     const home = new Home({{ view }});
     const basemapToggle = new BasemapToggle({{ view, nextBasemap: baseMapId === "hybrid" ? "gray-vector" : "hybrid" }});
     const scaleBar = new ScaleBar({{ view, unit: "dual" }});
-    const compass = new Compass({{ view }});
-    const fullscreen = new Fullscreen({{ view }});
-    const locate = new Locate({{ view }});
-
-    /* Search widget — integrated with address forensics */
-    const search = new Search({{
-      view,
-      popupEnabled: true,
-      resultGraphicEnabled: true,
-      goToOverride: (view, opts) => view.goTo(opts.target, {{ duration: 800, easing: "ease-in-out" }})
-    }});
-    search.on("select-result", (evt) => {{
-      if (evt.result && evt.result.name) {{
-        try {{ window.parent.postMessage({{ type: "tfl-map-address-search", address: evt.result.name }}, "*"); }} catch(e) {{}}
-      }}
-    }});
-
-    /* Sketch tool for encircling areas */
-    const sketch = new Sketch({{
-      view,
-      layer: sketchLayer,
-      creationMode: "single",
-      availableCreateTools: ["polygon", "circle", "rectangle"],
-      defaultCreateOptions: {{ mode: "freehand" }},
-      visibleElements: {{ selectionTools: {{ "lasso-selection": false, "rectangle-selection": false }}, settingsMenu: false, undoRedoMenu: true }},
-      defaultUpdateOptions: {{ tool: "reshape" }}
-    }});
-    const sketchExpand = new Expand({{
-      view,
-      content: sketch,
-      expandIconClass: "esri-icon-polygon",
-      expandTooltip: "Draw area for batch analysis",
-      group: "tools"
-    }});
-
-    /* House/Senate layer toggle in Expand */
-    const layerDiv = document.createElement("div");
-    layerDiv.style.cssText = "background:rgba(13,23,36,0.94);border-radius:8px;padding:10px;font-family:'Avenir Next LT Pro',system-ui,sans-serif;font-size:12px;color:rgba(210,225,240,0.90);min-width:160px;";
-    layerDiv.innerHTML = '<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:rgba(150,175,200,0.65);font-weight:700;margin-bottom:6px;">Legislative Districts</div>'
-      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;"><input type="checkbox" id="tfl-toggle-house" style="accent-color:#28b464;"><span>TX House Districts</span></label>'
-      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;"><input type="checkbox" id="tfl-toggle-senate" style="accent-color:#c88c3c;"><span>TX Senate Districts</span></label>';
-    const layerExpand = new Expand({{
-      view,
-      content: layerDiv,
-      expandIconClass: "esri-icon-layer-list",
-      expandTooltip: "Toggle legislative districts",
-      group: "tools"
-    }});
-
     view.ui.add(home, "top-left");
-    view.ui.add(compass, "top-left");
-    view.ui.add(fullscreen, "top-left");
-    view.ui.add(locate, "top-left");
-    view.ui.add(sketchExpand, "top-left");
-    view.ui.add(layerExpand, "top-left");
-    view.ui.add(search, "top-right");
     view.ui.add(basemapToggle, "top-right");
     view.ui.add(scaleBar, "bottom-left");
-
-    /* Wire layer toggles */
-    view.when(() => {{
-      const hBox = document.getElementById("tfl-toggle-house");
-      const sBox = document.getElementById("tfl-toggle-senate");
-      if (hBox) hBox.addEventListener("change", () => {{ houseLayer.visible = hBox.checked; }});
-      if (sBox) sBox.addEventListener("change", () => {{ senateLayer.visible = sBox.checked; }});
-    }});
-
-    /* Sketch complete → batch analysis info */
-    sketch.on("create", (evt) => {{
-      if (evt.state !== "complete") return;
-      const drawn = evt.graphic.geometry;
-      const selInfo = document.getElementById("tfl-addr-sel-info");
-      const contained = [];
-      overlapLayer.graphics.forEach((g) => {{
-        if (g.geometry && geometryEngine.contains(drawn, g.geometry)) {{
-          contained.push(g.attributes || {{}});
-        }}
-      }});
-      if (selInfo && contained.length > 0) {{
-        const total = contained.reduce((a,r) => a + Number(r.high_total||0), 0);
-        const types = [...new Set(contained.map(r => r.subdivision_type).filter(Boolean))];
-        selInfo.style.display = "block";
-        selInfo.innerHTML = '<div class="sel-title">Area Selection</div>'
-          + '<div><strong>' + contained.length + '</strong> subdivision(s) in area</div>'
-          + '<div>Combined TFL est.: <strong>' + formatUsd(total) + '</strong></div>'
-          + '<div style="font-size:10px;color:rgba(180,200,220,0.65);margin-top:3px;">' + types.join(", ") + '</div>';
-        /* Post results to parent for batch processing */
-        try {{
-          const names = contained.map(r => r.subdivision_name).filter(Boolean);
-          window.parent.postMessage({{ type: "tfl-map-area-select", count: contained.length, totalHigh: total, names: names, types: types }}, "*");
-        }} catch(e) {{}}
-      }} else if (selInfo) {{
-        selInfo.style.display = "block";
-        selInfo.innerHTML = '<div class="sel-title">Area Selection</div><div>No subdivisions in drawn area.</div>';
-        setTimeout(() => {{ selInfo.style.display = "none"; }}, 3000);
-      }}
-    }});
 
     /* Coordinate readout */
     view.on("pointer-move", (evt) => {{
@@ -15345,15 +15197,213 @@ def render_address_overlap_arcgis_map(
       }});
     }});
 
+    /* -- Phase 1: View ready — dismiss loading overlay and zoom to graphics -- */
     view.when(() => {{
       const loader = document.getElementById("tfl-addr-loading");
       if (loader) {{ loader.style.opacity = "0"; setTimeout(() => loader.remove(), 600); }}
-      updateLabels();
       const all = [...overlapLayer.graphics.toArray(), ...addressLayer.graphics.toArray()];
       if (all.length > 0) {{
         view.goTo(all, {{ padding: {{ top: 50, right: 50, bottom: 50, left: 50 }}, duration: 1000, easing: "ease-in-out" }}).catch(() => {{}});
       }}
-    }});
+
+      /* -- Phase 2: Deferred load of reference FeatureLayers and secondary widgets -- */
+      require([
+        "esri/layers/FeatureLayer",
+        "esri/widgets/Compass",
+        "esri/widgets/Fullscreen",
+        "esri/widgets/Search",
+        "esri/widgets/Locate",
+        "esri/widgets/Sketch",
+        "esri/widgets/Expand",
+        "esri/geometry/geometryEngine"
+      ], function(FeatureLayer, Compass, Fullscreen, Search, Locate, Sketch, Expand, geometryEngine) {{
+
+        /* -- Reference boundary layers (deferred — not needed for initial render) -- */
+        const countyLayer = new FeatureLayer({{
+          url: "{TEA_ARCGIS_COUNTY_LAYER_URL}",
+          outFields: ["FENAME", "FIPS"],
+          popupEnabled: false, labelsVisible: false,
+          minScale: 2000000,
+          labelingInfo: [{{
+            labelExpressionInfo: {{ expression: "$feature.FENAME + ' County'" }},
+            symbol: {{ type: "text", color: [160, 140, 110, 0.75], haloColor: [13, 23, 36, 0.80], haloSize: 0.8,
+              font: {{ size: 11, family: "Avenir Next LT Pro", weight: "600" }} }}
+          }}],
+          renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [0,0,0,0], outline: {{ color: [145, 111, 63, 0.22], width: 0.6 }} }} }},
+          opacity: 0.35
+        }});
+
+        const districtLayer = new FeatureLayer({{
+          url: "{TEA_ARCGIS_SCHOOL_DISTRICT_LAYER_URL}",
+          outFields: ["FID", "NAME20", "DISTRICT"],
+          popupEnabled: false, labelsVisible: false,
+          minScale: 500000,
+          labelingInfo: [{{
+            labelExpressionInfo: {{ expression: "$feature.NAME20" }},
+            symbol: {{ type: "text", color: [73, 112, 150, 0.65], haloColor: [13, 23, 36, 0.8], haloSize: 0.6,
+              font: {{ size: 8, family: "Avenir Next LT Pro", weight: "normal" }} }}
+          }}],
+          renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [0,0,0,0], outline: {{ color: [30, 144, 255, 0.20], width: 0.5 }} }} }},
+          opacity: 0.35
+        }});
+
+        const cityLayer = new FeatureLayer({{
+          url: "{CENSUS_ARCGIS_TEXAS_CITY_LAYER_URL}",
+          outFields: ["NAME", "BASENAME", "GEOID", "STATE"],
+          definitionExpression: "STATE = '48'",
+          popupEnabled: false, labelsVisible: false,
+          minScale: 1000000,
+          labelingInfo: [{{
+            labelExpressionInfo: {{ expression: "DefaultValue($feature.BASENAME, $feature.NAME)" }},
+            symbol: {{ type: "text", color: [165, 100, 105, 0.80], haloColor: [13, 23, 36, 0.76], haloSize: 0.7,
+              font: {{ size: 9, family: "Avenir Next LT Pro", weight: "500" }} }}
+          }}],
+          renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [0,0,0,0], outline: {{ color: [158, 42, 43, 0.12], width: 0.4 }} }} }},
+          opacity: 0.20
+        }});
+
+        const houseLayer = new FeatureLayer({{
+          url: "{TEXAS_HOUSE_DISTRICTS_LAYER_URL}",
+          outFields: ["DISTRICT"],
+          popupEnabled: true,
+          popupTemplate: {{ title: "TX House District {{{{DISTRICT}}}}", content: "Texas House of Representatives District {{{{DISTRICT}}}}" }},
+          labelsVisible: false,
+          minScale: 2000000,
+          labelingInfo: [{{
+            labelExpressionInfo: {{ expression: "'HD ' + $feature.DISTRICT" }},
+            symbol: {{ type: "text", color: [90, 180, 130, 0.70], haloColor: [13, 23, 36, 0.75], haloSize: 0.6,
+              font: {{ size: 8, family: "Avenir Next LT Pro", weight: "600" }} }}
+          }}],
+          renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [40, 180, 100, 0.03], outline: {{ color: [40, 180, 100, 0.30], width: 0.8 }} }} }},
+          opacity: 0.30, visible: false
+        }});
+
+        const senateLayer = new FeatureLayer({{
+          url: "{TEXAS_SENATE_DISTRICTS_LAYER_URL}",
+          outFields: ["DISTRICT"],
+          popupEnabled: true,
+          popupTemplate: {{ title: "TX Senate District {{{{DISTRICT}}}}", content: "Texas Senate District {{{{DISTRICT}}}}" }},
+          labelsVisible: false,
+          minScale: 2000000,
+          labelingInfo: [{{
+            labelExpressionInfo: {{ expression: "'SD ' + $feature.DISTRICT" }},
+            symbol: {{ type: "text", color: [180, 130, 90, 0.70], haloColor: [13, 23, 36, 0.75], haloSize: 0.6,
+              font: {{ size: 9, family: "Avenir Next LT Pro", weight: "600" }} }}
+          }}],
+          renderer: {{ type: "simple", symbol: {{ type: "simple-fill", color: [200, 140, 60, 0.03], outline: {{ color: [200, 140, 60, 0.30], width: 0.8 }} }} }},
+          opacity: 0.30, visible: false
+        }});
+
+        /* Insert reference layers below overlap graphics */
+        map.add(countyLayer, 0);
+        map.add(districtLayer, 1);
+        map.add(houseLayer, 2);
+        map.add(senateLayer, 3);
+        map.add(cityLayer, 4);
+
+        /* -- Zoom-dependent label visibility -- */
+        const updateLabels = () => {{
+          const z = Number(view.zoom || 0);
+          countyLayer.labelsVisible = z >= 6;
+          cityLayer.labelsVisible = z >= 7;
+          districtLayer.labelsVisible = z >= 9;
+          houseLayer.labelsVisible = z >= 8;
+          senateLayer.labelsVisible = z >= 7;
+        }};
+        view.watch("zoom", updateLabels);
+        updateLabels();
+
+        /* -- Secondary widgets -- */
+        const compass = new Compass({{ view }});
+        const fullscreen = new Fullscreen({{ view }});
+        const locate = new Locate({{ view }});
+
+        const search = new Search({{
+          view,
+          popupEnabled: true,
+          resultGraphicEnabled: true,
+          goToOverride: (view, opts) => view.goTo(opts.target, {{ duration: 800, easing: "ease-in-out" }})
+        }});
+        search.on("select-result", (evt) => {{
+          if (evt.result && evt.result.name) {{
+            try {{ window.parent.postMessage({{ type: "tfl-map-address-search", address: evt.result.name }}, "*"); }} catch(e) {{}}
+          }}
+        }});
+
+        const sketch = new Sketch({{
+          view,
+          layer: sketchLayer,
+          creationMode: "single",
+          availableCreateTools: ["polygon", "circle", "rectangle"],
+          defaultCreateOptions: {{ mode: "freehand" }},
+          visibleElements: {{ selectionTools: {{ "lasso-selection": false, "rectangle-selection": false }}, settingsMenu: false, undoRedoMenu: true }},
+          defaultUpdateOptions: {{ tool: "reshape" }}
+        }});
+        const sketchExpand = new Expand({{
+          view,
+          content: sketch,
+          expandIconClass: "esri-icon-polygon",
+          expandTooltip: "Draw area for batch analysis",
+          group: "tools"
+        }});
+
+        const layerDiv = document.createElement("div");
+        layerDiv.style.cssText = "background:rgba(13,23,36,0.94);border-radius:8px;padding:10px;font-family:'Avenir Next LT Pro',system-ui,sans-serif;font-size:12px;color:rgba(210,225,240,0.90);min-width:160px;";
+        layerDiv.innerHTML = '<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:rgba(150,175,200,0.65);font-weight:700;margin-bottom:6px;">Legislative Districts</div>'
+          + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;"><input type="checkbox" id="tfl-toggle-house" style="accent-color:#28b464;"><span>TX House Districts</span></label>'
+          + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;"><input type="checkbox" id="tfl-toggle-senate" style="accent-color:#c88c3c;"><span>TX Senate Districts</span></label>';
+        const layerExpand = new Expand({{
+          view,
+          content: layerDiv,
+          expandIconClass: "esri-icon-layer-list",
+          expandTooltip: "Toggle legislative districts",
+          group: "tools"
+        }});
+
+        view.ui.add(compass, "top-left");
+        view.ui.add(fullscreen, "top-left");
+        view.ui.add(locate, "top-left");
+        view.ui.add(sketchExpand, "top-left");
+        view.ui.add(layerExpand, "top-left");
+        view.ui.add(search, "top-right");
+
+        /* Wire layer toggles */
+        const hBox = document.getElementById("tfl-toggle-house");
+        const sBox = document.getElementById("tfl-toggle-senate");
+        if (hBox) hBox.addEventListener("change", () => {{ houseLayer.visible = hBox.checked; }});
+        if (sBox) sBox.addEventListener("change", () => {{ senateLayer.visible = sBox.checked; }});
+
+        /* Sketch complete → batch analysis info */
+        sketch.on("create", (evt) => {{
+          if (evt.state !== "complete") return;
+          const drawn = evt.graphic.geometry;
+          const selInfo = document.getElementById("tfl-addr-sel-info");
+          const contained = [];
+          overlapLayer.graphics.forEach((g) => {{
+            if (g.geometry && geometryEngine.contains(drawn, g.geometry)) {{
+              contained.push(g.attributes || {{}});
+            }}
+          }});
+          if (selInfo && contained.length > 0) {{
+            const total = contained.reduce((a,r) => a + Number(r.high_total||0), 0);
+            const types = [...new Set(contained.map(r => r.subdivision_type).filter(Boolean))];
+            selInfo.style.display = "block";
+            selInfo.innerHTML = '<div class="sel-title">Area Selection</div>'
+              + '<div><strong>' + contained.length + '</strong> subdivision(s) in area</div>'
+              + '<div>Combined TFL est.: <strong>' + formatUsd(total) + '</strong></div>'
+              + '<div style="font-size:10px;color:rgba(180,200,220,0.65);margin-top:3px;">' + types.join(", ") + '</div>';
+            try {{
+              const names = contained.map(r => r.subdivision_name).filter(Boolean);
+              window.parent.postMessage({{ type: "tfl-map-area-select", count: contained.length, totalHigh: total, names: names, types: types }}, "*");
+            }} catch(e) {{}}
+          }} else if (selInfo) {{
+            selInfo.style.display = "block";
+            selInfo.innerHTML = '<div class="sel-title">Area Selection</div><div>No subdivisions in drawn area.</div>';
+            setTimeout(() => {{ selInfo.style.display = "none"; }}, 3000);
+          }}
+        }});
+      }}); /* end deferred require */
+    }}); /* end view.when */
   }});
 </script>
 """
@@ -21164,14 +21214,15 @@ def _empty_df(cols: list[str]) -> pd.DataFrame:
     return pd.DataFrame(columns=cols)
 
 def read_parquet_cols(path: Path, cols: list[str]) -> pd.DataFrame:
+    """PERFORMANCE: read only requested columns via PyArrow, using pf.read()
+    directly so we don't re-open the file a second time."""
     try:
         import pyarrow.parquet as pq
         pf = pq.ParquetFile(path)
         available = set(pf.schema.names)
         use_cols = [c for c in cols if c in available]
-        if use_cols:
-            return pd.read_parquet(path, columns=use_cols)
-        return pd.read_parquet(path)
+        tbl = pf.read(columns=use_cols) if use_cols else pf.read()
+        return tbl.to_pandas()
     except Exception:
         try:
             df = pd.read_parquet(path)
@@ -21247,44 +21298,55 @@ def load_workbook(path: str) -> dict:
             "LaI4E": "LaI4E.parquet",
             "LaSub": "LaSub.parquet",
         }
-        data = {}
-        for key, cols in cfg.items():
-            fname = parquet_map.get(key)
+        # PERFORMANCE: resolve paths first, then read all parquet files
+        # in parallel with ThreadPoolExecutor (was sequential).
+        def _resolve_path(key_: str):
+            fname = parquet_map.get(key_)
             if not fname:
-                data[key] = _empty_df(cols)
-                continue
-            fpath = None
+                return None
             if isinstance(fname, (list, tuple)):
-                if key == "Wit_All":
-                    frames = []
-                    for cand in fname:
-                        cand_path = base / cand
-                        if cand_path.exists():
-                            try:
-                                frames.append(read_parquet_cols(cand_path, cols))
-                            except Exception:
-                                continue
-                    if frames:
-                        data[key] = pd.concat(frames, ignore_index=True).drop_duplicates()
-                    else:
-                        data[key] = _empty_df(cols)
-                    continue
-                for cand in fname:
-                    cand_path = base / cand
-                    if cand_path.exists():
-                        fpath = cand_path
-                        break
-            else:
-                cand_path = base / fname
-                if cand_path.exists():
-                    fpath = cand_path
-            if not fpath or not fpath.exists():
-                data[key] = _empty_df(cols)
-                continue
+                if key_ == "Wit_All":
+                    return [base / c for c in fname if (base / c).exists()] or None
+                for c in fname:
+                    if (base / c).exists():
+                        return base / c
+                return None
+            cand = base / fname
+            return cand if cand.exists() else None
+
+        resolved = {k: _resolve_path(k) for k in cfg}
+
+        def _read_one(key_: str, fpath_, cols_: list[str]) -> tuple[str, pd.DataFrame]:
+            if fpath_ is None:
+                return (key_, _empty_df(cols_))
+            if isinstance(fpath_, list):  # Wit_All multi-file
+                frames = []
+                for p in fpath_:
+                    try:
+                        frames.append(read_parquet_cols(p, cols_))
+                    except Exception:
+                        continue
+                if frames:
+                    return (key_, pd.concat(frames, ignore_index=True).drop_duplicates())
+                return (key_, _empty_df(cols_))
             try:
-                data[key] = read_parquet_cols(fpath, cols)
+                return (key_, read_parquet_cols(fpath_, cols_))
             except Exception:
-                data[key] = _empty_df(cols)
+                return (key_, _empty_df(cols_))
+
+        data = {}
+        with ThreadPoolExecutor(max_workers=min(len(cfg), 8)) as pool:
+            futs = {
+                pool.submit(_read_one, k, resolved[k], v): k
+                for k, v in cfg.items()
+            }
+            for fut in as_completed(futs):
+                try:
+                    k_, df_ = fut.result()
+                    data[k_] = df_
+                except Exception:
+                    k_ = futs[fut]
+                    data[k_] = _empty_df(cfg.get(k_, []))
     else:
         xf = pd.ExcelFile(path, engine="openpyxl")  # OPEN ONCE
         data = {k: safe_read_excel_xf(xf, k, v) for k, v in cfg.items()}
