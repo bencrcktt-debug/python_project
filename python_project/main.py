@@ -23740,7 +23740,11 @@ else:
 
         # Staff history
         staff_df = Staff_All
-        staff_session = (staff_df["Session"].astype(str).str.strip() == str(session)) if "Session" in staff_df.columns else pd.Series(False, index=staff_df.index)
+        _session_col = staff_df.get("Session")
+        if _session_col is not None:
+            staff_session = _session_col.astype(str).str.strip() == str(session)
+        else:
+            staff_session = pd.Series(False, index=staff_df.index)
         if typed_norms:
             typed_last_norm = last_name_norm_from_text(st.session_state.search_query)
             lobbyshort_norm = norm_name(lobbyshort)
