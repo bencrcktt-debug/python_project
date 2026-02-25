@@ -17758,6 +17758,41 @@ def _pdf_safe_text(text: str) -> str:
 
 PDF_CHART_ERROR_KEY = "pdf_chart_error"
 
+PDF_H1_SIZE = 18
+PDF_H2_SIZE = 13
+PDF_BODY_SIZE = 11
+PDF_CAPTION_SIZE = 9
+PDF_FOOTNOTE_SIZE = 8
+PDF_SECTION_BAR_H = 8
+PDF_BODY_LINE_H = 5.2
+PDF_FONT_SANS = "Helvetica"
+PDF_FONT_SERIF = "Times"
+PDF_COLOR_NAVY_DARK = (9, 28, 50)
+PDF_COLOR_NAVY = (16, 42, 74)
+PDF_COLOR_ACCENT = (34, 96, 146)
+PDF_COLOR_TEXT = (33, 45, 60)
+PDF_COLOR_MUTED = (92, 106, 124)
+PDF_COLOR_PANEL = (244, 248, 253)
+PDF_COLOR_PANEL_ALT = (237, 243, 250)
+PDF_COLOR_BORDER = (206, 218, 232)
+PDF_COLOR_PAGE_BG = (250, 252, 255)
+
+_ROMAN_MAP = (
+    (1000, "M"),
+    (900, "CM"),
+    (500, "D"),
+    (400, "CD"),
+    (100, "C"),
+    (90, "XC"),
+    (50, "L"),
+    (40, "XL"),
+    (10, "X"),
+    (9, "IX"),
+    (5, "V"),
+    (4, "IV"),
+    (1, "I"),
+)
+
 def _record_pdf_chart_error(message: str) -> None:
     if not message:
         return
@@ -17829,12 +17864,33 @@ def _apply_pdf_chart_layout(fig):
     if fig is None:
         return fig
     fig.update_layout(
-        font=dict(family="Helvetica", size=11, color="#1f2933"),
-        paper_bgcolor="white",
-        plot_bgcolor="white",
+        font=dict(family=PDF_FONT_SANS, size=10.5, color="#1f2937"),
+        title_font=dict(family=PDF_FONT_SANS, size=13, color="#102843"),
+        paper_bgcolor="#f8fbff",
+        plot_bgcolor="#ffffff",
+        legend=dict(
+            font=dict(family=PDF_FONT_SANS, size=9.5, color="#1f2937"),
+            bgcolor="rgba(248,251,255,0.9)",
+            bordercolor="#d5e0ee",
+            borderwidth=1,
+        ),
     )
-    fig.update_xaxes(automargin=True)
-    fig.update_yaxes(automargin=True)
+    fig.update_xaxes(
+        automargin=True,
+        showgrid=True,
+        gridcolor="#e3eaf4",
+        linecolor="#ccd7e6",
+        tickfont=dict(family=PDF_FONT_SANS, color="#3a4a5f", size=9.5),
+        title_font=dict(family=PDF_FONT_SANS, color="#2d3f57", size=10),
+    )
+    fig.update_yaxes(
+        automargin=True,
+        showgrid=True,
+        gridcolor="#e3eaf4",
+        linecolor="#ccd7e6",
+        tickfont=dict(family=PDF_FONT_SANS, color="#3a4a5f", size=9.5),
+        title_font=dict(family=PDF_FONT_SANS, color="#2d3f57", size=10),
+    )
     return fig
 
 def _fig_to_png_bytes(fig, width: int = 900, height: int = 500, scale: int = 2) -> bytes | None:
@@ -17878,62 +17934,144 @@ def _coerce_pdf_bytes(data) -> bytes | None:
     except Exception:
         return None
 
-def _pdf_add_rule(pdf: FPDF) -> None:
+def _to_roman(value: int) -> str:
+    if value <= 0:
+        return str(value)
+    out = []
+    remaining = int(value)
+    for numeral_value, numeral in _ROMAN_MAP:
+        while remaining >= numeral_value:
+            out.append(numeral)
+            remaining -= numeral_value
+    return "".join(out)
+
+def _pdf_clean_chart_caption(caption: str) -> str:
+    txt = str(caption or "").strip()
+    if not txt:
+        return "Chart"
+    txt = re.sub(r"^(chart|figure)\s*\d+\s*[:.\-]\s*", "", txt, flags=re.IGNORECASE)
+    return txt.strip() or "Chart"
+
+def _pdf_add_rule(
+    pdf: FPDF,
+    *,
+    before: float = 0.0,
+    after: float = 2.2,
+    color: tuple[int, int, int] = PDF_COLOR_BORDER,
+) -> None:
+    if before > 0:
+        pdf.ln(before)
     y = pdf.get_y()
-    pdf.set_draw_color(180, 180, 180)
+    pdf.set_draw_color(*color)
+    pdf.set_line_width(0.22)
     pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
-    pdf.ln(4)
+    pdf.set_line_width(0.2)
+    if after > 0:
+        pdf.ln(after)
 
-def _pdf_add_heading(pdf: FPDF, text: str, size: int = 13) -> None:
-    pdf.set_font("Helvetica", "B", size)
+def _pdf_add_heading(pdf: FPDF, text: str, size: int = PDF_H2_SIZE) -> None:
+    pdf.set_font(PDF_FONT_SANS, "B", size)
+    pdf.set_text_color(*PDF_COLOR_NAVY_DARK)
     max_w = pdf.w - pdf.l_margin - pdf.r_margin
+    line_h = max(5.7, size * 0.41)
     for line in _wrap_pdf_line(pdf, text, max_w):
-        pdf.cell(0, 7, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(1)
+        pdf.cell(0, line_h, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_text_color(*PDF_COLOR_TEXT)
+    pdf.ln(0.9)
 
-def _pdf_add_subheading(pdf: FPDF, text: str, size: int = 11) -> None:
-    pdf.set_font("Helvetica", "B", size)
+def _pdf_add_subheading(pdf: FPDF, text: str, size: int = PDF_H2_SIZE) -> None:
+    pdf.set_font(PDF_FONT_SANS, "B", size)
+    pdf.set_text_color(*PDF_COLOR_NAVY)
     max_w = pdf.w - pdf.l_margin - pdf.r_margin
+    line_h = max(4.8, size * 0.4)
     for line in _wrap_pdf_line(pdf, text, max_w):
-        pdf.cell(0, 6, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(1)
+        pdf.cell(0, line_h, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_text_color(*PDF_COLOR_TEXT)
+    pdf.ln(0.7)
 
-def _pdf_add_paragraph(pdf: FPDF, text: str, size: int = 11, line_h: int = 6) -> None:
-    pdf.set_font("Helvetica", "", size)
+def _pdf_add_paragraph(pdf: FPDF, text: str, size: int = PDF_BODY_SIZE, line_h: float = PDF_BODY_LINE_H) -> None:
+    pdf.set_font(PDF_FONT_SERIF, "", size)
+    pdf.set_text_color(*PDF_COLOR_TEXT)
     max_w = pdf.w - pdf.l_margin - pdf.r_margin
     for line in _wrap_pdf_line(pdf, text, max_w):
         pdf.cell(0, line_h, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(2)
+    pdf.ln(1.1)
 
-def _pdf_add_bullets(pdf: FPDF, bullets: list[str], size: int = 10, line_h: int = 5) -> None:
-    pdf.set_font("Helvetica", "", size)
-    max_w = pdf.w - pdf.l_margin - pdf.r_margin - 6
+def _pdf_add_bullets(pdf: FPDF, bullets: list[str], size: int = 10, line_h: float = 4.9) -> None:
+    if not bullets:
+        return
+    bullet_x = pdf.l_margin + 1.4
+    bullet_size = 1.2
+    text_x = bullet_x + bullet_size + 2.2
+    max_w = pdf.w - pdf.r_margin - text_x
     for bullet in bullets:
-        pdf.cell(4, line_h, "-", new_x=XPos.RIGHT, new_y=YPos.TOP)
-        lines = _wrap_pdf_line(pdf, bullet, max_w)
-        if lines:
-            pdf.cell(0, line_h, lines[0], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-            for cont in lines[1:]:
-                pdf.cell(4, line_h, "", new_x=XPos.RIGHT, new_y=YPos.TOP)
-                pdf.cell(0, line_h, cont, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        else:
-            pdf.ln(line_h)
-    pdf.ln(2)
+        safe_bullet = _pdf_safe_text(bullet)
+        lines = _wrap_pdf_line(pdf, safe_bullet, max_w) if safe_bullet else [""]
+        row_h = max(line_h, len(lines) * line_h)
+        _pdf_ensure_space(pdf, row_h + 0.9)
+
+        row_y = pdf.get_y()
+        pdf.set_fill_color(*PDF_COLOR_ACCENT)
+        pdf.set_draw_color(*PDF_COLOR_ACCENT)
+        dot_y = row_y + (line_h - bullet_size) * 0.58
+        pdf.ellipse(bullet_x, dot_y, bullet_size, bullet_size, "F")
+
+        pdf.set_font(PDF_FONT_SERIF, "", size)
+        pdf.set_text_color(*PDF_COLOR_TEXT)
+        for idx, line in enumerate(lines):
+            if idx == 0:
+                pdf.set_xy(text_x, row_y)
+            else:
+                pdf.set_xy(text_x, row_y + (line_h * idx))
+            pdf.cell(0, line_h, line, new_x=XPos.LMARGIN, new_y=YPos.TOP)
+        pdf.set_y(row_y + row_h + 0.6)
+    pdf.ln(0.6)
 
 def _pdf_add_kpi_table(pdf: FPDF, rows: list[tuple[str, str]], size: int = 10) -> None:
     if not rows:
         return
-    label_w = 60
-    value_w = pdf.w - pdf.l_margin - pdf.r_margin - label_w
-    fill = False
-    for label, value in rows:
-        pdf.set_fill_color(245, 246, 248) if fill else pdf.set_fill_color(255, 255, 255)
-        pdf.set_font("Helvetica", "B", size)
-        pdf.cell(label_w, 6, _pdf_safe_text(label), new_x=XPos.RIGHT, new_y=YPos.TOP, fill=fill)
-        pdf.set_font("Helvetica", "", size)
-        pdf.cell(value_w, 6, _pdf_safe_text(value), new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=fill)
-        fill = not fill
-    pdf.ln(2)
+    table_w = pdf.w - pdf.l_margin - pdf.r_margin
+    label_w = min(110.0, table_w * 0.56)
+    value_w = table_w - label_w
+    body_line_h = 4.5
+    for idx, (label, value) in enumerate(rows):
+        label_txt = _pdf_safe_text(label)
+        value_txt = _pdf_safe_text(value)
+
+        pdf.set_font(PDF_FONT_SANS, "", size)
+        label_lines = _wrap_pdf_line(pdf, label_txt, label_w - 4)
+        pdf.set_font(PDF_FONT_SANS, "B", size)
+        value_lines = _wrap_pdf_line(pdf, value_txt, value_w - 4)
+
+        lines = max(len(label_lines), len(value_lines))
+        row_h = max(6.8, lines * body_line_h + 1.8)
+        _pdf_ensure_space(pdf, row_h + 0.8)
+
+        row_y = pdf.get_y()
+        fill_color = (248, 251, 255) if (idx % 2 == 0) else (243, 248, 253)
+        pdf.set_fill_color(*fill_color)
+        pdf.set_draw_color(*PDF_COLOR_BORDER)
+        pdf.rect(pdf.l_margin, row_y, table_w, row_h, "DF")
+        pdf.line(pdf.l_margin + label_w, row_y, pdf.l_margin + label_w, row_y + row_h)
+
+        label_start_y = row_y + max(0.9, (row_h - len(label_lines) * body_line_h) / 2)
+        value_start_y = row_y + max(0.9, (row_h - len(value_lines) * body_line_h) / 2)
+
+        pdf.set_text_color(*PDF_COLOR_TEXT)
+        pdf.set_font(PDF_FONT_SANS, "", size)
+        for line_idx, line in enumerate(label_lines):
+            pdf.set_xy(pdf.l_margin + 2.2, label_start_y + line_idx * body_line_h)
+            pdf.cell(label_w - 4, body_line_h, line, align="L")
+
+        pdf.set_text_color(*PDF_COLOR_NAVY_DARK)
+        pdf.set_font(PDF_FONT_SANS, "B", size)
+        for line_idx, line in enumerate(value_lines):
+            pdf.set_xy(pdf.l_margin + label_w + 2, value_start_y + line_idx * body_line_h)
+            pdf.cell(value_w - 4, body_line_h, line, align="R")
+
+        pdf.set_text_color(*PDF_COLOR_TEXT)
+        pdf.set_y(row_y + row_h)
+    pdf.ln(1.2)
 
 def _pdf_ensure_space(pdf: FPDF, height_needed: float) -> None:
     if pdf.get_y() + height_needed > pdf.h - pdf.b_margin:
@@ -17941,26 +18079,359 @@ def _pdf_ensure_space(pdf: FPDF, height_needed: float) -> None:
 
 def _pdf_add_chart(pdf: FPDF, fig, caption: str, width_px: int = 900, height_px: int = 500) -> None:
     png = _fig_to_png_bytes(fig, width=width_px, height=height_px, scale=2)
+    base_caption = _pdf_clean_chart_caption(caption)
+    figure_no = int(getattr(pdf, "_figure_counter", 0)) + 1
+    setattr(pdf, "_figure_counter", figure_no)
+    figure_caption = f"Figure {figure_no}. {base_caption}"
     if not png:
-        pdf.set_font("Helvetica", "I", 9)
-        pdf.cell(0, 5, _pdf_safe_text(f"{caption} (chart unavailable)"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font(PDF_FONT_SANS, "I", PDF_CAPTION_SIZE)
+        pdf.set_text_color(*PDF_COLOR_MUTED)
+        pdf.cell(0, 5, _pdf_safe_text(f"{figure_caption} (chart unavailable)"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_text_color(*PDF_COLOR_TEXT)
         pdf.ln(2)
         return
-    img_w = pdf.w - pdf.l_margin - pdf.r_margin
-    img_h = img_w * (height_px / width_px)
-    _pdf_ensure_space(pdf, img_h + 12)
-    pdf.set_font("Helvetica", "I", 9)
-    pdf.cell(0, 5, _pdf_safe_text(caption), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.image(BytesIO(png), x=pdf.l_margin, w=img_w, h=img_h)
-    pdf.ln(4)
 
-def _pdf_add_section_title(pdf: FPDF, text: str) -> None:
-    pdf.set_fill_color(230, 238, 246)
-    pdf.set_text_color(16, 35, 58)
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, _pdf_safe_text(text), new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
-    pdf.set_text_color(0, 0, 0)
-    pdf.ln(2)
+    block_w = pdf.w - pdf.l_margin - pdf.r_margin
+    pad = 2.0
+    caption_line_h = 4.0
+    caption_pad = 1.2
+    img_w = block_w - (pad * 2)
+    img_h = img_w * (height_px / width_px)
+    pdf.set_font(PDF_FONT_SANS, "", PDF_CAPTION_SIZE)
+    caption_lines = _wrap_pdf_line(pdf, figure_caption, img_w)
+    caption_h = max(4.8, len(caption_lines) * caption_line_h + caption_pad)
+    block_h = caption_h + img_h + (pad * 2)
+    _pdf_ensure_space(pdf, block_h + 2.2)
+
+    y = pdf.get_y()
+    pdf.set_fill_color(252, 254, 255)
+    pdf.set_draw_color(*PDF_COLOR_BORDER)
+    pdf.rect(pdf.l_margin, y, block_w, block_h, "DF")
+    caption_y = y + 1.0
+    pdf.set_font(PDF_FONT_SANS, "", PDF_CAPTION_SIZE)
+    pdf.set_text_color(*PDF_COLOR_NAVY)
+    y_cursor = caption_y + 1.6
+    for line in caption_lines:
+        pdf.set_xy(pdf.l_margin + pad, y_cursor)
+        pdf.cell(img_w, caption_line_h, _pdf_safe_text(line), align="L")
+        y_cursor += caption_line_h
+
+    pdf.set_draw_color(223, 231, 241)
+    pdf.line(pdf.l_margin + pad, y + caption_h + 1.1, pdf.w - pdf.r_margin - pad, y + caption_h + 1.1)
+    img_y = y + caption_h + pad
+    pdf.image(BytesIO(png), x=pdf.l_margin + pad, y=img_y, w=img_w, h=img_h)
+    pdf.set_text_color(*PDF_COLOR_TEXT)
+    pdf.set_y(y + block_h + 1.6)
+
+def _pdf_add_section_title(pdf: FPDF, text: str, number: str | None = None) -> None:
+    if pdf.get_y() > (pdf.t_margin + 4):
+        pdf.ln(1.5)
+    bar_w = pdf.w - pdf.l_margin - pdf.r_margin
+    title = f"{number} {text}".strip() if number else text
+    title_w = bar_w
+    pdf.set_font(PDF_FONT_SANS, "B", PDF_H2_SIZE - 0.2)
+    title_lines = _wrap_pdf_line(pdf, _pdf_safe_text(title), title_w)
+    title_line_h = 4.8
+    title_h = max(6.0, len(title_lines) * title_line_h)
+    _pdf_ensure_space(pdf, title_h + 3.2)
+    y = pdf.get_y()
+    pdf.set_font(PDF_FONT_SANS, "B", PDF_H2_SIZE - 0.2)
+    pdf.set_text_color(*PDF_COLOR_NAVY_DARK)
+    y_cursor = y + 0.2
+    for line in title_lines:
+        pdf.set_xy(pdf.l_margin, y_cursor)
+        pdf.cell(title_w, title_line_h, _pdf_safe_text(line), align="L")
+        y_cursor += title_line_h
+    pdf.set_draw_color(*PDF_COLOR_BORDER)
+    pdf.line(pdf.l_margin, y + title_h + 0.4, pdf.w - pdf.r_margin, y + title_h + 0.4)
+    pdf.set_text_color(*PDF_COLOR_TEXT)
+    pdf.set_y(y + title_h + 1.6)
+
+def _pdf_add_numbered_section_title(pdf: FPDF, number: int, text: str) -> None:
+    _pdf_add_section_title(pdf, text, number=f"{_to_roman(number)}.")
+
+def _pdf_add_callout_box(
+    pdf: FPDF,
+    title: str,
+    body: str,
+    *,
+    accent: tuple[int, int, int] = PDF_COLOR_ACCENT,
+) -> None:
+    title = _pdf_safe_text(title)
+    body = _pdf_safe_text(body)
+    if not title and not body:
+        return
+
+    inner_pad = 2.8
+    title_size = 9.4
+    body_size = PDF_BODY_SIZE
+    line_h = 4.9
+    left_accent_w = 1.6
+    box_w = pdf.w - pdf.l_margin - pdf.r_margin
+    text_w = box_w - left_accent_w - (inner_pad * 2)
+
+    pdf.set_font(PDF_FONT_SANS, "B", title_size)
+    title_lines = _wrap_pdf_line(pdf, title, text_w)
+    pdf.set_font(PDF_FONT_SERIF, "", body_size)
+    body_lines = _wrap_pdf_line(pdf, body, text_w)
+
+    content_lines = len(title_lines) + len(body_lines)
+    box_h = max(13.6, inner_pad * 2 + content_lines * line_h + 0.5)
+    _pdf_ensure_space(pdf, box_h + 1.2)
+    y = pdf.get_y()
+
+    pdf.set_fill_color(247, 250, 254)
+    pdf.set_draw_color(*PDF_COLOR_BORDER)
+    pdf.rect(pdf.l_margin, y, box_w, box_h, "DF")
+    pdf.set_fill_color(*accent)
+    pdf.rect(pdf.l_margin, y, left_accent_w, box_h, "F")
+
+    x_text = pdf.l_margin + left_accent_w + inner_pad
+    y_cursor = y + inner_pad
+    pdf.set_text_color(*PDF_COLOR_NAVY_DARK)
+    pdf.set_font(PDF_FONT_SANS, "B", title_size)
+    for line in title_lines:
+        pdf.set_xy(x_text, y_cursor)
+        pdf.cell(text_w, line_h, line, align="L")
+        y_cursor += line_h
+
+    pdf.set_font(PDF_FONT_SERIF, "", body_size)
+    pdf.set_text_color(*PDF_COLOR_TEXT)
+    for line in body_lines:
+        pdf.set_xy(x_text, y_cursor)
+        pdf.cell(text_w, line_h, line, align="L")
+        y_cursor += line_h
+
+    pdf.set_text_color(*PDF_COLOR_TEXT)
+    pdf.set_y(y + box_h + 1.1)
+
+def _pdf_add_focus_highlights(pdf: FPDF, highlights: list[str], *, size: int = 10) -> None:
+    clean = [str(h).strip() for h in (highlights or []) if str(h).strip()]
+    if not clean:
+        return
+
+    block_w = pdf.w - pdf.l_margin - pdf.r_margin
+    badge_w = 5.2
+    inner_pad = 2.1
+    row_gap = 1.0
+    line_h = 4.5
+
+    for idx, raw in enumerate(clean, start=1):
+        title = raw
+        detail = ""
+        lead, sep, tail = raw.partition(":")
+        if sep and len(lead.strip()) <= 42:
+            title = lead.strip()
+            detail = tail.strip()
+
+        text_x = pdf.l_margin + badge_w + 2.2
+        text_w = block_w - badge_w - 6
+        pdf.set_font(PDF_FONT_SANS, "B", size)
+        title_lines = _wrap_pdf_line(pdf, title, text_w)
+        pdf.set_font(PDF_FONT_SERIF, "", max(9.3, size - 0.2))
+        detail_lines = _wrap_pdf_line(pdf, detail, text_w) if detail else []
+
+        row_lines = len(title_lines) + len(detail_lines)
+        row_h = max(10.8, (row_lines * line_h) + (inner_pad * 2))
+        _pdf_ensure_space(pdf, row_h + row_gap + 1)
+        y = pdf.get_y()
+
+        fill = (248, 251, 255) if idx % 2 else (243, 248, 253)
+        pdf.set_fill_color(*fill)
+        pdf.set_draw_color(*PDF_COLOR_BORDER)
+        pdf.rect(pdf.l_margin, y, block_w, row_h, "DF")
+
+        pdf.set_fill_color(225, 236, 248)
+        pdf.rect(pdf.l_margin, y, badge_w, row_h, "F")
+        pdf.set_fill_color(*PDF_COLOR_NAVY)
+        circle_d = 3.3
+        circle_x = pdf.l_margin + (badge_w - circle_d) / 2
+        circle_y = y + (row_h - circle_d) / 2
+        pdf.ellipse(circle_x, circle_y, circle_d, circle_d, "F")
+        pdf.set_text_color(236, 243, 250)
+        pdf.set_font(PDF_FONT_SANS, "B", 6.7)
+        pdf.set_xy(circle_x, circle_y + 0.25)
+        pdf.cell(circle_d, 2.8, f"{idx}", align="C")
+
+        pdf.set_text_color(*PDF_COLOR_NAVY_DARK)
+        pdf.set_font(PDF_FONT_SANS, "B", size)
+        y_cursor = y + inner_pad
+        for line in title_lines:
+            pdf.set_xy(text_x, y_cursor)
+            pdf.cell(text_w, line_h, _pdf_safe_text(line), align="L")
+            y_cursor += line_h
+
+        if detail_lines:
+            pdf.set_text_color(*PDF_COLOR_TEXT)
+            pdf.set_font(PDF_FONT_SERIF, "", max(9.3, size - 0.2))
+            for line in detail_lines:
+                pdf.set_xy(text_x, y_cursor)
+                pdf.cell(text_w, line_h, _pdf_safe_text(line), align="L")
+                y_cursor += line_h
+
+        pdf.set_text_color(*PDF_COLOR_TEXT)
+        pdf.set_y(y + row_h + row_gap)
+
+def _pdf_add_cover_page(pdf: FPDF, payload: dict) -> None:
+    page_w = pdf.w
+    page_h = pdf.h
+
+    pdf.set_fill_color(*PDF_COLOR_PAGE_BG)
+    pdf.rect(0, 0, page_w, page_h, "F")
+
+    # Minimal page architecture.
+    pdf.set_fill_color(244, 249, 255)
+    pdf.rect(page_w * 0.86, 0, page_w * 0.14, page_h, "F")
+    pdf.set_fill_color(*PDF_COLOR_NAVY_DARK)
+    pdf.rect(0, 0, page_w, 27, "F")
+    pdf.set_fill_color(*PDF_COLOR_ACCENT)
+    pdf.rect(0, 27, page_w, 1.6, "F")
+
+    logo_w = 30
+    logo_h = 10
+    logo_x = page_w - pdf.r_margin - logo_w
+    logo_y = 8.8
+    pdf.set_draw_color(187, 205, 226)
+    pdf.set_fill_color(23, 55, 90)
+    pdf.rect(logo_x, logo_y, logo_w, logo_h, "DF")
+    pdf.set_font(PDF_FONT_SANS, "B", 8)
+    pdf.set_text_color(236, 243, 250)
+    pdf.set_xy(logo_x, logo_y + 2.6)
+    pdf.cell(logo_w, 4, "LOGO", align="C")
+
+    header_title = payload.get("report_title", "Lobby Look-Up Report")
+    scope_sub = payload.get("scope_session_label") or payload.get("scope_label", "")
+    focus_label = payload.get("focus_label", "")
+
+    pdf.set_text_color(236, 243, 250)
+    pdf.set_font(PDF_FONT_SANS, "B", 8.5)
+    pdf.set_xy(pdf.l_margin, 7.4)
+    pdf.cell(page_w - pdf.l_margin - pdf.r_margin - logo_w - 8, 4.8, _pdf_safe_text(header_title))
+    pdf.set_font(PDF_FONT_SANS, "", 7)
+    pdf.set_xy(pdf.l_margin, 12.5)
+    top_sub = f"{scope_sub} | {focus_label}".strip(" |")
+    if len(top_sub) > 88:
+        top_sub = top_sub[:85].rstrip() + "..."
+    pdf.cell(page_w - pdf.l_margin - pdf.r_margin - logo_w - 8, 4.2, _pdf_safe_text(top_sub))
+
+    pdf.set_text_color(*PDF_COLOR_NAVY_DARK)
+    pdf.set_y(48)
+    _pdf_add_heading(pdf, "TAXPAYER-FUNDED LOBBYING IN TEXAS", size=PDF_H1_SIZE)
+    _pdf_add_subheading(pdf, f"Analysis of the {payload['session_label']} Legislative Session", size=12)
+
+    box_x = pdf.l_margin
+    box_y = 85
+    box_w = page_w - pdf.l_margin - pdf.r_margin - 20
+    box_h = 52
+    pdf.set_fill_color(255, 255, 255)
+    pdf.set_draw_color(*PDF_COLOR_BORDER)
+    pdf.rect(box_x, box_y, box_w, box_h, "DF")
+    pdf.set_fill_color(*PDF_COLOR_ACCENT)
+    pdf.rect(box_x, box_y, 1.8, box_h, "F")
+
+    pdf.set_font(PDF_FONT_SANS, "B", 10)
+    pdf.set_text_color(*PDF_COLOR_NAVY_DARK)
+    pdf.set_xy(box_x + 5.0, box_y + 3.0)
+    pdf.cell(0, 5, "Report Scope")
+
+    pdf.set_text_color(*PDF_COLOR_TEXT)
+    pdf.set_font(PDF_FONT_SERIF, "", PDF_BODY_SIZE)
+    pdf.set_xy(box_x + 5.0, box_y + 11.0)
+    pdf.cell(0, 5.2, _pdf_safe_text(f"Session: {payload['session_label']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_x(box_x + 5.0)
+    pdf.cell(0, 5.2, _pdf_safe_text(f"Scope: {payload['scope_session_label']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_x(box_x + 5.0)
+    pdf.cell(0, 5.2, _pdf_safe_text(f"Focus: {payload['focus_label']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_x(box_x + 5.0)
+    pdf.cell(0, 5.2, _pdf_safe_text(f"Generated: {payload['generated_date']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    pdf.set_draw_color(205, 218, 234)
+    pdf.line(pdf.l_margin, page_h - 25, page_w - pdf.r_margin, page_h - 25)
+    pdf.set_y(page_h - 23)
+    pdf.set_font(PDF_FONT_SANS, "I", PDF_FOOTNOTE_SIZE)
+    pdf.set_text_color(*PDF_COLOR_MUTED)
+    pdf.cell(
+        0,
+        4.5,
+        _pdf_safe_text("Prepared by Texas Taxpayer Lobbying Transparency Center"),
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
+    )
+    pdf.cell(0, 4.5, _pdf_safe_text(payload.get("disclaimer_note", "")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_text_color(*PDF_COLOR_TEXT)
+
+def _pdf_add_contents_page(pdf: FPDF, payload: dict, *, include_focus_snapshot: bool) -> None:
+    pdf.add_page()
+    page_w = pdf.w
+    page_h = pdf.h
+    content_top = 20
+    pdf.set_fill_color(*PDF_COLOR_PAGE_BG)
+    pdf.rect(0, content_top, page_w, page_h - content_top, "F")
+
+    pdf.set_text_color(*PDF_COLOR_NAVY_DARK)
+    pdf.set_y(26)
+    _pdf_add_heading(pdf, "Contents", size=14)
+    _pdf_add_paragraph(
+        pdf,
+        "Legislative briefing sections included in this report.",
+        size=10.5,
+        line_h=5.2,
+    )
+
+    entries = [
+        "Executive Summary",
+    ]
+    if include_focus_snapshot:
+        entries.append("Focus Snapshot")
+    entries.extend(
+        [
+            "I. The Scale of Lobbying",
+            "II. What Taxpayer-Funded Lobbying Is - And Why It Matters",
+            "III. Legislative Activity Patterns",
+            "IV. Bills Most Opposed by Taxpayer-Funded Lobbyists",
+            "V. Policy Areas Most Opposed by Taxpayer-Funded Lobbyists",
+            "VI. Structural Incentives and the Compulsion Problem",
+            "VII. Legal Parity and Statutory Inconsistency",
+            "VIII. Policy Solution: A Comprehensive Ban on Taxpayer-Funded Lobbying",
+            "IX. Data Sources and Methodology",
+            "X. Conclusion",
+        ]
+    )
+
+    index_w = 11
+    text_w = page_w - pdf.l_margin - pdf.r_margin - index_w
+    row_h = 5.8
+    for idx, label in enumerate(entries, start=1):
+        _pdf_ensure_space(pdf, row_h + 1.1)
+        y = pdf.get_y()
+        number_label = f"{idx:02d}"
+
+        pdf.set_fill_color(250, 252, 255) if idx % 2 else pdf.set_fill_color(245, 249, 254)
+        pdf.set_draw_color(*PDF_COLOR_BORDER)
+        pdf.rect(pdf.l_margin, y, page_w - pdf.l_margin - pdf.r_margin, row_h, "DF")
+        pdf.set_font(PDF_FONT_SANS, "B", 7.8)
+        pdf.set_text_color(*PDF_COLOR_NAVY_DARK)
+        pdf.set_xy(pdf.l_margin + 2.0, y + 1.1)
+        pdf.cell(index_w - 2.0, 3.8, number_label, align="L")
+
+        pdf.set_font(PDF_FONT_SERIF, "", 10)
+        pdf.set_text_color(*PDF_COLOR_TEXT)
+        pdf.set_xy(pdf.l_margin + index_w, y + 1.0)
+        pdf.cell(text_w - 1.0, 4.2, _pdf_safe_text(label), align="L")
+        pdf.set_y(y + row_h + 0.5)
+
+    pdf.set_font(PDF_FONT_SANS, "I", PDF_FOOTNOTE_SIZE)
+    pdf.set_text_color(*PDF_COLOR_MUTED)
+    pdf.set_y(page_h - 18)
+    pdf.cell(
+        0,
+        4.2,
+        _pdf_safe_text(f"Generated {payload.get('generated_date', '')}"),
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
+        align="R",
+    )
+    pdf.set_text_color(*PDF_COLOR_TEXT)
 
 def _build_focus_chart(chart: dict):
     kind = str(chart.get("kind", "")).strip().lower()
@@ -18679,15 +19150,6 @@ def _build_report_payload(
                         focus_section["metrics"].append(("Staff history rows", f"{staff_rows:,}"))
                         if staff_legs:
                             focus_section["metrics"].append(("Legislators w/ staff ties", f"{staff_legs:,}"))
-                        top_staff_legs = _top_counts(staff_pick.get("Legislator", pd.Series(dtype=object)), 5)
-                        if top_staff_legs:
-                            legs = ", ".join([f"{l} ({c:,})" for l, c in top_staff_legs])
-                            focus_section["bullets"].append(f"Top legislators in staff history: {legs}")
-                    if not staff_pick_session.empty:
-                        focus_section["bullets"].append(
-                            f"Staff history rows in selected session: {len(staff_pick_session):,}"
-                        )
-
                 if lobbyshorts:
                     activities = build_activities_multi(
                         la_food,
@@ -19013,15 +19475,6 @@ def _build_report_payload(
                         focus_section["metrics"].append(("Staff history rows", f"{staff_rows:,}"))
                         if staff_legs:
                             focus_section["metrics"].append(("Legislators w/ staff ties", f"{staff_legs:,}"))
-                        top_staff_legs = _top_counts(staff_pick.get("Legislator", pd.Series(dtype=object)), 5)
-                        if top_staff_legs:
-                            legs = ", ".join([f"{l} ({c:,})" for l, c in top_staff_legs])
-                            focus_section["bullets"].append(f"Top legislators in staff history: {legs}")
-                    if not staff_pick_session.empty:
-                        focus_section["bullets"].append(
-                            f"Staff history rows in selected session: {len(staff_pick_session):,}"
-                        )
-
                 activities = build_activities(
                     la_food,
                     la_ent,
@@ -19553,6 +20006,121 @@ def _build_report_payload(
                     }
                 )
 
+    tfl_mid = (tfl_low + tfl_high) / 2
+    private_mid = (private_low + private_high) / 2
+    total_mid = tfl_mid + private_mid
+    tfl_mid_share_pct = (tfl_mid / total_mid * 100) if total_mid > 0 else 0.0
+
+    if total_mid <= 0:
+        conditional_share_sentence = (
+            "No reportable lobbying compensation was identified for the selected scope."
+        )
+        conditional_balance_sentence = ""
+    else:
+        if tfl_mid_share_pct >= 50:
+            conditional_share_sentence = (
+                "Midpoint estimates indicate taxpayer-funded entities represent a majority share "
+                "of reported lobbying compensation in this scope."
+            )
+        elif tfl_mid_share_pct >= 35:
+            conditional_share_sentence = (
+                "Midpoint estimates indicate taxpayer-funded entities represent a substantial "
+                "share of reported lobbying compensation in this scope."
+            )
+        elif tfl_mid_share_pct >= 15:
+            conditional_share_sentence = (
+                "Midpoint estimates indicate taxpayer-funded entities represent a material, "
+                "non-trivial share of reported lobbying compensation in this scope."
+            )
+        else:
+            conditional_share_sentence = (
+                "Midpoint estimates indicate taxpayer-funded entities represent a smaller share "
+                "of reported lobbying compensation in this scope."
+            )
+
+        mix_delta = tfl_mid - private_mid
+        if abs(mix_delta) <= (0.10 * total_mid):
+            conditional_balance_sentence = (
+                "The midpoint funding mix is near parity between taxpayer-funded and private activity."
+            )
+        elif mix_delta > 0:
+            conditional_balance_sentence = (
+                "The midpoint funding mix shows taxpayer-funded activity outweighing private activity."
+            )
+        else:
+            conditional_balance_sentence = (
+                "The midpoint funding mix shows private activity outweighing taxpayer-funded activity."
+            )
+
+    tfl_w = witness_counts.get("tfl", {}) if isinstance(witness_counts, dict) else {}
+    pri_w = witness_counts.get("private", {}) if isinstance(witness_counts, dict) else {}
+    tfl_against = int(tfl_w.get("Against", 0) or 0)
+    tfl_for = int(tfl_w.get("For", 0) or 0)
+    tfl_on = int(tfl_w.get("On", 0) or 0)
+    pri_against = int(pri_w.get("Against", 0) or 0)
+    pri_for = int(pri_w.get("For", 0) or 0)
+    pri_on = int(pri_w.get("On", 0) or 0)
+    witness_total = tfl_against + tfl_for + tfl_on + pri_against + pri_for + pri_on
+    if witness_total <= 0:
+        conditional_witness_sentence = (
+            "No witness-position activity was available in the selected scope/session."
+        )
+    else:
+        if tfl_against >= max(tfl_for, tfl_on):
+            stance_text = "taxpayer-funded testimony skews toward opposition"
+        elif tfl_for >= max(tfl_against, tfl_on):
+            stance_text = "taxpayer-funded testimony skews toward support"
+        else:
+            stance_text = "taxpayer-funded testimony is mixed across positions"
+        conditional_witness_sentence = (
+            f"In witness data, {stance_text} "
+            f"({tfl_against:,} Against, {tfl_for:,} For, {tfl_on:,} On)."
+        )
+
+    if focus_type == "client":
+        conditional_focus_sentence = (
+            "Focus findings are client-centered and update as the selected client changes."
+        )
+        focus_highlights_intro = (
+            "Key client-specific findings generated from the current scope and linked lobbyist activity."
+        )
+    elif focus_type == "lobbyist":
+        conditional_focus_sentence = (
+            "Focus findings are lobbyist-centered and update as the selected lobbyist changes."
+        )
+        focus_highlights_intro = (
+            "Key lobbyist-specific findings generated from the current scope and linked client activity."
+        )
+    elif focus_type == "legislator":
+        conditional_focus_sentence = (
+            "Focus findings are legislator-centered and update as the selected legislator changes."
+        )
+        focus_highlights_intro = (
+            "Key legislator-specific findings generated from authored-bill, witness, and activity data."
+        )
+    elif focus_type == "bill":
+        conditional_focus_sentence = (
+            "Focus findings are bill-centered and update as the selected bill changes."
+        )
+        focus_highlights_intro = (
+            "Key bill-specific findings generated from witness, status, and subject-matter records."
+        )
+    else:
+        conditional_focus_sentence = (
+            "Focus findings are generated from the current filters and update as inputs change."
+        )
+        focus_highlights_intro = "Most relevant findings for the selected focus."
+
+    conditional_exec_sentences = [
+        s
+        for s in [
+            conditional_share_sentence,
+            conditional_balance_sentence,
+            conditional_witness_sentence,
+        ]
+        if str(s).strip()
+    ]
+
     payload = {
         "session_label": session_label,
         "generated_date": generated_date,
@@ -19609,6 +20177,10 @@ def _build_report_payload(
         "top_bills": top_bills,
         "top_subjects": top_subjects,
         "focus_section": focus_section,
+        "conditional_exec_sentences": conditional_exec_sentences,
+        "conditional_focus_sentence": conditional_focus_sentence,
+        "focus_highlights_intro": focus_highlights_intro,
+        "tfl_mid_share_pct_value": tfl_mid_share_pct,
     }
 
     for i in range(5):
@@ -19638,6 +20210,834 @@ def _build_report_payload(
     return payload
 
 def _build_report_pdf_bytes(payload: dict) -> bytes:
+    payload = dict(payload) if isinstance(payload, dict) else {}
+
+    def _safe_str(value, default: str = "") -> str:
+        if value is None:
+            return default
+        try:
+            return str(value)
+        except Exception:
+            return default
+
+    def _safe_float(value, default: float = 0.0) -> float:
+        if value is None:
+            return default
+        try:
+            if isinstance(value, str):
+                txt = value.strip().replace(",", "")
+                if txt == "":
+                    return default
+                return float(txt)
+            return float(value)
+        except Exception:
+            return default
+
+    def _safe_bool(value, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return default
+        if isinstance(value, (int, float)):
+            return bool(value)
+        txt = _safe_str(value).strip().lower()
+        if txt in {"true", "1", "yes", "y"}:
+            return True
+        if txt in {"false", "0", "no", "n"}:
+            return False
+        return default
+
+    def _safe_list(value) -> list:
+        return value if isinstance(value, list) else []
+
+    def _safe_dict(value) -> dict:
+        return value if isinstance(value, dict) else {}
+
+    default_payload = {
+        "report_title": "Lobby Look-Up Report",
+        "session_label": "Selected Session",
+        "scope_label": "Selected Session",
+        "scope_session_label": "Selected Session",
+        "focus_label": "All",
+        "generated_date": datetime.now().strftime("%B %d, %Y"),
+        "generated_ts": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "total_low": "$0",
+        "total_high": "$0",
+        "tfl_low": "$0",
+        "tfl_high": "$0",
+        "private_low": "$0",
+        "private_high": "$0",
+        "tfl_share_low_pct": "0.0",
+        "tfl_share_high_pct": "0.0",
+        "unique_lobbyists_total": "0",
+        "unique_lobbyists_tfl": "0",
+        "unique_clients_total": "0",
+        "unique_clients_tfl": "0",
+        "witness_activity_summary": "No witness-list data available for this scope/session.",
+        "existing_law_gap_summary": "",
+        "recommended_fix_statute": "",
+        "implementation_notes": "",
+        "data_sources_bullets": "",
+        "disclaimer_note": "",
+        "scope_note": "",
+        "focus_section": {},
+        "witness_counts": {},
+        "top_bills": [],
+        "top_subjects": [],
+        "chart_entity_types_data": [],
+        "conditional_exec_sentences": [],
+        "conditional_focus_sentence": "",
+        "focus_highlights_intro": "",
+        "focus_snapshot_paragraph": "",
+        "has_top_bills": False,
+        "has_top_subjects": False,
+    }
+    for key, value in default_payload.items():
+        payload.setdefault(key, value)
+
+    numeric_defaults = {
+        "total_low_value": 0.0,
+        "total_high_value": 0.0,
+        "tfl_low_value": 0.0,
+        "tfl_high_value": 0.0,
+        "private_low_value": 0.0,
+        "private_high_value": 0.0,
+        "tfl_share_low_pct_value": 0.0,
+        "tfl_share_high_pct_value": 0.0,
+        "private_share_low_pct_value": 0.0,
+        "private_share_high_pct_value": 0.0,
+        "tfl_mid_share_pct_value": 0.0,
+    }
+    for key, fallback in numeric_defaults.items():
+        payload[key] = _safe_float(payload.get(key), fallback)
+
+    string_keys = [
+        "report_title",
+        "session_label",
+        "scope_label",
+        "scope_session_label",
+        "focus_label",
+        "generated_date",
+        "generated_ts",
+        "total_low",
+        "total_high",
+        "tfl_low",
+        "tfl_high",
+        "private_low",
+        "private_high",
+        "tfl_share_low_pct",
+        "tfl_share_high_pct",
+        "unique_lobbyists_total",
+        "unique_lobbyists_tfl",
+        "unique_clients_total",
+        "unique_clients_tfl",
+        "witness_activity_summary",
+        "existing_law_gap_summary",
+        "recommended_fix_statute",
+        "implementation_notes",
+        "data_sources_bullets",
+        "disclaimer_note",
+        "scope_note",
+        "conditional_focus_sentence",
+        "focus_highlights_intro",
+        "focus_snapshot_paragraph",
+    ]
+    for key in string_keys:
+        payload[key] = _safe_str(payload.get(key), _safe_str(default_payload.get(key, "")))
+
+    payload["focus_section"] = _safe_dict(payload.get("focus_section"))
+    payload["witness_counts"] = _safe_dict(payload.get("witness_counts"))
+    payload["top_bills"] = [b for b in _safe_list(payload.get("top_bills")) if isinstance(b, dict)]
+    payload["top_subjects"] = [s for s in _safe_list(payload.get("top_subjects")) if isinstance(s, dict)]
+    payload["chart_entity_types_data"] = [
+        r for r in _safe_list(payload.get("chart_entity_types_data")) if isinstance(r, dict)
+    ]
+    payload["conditional_exec_sentences"] = [
+        _safe_str(s).strip()
+        for s in _safe_list(payload.get("conditional_exec_sentences"))
+        if _safe_str(s).strip()
+    ]
+    payload["has_top_bills"] = _safe_bool(payload.get("has_top_bills"), False) or bool(payload["top_bills"])
+    payload["has_top_subjects"] = _safe_bool(payload.get("has_top_subjects"), False) or bool(payload["top_subjects"])
+
+    if payload["focus_section"]:
+        fs = payload["focus_section"]
+        fs["title"] = _safe_str(fs.get("title", ""))
+        fs["summary"] = _safe_str(fs.get("summary", ""))
+
+        metrics_safe = []
+        for item in _safe_list(fs.get("metrics")):
+            if isinstance(item, (list, tuple)) and len(item) >= 2:
+                metrics_safe.append((_safe_str(item[0]), _safe_str(item[1])))
+        fs["metrics"] = metrics_safe
+
+        fs["bullets"] = [
+            _safe_str(item).strip()
+            for item in _safe_list(fs.get("bullets"))
+            if _safe_str(item).strip()
+        ]
+        fs["charts"] = _safe_list(fs.get("charts"))
+        payload["focus_section"] = fs
+
+    if not _safe_str(payload.get("total_low")).strip():
+        payload["total_low"] = fmt_usd(payload["total_low_value"])
+    if not _safe_str(payload.get("total_high")).strip():
+        payload["total_high"] = fmt_usd(payload["total_high_value"])
+    if not _safe_str(payload.get("tfl_low")).strip():
+        payload["tfl_low"] = fmt_usd(payload["tfl_low_value"])
+    if not _safe_str(payload.get("tfl_high")).strip():
+        payload["tfl_high"] = fmt_usd(payload["tfl_high_value"])
+    if not _safe_str(payload.get("private_low")).strip():
+        payload["private_low"] = fmt_usd(payload["private_low_value"])
+    if not _safe_str(payload.get("private_high")).strip():
+        payload["private_high"] = fmt_usd(payload["private_high_value"])
+
+    if payload["tfl_share_low_pct_value"] == 0.0 and payload["tfl_share_high_pct_value"] == 0.0:
+        share_low, share_high = _calc_share_range(
+            payload["tfl_low_value"],
+            payload["tfl_high_value"],
+            payload["total_low_value"],
+            payload["total_high_value"],
+        )
+        payload["tfl_share_low_pct_value"] = share_low
+        payload["tfl_share_high_pct_value"] = share_high
+    if not _safe_str(payload.get("tfl_share_low_pct")).strip():
+        payload["tfl_share_low_pct"] = f"{payload['tfl_share_low_pct_value']:.1f}"
+    if not _safe_str(payload.get("tfl_share_high_pct")).strip():
+        payload["tfl_share_high_pct"] = f"{payload['tfl_share_high_pct_value']:.1f}"
+
+    top_bills_safe = []
+    for bill in payload["top_bills"]:
+        top_bills_safe.append(
+            {
+                "id": _safe_str(bill.get("id"), "-").strip() or "-",
+                "tfl": int(_safe_float(bill.get("tfl"), 0.0)),
+                "private": int(_safe_float(bill.get("private"), 0.0)),
+                "caption": _safe_str(bill.get("caption"), "").strip(),
+                "summary": _safe_str(bill.get("summary"), "").strip(),
+            }
+        )
+    payload["top_bills"] = top_bills_safe
+
+    top_subjects_safe = []
+    for subject in payload["top_subjects"]:
+        top_subjects_safe.append(
+            {
+                "Subject": _safe_str(subject.get("Subject"), "").strip(),
+                "Oppositions": int(_safe_float(subject.get("Oppositions"), 0.0)),
+            }
+        )
+    payload["top_subjects"] = top_subjects_safe
+
+    entity_rows_safe = []
+    for row in payload["chart_entity_types_data"]:
+        label = _safe_str(row.get("type"), "").strip()
+        if not label:
+            continue
+        entity_rows_safe.append({"type": label, "count": int(_safe_float(row.get("count"), 0.0))})
+    payload["chart_entity_types_data"] = entity_rows_safe
+
+    witness_counts_safe = _safe_dict(payload.get("witness_counts"))
+    witness_counts_safe["tfl"] = _safe_dict(witness_counts_safe.get("tfl"))
+    witness_counts_safe["private"] = _safe_dict(witness_counts_safe.get("private"))
+    for bucket in ("tfl", "private"):
+        for position in ("Against", "For", "On"):
+            witness_counts_safe[bucket][position] = int(
+                _safe_float(witness_counts_safe[bucket].get(position), 0.0)
+            )
+    payload["witness_counts"] = witness_counts_safe
+
+    def _derive_exec_conditionals() -> list[str]:
+        total_mid = (payload["total_low_value"] + payload["total_high_value"]) / 2.0
+        tfl_mid = (payload["tfl_low_value"] + payload["tfl_high_value"]) / 2.0
+        private_mid = (payload["private_low_value"] + payload["private_high_value"]) / 2.0
+        out = []
+
+        if total_mid <= 0:
+            out.append("No reportable lobbying compensation was identified for the selected scope.")
+        else:
+            tfl_mid_pct = (tfl_mid / total_mid) * 100.0
+            if tfl_mid_pct >= 50:
+                out.append(
+                    "Midpoint estimates indicate taxpayer-funded entities represent a majority share of reported lobbying compensation in this scope."
+                )
+            elif tfl_mid_pct >= 35:
+                out.append(
+                    "Midpoint estimates indicate taxpayer-funded entities represent a substantial share of reported lobbying compensation in this scope."
+                )
+            elif tfl_mid_pct >= 15:
+                out.append(
+                    "Midpoint estimates indicate taxpayer-funded entities represent a material, non-trivial share of reported lobbying compensation in this scope."
+                )
+            else:
+                out.append(
+                    "Midpoint estimates indicate taxpayer-funded entities represent a smaller share of reported lobbying compensation in this scope."
+                )
+
+            delta = tfl_mid - private_mid
+            if abs(delta) <= (0.10 * total_mid):
+                out.append("The midpoint funding mix is near parity between taxpayer-funded and private activity.")
+            elif delta > 0:
+                out.append("The midpoint funding mix shows taxpayer-funded activity outweighing private activity.")
+            else:
+                out.append("The midpoint funding mix shows private activity outweighing taxpayer-funded activity.")
+
+        tfl_counts = payload["witness_counts"].get("tfl", {})
+        tfl_against = int(tfl_counts.get("Against", 0))
+        tfl_for = int(tfl_counts.get("For", 0))
+        tfl_on = int(tfl_counts.get("On", 0))
+        if (tfl_against + tfl_for + tfl_on) <= 0:
+            out.append("No witness-position activity was available in the selected scope/session.")
+        else:
+            if tfl_against >= max(tfl_for, tfl_on):
+                stance = "taxpayer-funded testimony skews toward opposition"
+            elif tfl_for >= max(tfl_against, tfl_on):
+                stance = "taxpayer-funded testimony skews toward support"
+            else:
+                stance = "taxpayer-funded testimony is mixed across positions"
+            out.append(
+                f"In witness data, {stance} ({tfl_against:,} Against, {tfl_for:,} For, {tfl_on:,} On)."
+            )
+        return [s for s in out if _safe_str(s).strip()]
+
+    def _derive_focus_context_sentence() -> tuple[str, str]:
+        focus_label_txt = _safe_str(payload.get("focus_label")).strip().lower()
+        focus_title_txt = _safe_str(payload.get("focus_section", {}).get("title", "")).strip().lower()
+        focus_hint = f"{focus_label_txt} {focus_title_txt}".strip()
+
+        if "client" in focus_hint:
+            return (
+                "This snapshot is client-centered and updates with the selected client and filters.",
+                "Client-specific indicators drawn from linked lobbying activity and session-scoped records.",
+            )
+        if "lobbyist" in focus_hint:
+            return (
+                "This snapshot is lobbyist-centered and updates with the selected lobbyist and filters.",
+                "Lobbyist-specific indicators drawn from linked client relationships and session activity.",
+            )
+        if "legislator" in focus_hint:
+            return (
+                "This snapshot is legislator-centered and updates with the selected legislator and filters.",
+                "Legislator-specific indicators drawn from authored bills, witness behavior, and related activity.",
+            )
+        if "bill" in focus_hint:
+            return (
+                "This snapshot is bill-centered and updates with the selected bill and filters.",
+                "Bill-specific indicators drawn from witness records, status history, and subject patterns.",
+            )
+        return (
+            "This snapshot updates from the current filters and focus selection.",
+            "Most relevant findings generated for the selected focus.",
+        )
+
+    computed_exec_conditionals = _derive_exec_conditionals()
+    combined_exec_conditionals = []
+    for sentence in payload["conditional_exec_sentences"] + computed_exec_conditionals:
+        clean_sentence = _safe_str(sentence).strip()
+        if clean_sentence and clean_sentence not in combined_exec_conditionals:
+            combined_exec_conditionals.append(clean_sentence)
+    payload["conditional_exec_sentences"] = combined_exec_conditionals
+
+    default_focus_sentence, default_focus_intro = _derive_focus_context_sentence()
+    if not _safe_str(payload.get("conditional_focus_sentence")).strip():
+        payload["conditional_focus_sentence"] = default_focus_sentence
+    if not _safe_str(payload.get("focus_highlights_intro")).strip():
+        payload["focus_highlights_intro"] = default_focus_intro
+
+    def _derive_focus_snapshot_paragraph() -> str:
+        focus_section_local = _safe_dict(payload.get("focus_section"))
+        focus_title = _safe_str(focus_section_local.get("title", "")).strip()
+        focus_label = _safe_str(payload.get("focus_label"), "This focus").strip() or "This focus"
+        focus_subject = focus_title or focus_label
+        focus_hint = f"{focus_label.lower()} {focus_title.lower()}".strip()
+
+        if "client" in focus_hint:
+            focus_type = "client"
+        elif "lobbyist" in focus_hint:
+            focus_type = "lobbyist"
+        elif "legislator" in focus_hint:
+            focus_type = "legislator"
+        elif "bill" in focus_hint:
+            focus_type = "bill"
+        else:
+            focus_type = "general"
+
+        metric_map = {}
+        for metric in _safe_list(focus_section_local.get("metrics")):
+            if not isinstance(metric, (list, tuple)) or len(metric) < 2:
+                continue
+            label = " ".join(_safe_str(metric[0]).strip().lower().split())
+            if label:
+                metric_map[label] = _safe_str(metric[1]).strip()
+
+        def _extract_numbers(value) -> list[float]:
+            txt = _safe_str(value).replace(",", "").strip()
+            if not txt:
+                return []
+            cleaned = "".join(ch if (ch.isdigit() or ch in ".-") else " " for ch in txt)
+            out = []
+            for token in cleaned.split():
+                try:
+                    out.append(float(token))
+                except Exception:
+                    continue
+            return out
+
+        def _first_number(value) -> float:
+            nums = _extract_numbers(value)
+            return nums[0] if nums else 0.0
+
+        def _range_midpoint(value) -> float:
+            nums = _extract_numbers(value)
+            if not nums:
+                return 0.0
+            if len(nums) == 1:
+                return nums[0]
+            return (nums[0] + nums[1]) / 2.0
+
+        def _metric_value(*labels: str) -> str:
+            for label in labels:
+                key = " ".join(_safe_str(label).strip().lower().split())
+                if key and key in metric_map:
+                    val = _safe_str(metric_map.get(key, "")).strip()
+                    if val:
+                        return val
+            return ""
+
+        def _metric_int(*labels: str) -> int:
+            val = _metric_value(*labels)
+            if not val:
+                return 0
+            return int(_first_number(val))
+
+        def _first_int_after_keyword(text: str, keyword: str) -> int | None:
+            text_norm = _safe_str(text)
+            key_norm = _safe_str(keyword).strip().lower()
+            idx = text_norm.lower().find(key_norm)
+            if idx < 0:
+                return None
+            tail = text_norm[idx + len(key_norm):]
+            cleaned = "".join(ch if ch.isdigit() else " " for ch in tail)
+            tokens = [tok for tok in cleaned.split() if tok]
+            if not tokens:
+                return None
+            try:
+                return int(tokens[0])
+            except Exception:
+                return None
+
+        def _sentence_case(text: str) -> str:
+            t = _safe_str(text).strip()
+            if not t:
+                return ""
+            return t[0].upper() + t[1:]
+
+        parts = []
+        signals_used = 0
+        focus_specific_signals = 0
+
+        if focus_type == "client":
+            parts.append(f"{focus_subject} functions as a client-centered hub in the advocacy network for this scope.")
+        elif focus_type == "lobbyist":
+            parts.append(f"{focus_subject} functions as a lobbyist-centered conduit between client portfolios and legislative influence.")
+        elif focus_type == "legislator":
+            parts.append(f"{focus_subject} is evaluated through authored-bill outcomes and observed witness pressure patterns.")
+        elif focus_type == "bill":
+            parts.append(f"{focus_subject} functions as a bill-level pressure point where support and opposition activity converge.")
+        else:
+            parts.append(f"{focus_subject} reflects a concentrated set of relationships in the selected scope.")
+
+        focus_clients_total = 0
+        focus_clients_tfl = 0
+        client_scope = "none"
+        if focus_type == "client":
+            # Client focus represents a single selected client; infer TFL status from client metrics.
+            focus_clients_total = 1
+            client_tfl_flag = _metric_value("taxpayer funded")
+            normalized_flag = client_tfl_flag.strip().lower() if client_tfl_flag else ""
+            if normalized_flag in {"yes", "true", "1"}:
+                focus_clients_tfl = 1
+                client_scope = "focus"
+            elif normalized_flag in {"no", "false", "0"}:
+                focus_clients_tfl = 0
+                client_scope = "focus"
+            else:
+                # If classification is unavailable, suppress this ratio sentence for client focus.
+                focus_clients_total = 0
+                focus_clients_tfl = 0
+        elif focus_type == "lobbyist":
+            focus_clients_total = _metric_int("total clients")
+            focus_clients_tfl = _metric_int("taxpayer-funded clients", "taxpayer funded clients")
+            private_clients = _metric_int("private clients")
+            if focus_clients_total <= 0 and (focus_clients_tfl + private_clients) > 0:
+                focus_clients_total = focus_clients_tfl + private_clients
+            if focus_clients_total <= 0:
+                focus_clients_total = int(_safe_float(payload.get("focus_clients_total"), 0.0))
+            if focus_clients_tfl <= 0:
+                focus_clients_tfl = int(_safe_float(payload.get("focus_clients_tfl"), 0.0))
+            if focus_clients_total > 0:
+                client_scope = "focus"
+        elif focus_type == "general":
+            focus_clients_total = int(_safe_float(payload.get("focus_clients_total"), 0.0))
+            focus_clients_tfl = int(_safe_float(payload.get("focus_clients_tfl"), 0.0))
+            if focus_clients_total > 0:
+                client_scope = "focus"
+            else:
+                focus_clients_total = int(_safe_float(payload.get("unique_clients_total"), 0.0))
+                focus_clients_tfl = int(_safe_float(payload.get("unique_clients_tfl"), 0.0))
+                if focus_clients_total > 0:
+                    client_scope = "scope"
+
+        if focus_clients_total > 0 and focus_clients_tfl > focus_clients_total:
+            focus_clients_tfl = focus_clients_total
+        if focus_clients_total > 0 and client_scope == "focus":
+            focus_specific_signals += 1
+
+        add_client_mix = focus_type in {"lobbyist", "general"}
+        if add_client_mix and focus_clients_total > 0:
+            signals_used += 1
+            client_share_tfl = focus_clients_tfl / focus_clients_total
+            prefix = "Across the selected scope, " if client_scope == "scope" else ""
+            client_base_noun = "clients in the selected scope" if client_scope == "scope" else "associated clients"
+            if client_share_tfl >= 0.60:
+                parts.append(
+                    f"{prefix}taxpayer-funded entities represent {focus_clients_tfl:,} of {focus_clients_total:,} {client_base_noun} "
+                    f"({client_share_tfl:.0%}), indicating a strongly public-sector weighted client base."
+                )
+            elif client_share_tfl >= 0.30:
+                parts.append(
+                    f"{prefix}taxpayer-funded entities represent {focus_clients_tfl:,} of {focus_clients_total:,} {client_base_noun} "
+                    f"({client_share_tfl:.0%}), indicating mixed but meaningful institutional exposure."
+                )
+            elif client_share_tfl > 0:
+                parts.append(
+                    f"{prefix}taxpayer-funded clients are present ({focus_clients_tfl:,} of {focus_clients_total:,} {client_base_noun}) but remain a minority share."
+                )
+            else:
+                parts.append(f"{prefix}no taxpayer-funded clients are visible in the current client set.")
+
+        if focus_type == "client":
+            lobbyists_count = _metric_int("lobbyists")
+            if lobbyists_count > 0:
+                signals_used += 1
+                focus_specific_signals += 1
+                if lobbyists_count >= 10:
+                    parts.append(f"This client is connected to {lobbyists_count:,} lobbyists, indicating broad representation capacity.")
+                elif lobbyists_count >= 4:
+                    parts.append(f"This client is connected to {lobbyists_count:,} lobbyists, suggesting meaningful representation depth.")
+                else:
+                    parts.append(f"This client is connected to {lobbyists_count:,} lobbyists in the current scope.")
+            tfl_flag = _metric_value("taxpayer funded")
+            if tfl_flag:
+                signals_used += 1
+                focus_specific_signals += 1
+                normalized_flag = tfl_flag.strip().lower()
+                if normalized_flag in {"yes", "true", "1"}:
+                    parts.append("The client is classified as taxpayer-funded in the underlying records.")
+                elif normalized_flag in {"no", "false", "0"}:
+                    parts.append("The client is not classified as taxpayer-funded in the underlying records.")
+
+        if focus_type == "lobbyist":
+            lobby_total_clients = _metric_int("total clients")
+            lobby_tfl_clients = _metric_int("taxpayer-funded clients", "taxpayer funded clients")
+            if lobby_total_clients > 0:
+                signals_used += 1
+                focus_specific_signals += 1
+                if lobby_tfl_clients > lobby_total_clients:
+                    lobby_tfl_clients = lobby_total_clients
+                share = (lobby_tfl_clients / lobby_total_clients) if lobby_total_clients > 0 else 0.0
+                if share >= 0.60:
+                    parts.append(
+                        f"At the focus level, this lobbyist's client book is majority taxpayer-funded ({lobby_tfl_clients:,} of {lobby_total_clients:,})."
+                    )
+                elif share >= 0.30:
+                    parts.append(
+                        f"At the focus level, taxpayer-funded clients account for {lobby_tfl_clients:,} of {lobby_total_clients:,}, indicating a mixed portfolio."
+                    )
+                else:
+                    parts.append(
+                        f"At the focus level, taxpayer-funded clients account for {lobby_tfl_clients:,} of {lobby_total_clients:,}, with private clients dominant."
+                    )
+
+        if focus_type == "legislator":
+            bills_authored = _metric_int("bills authored")
+            bills_opposed_tfl = _metric_int("bills opposed by tfl lobbyists", "tfl lobbyists opposed")
+            if bills_authored > 0:
+                signals_used += 1
+                focus_specific_signals += 1
+                if bills_opposed_tfl > bills_authored:
+                    bills_opposed_tfl = bills_authored
+                if bills_opposed_tfl > 0:
+                    oppose_share = bills_opposed_tfl / bills_authored
+                    if oppose_share >= 0.50:
+                        parts.append(
+                            f"A substantial share of authored bills ({bills_opposed_tfl:,} of {bills_authored:,}) drew taxpayer-funded opposition."
+                        )
+                    elif oppose_share >= 0.25:
+                        parts.append(
+                            f"A meaningful share of authored bills ({bills_opposed_tfl:,} of {bills_authored:,}) drew taxpayer-funded opposition."
+                        )
+                    else:
+                        parts.append(
+                            f"Only a smaller share of authored bills ({bills_opposed_tfl:,} of {bills_authored:,}) drew taxpayer-funded opposition."
+                        )
+                else:
+                    parts.append(f"No authored bills are shown as opposed by taxpayer-funded lobbyists out of {bills_authored:,} authored bills.")
+
+        if focus_type == "bill":
+            witness_rows = _metric_int("witness rows")
+            tfl_witness = _metric_int("tfl lobbyists (any position)")
+            private_witness = _metric_int("private lobbyists (any position)")
+            if witness_rows > 0:
+                signals_used += 1
+                focus_specific_signals += 1
+                if witness_rows >= 50:
+                    parts.append(f"Witness-list volume is high for this bill ({witness_rows:,} rows), indicating elevated engagement intensity.")
+                elif witness_rows >= 20:
+                    parts.append(f"Witness-list volume is moderate for this bill ({witness_rows:,} rows).")
+                else:
+                    parts.append(f"Witness-list volume is limited for this bill ({witness_rows:,} rows).")
+            if (tfl_witness + private_witness) > 0:
+                signals_used += 1
+                focus_specific_signals += 1
+                total_w = tfl_witness + private_witness
+                tfl_share = tfl_witness / total_w if total_w > 0 else 0.0
+                if tfl_share >= 0.60:
+                    parts.append(
+                        f"Taxpayer-funded participation dominates witness representation ({tfl_witness:,} of {total_w:,} lobbyists recorded by funding class)."
+                    )
+                elif tfl_share >= 0.40:
+                    parts.append(
+                        f"Taxpayer-funded and private witness representation are comparatively balanced ({tfl_witness:,} vs {private_witness:,})."
+                    )
+                else:
+                    parts.append(
+                        f"Private witness representation exceeds taxpayer-funded participation ({private_witness:,} vs {tfl_witness:,})."
+                    )
+
+        focus_tfl_range_value = _metric_value("taxpayer-funded range", "taxpayer funded range")
+        focus_private_range_value = _metric_value("private range")
+        has_focus_comp_ranges = bool(focus_tfl_range_value or focus_private_range_value)
+        tfl_mid = _range_midpoint(focus_tfl_range_value)
+        pri_mid = _range_midpoint(focus_private_range_value)
+        if has_focus_comp_ranges:
+            focus_specific_signals += 1
+        if (tfl_mid + pri_mid) <= 0:
+            tfl_low = max(_safe_float(payload.get("tfl_low_value"), 0.0), 0.0)
+            tfl_high = max(_safe_float(payload.get("tfl_high_value"), 0.0), 0.0)
+            pri_low = max(_safe_float(payload.get("private_low_value"), 0.0), 0.0)
+            pri_high = max(_safe_float(payload.get("private_high_value"), 0.0), 0.0)
+            tfl_mid = (tfl_low + tfl_high) / 2.0 if (tfl_low > 0 or tfl_high > 0) else 0.0
+            pri_mid = (pri_low + pri_high) / 2.0 if (pri_low > 0 or pri_high > 0) else 0.0
+
+        funding_mid_total = tfl_mid + pri_mid
+        if funding_mid_total > 0:
+            signals_used += 1
+            funding_delta = tfl_mid - pri_mid
+            comp_scope = "within this focus" if has_focus_comp_ranges else "across the selected scope"
+            if abs(funding_delta) <= (0.10 * funding_mid_total):
+                parts.append(
+                    f"Midpoint compensation estimates indicate near parity between taxpayer-funded and private financing {comp_scope}."
+                )
+            elif funding_delta > 0:
+                parts.append(
+                    f"Midpoint compensation estimates indicate taxpayer-funded financing exceeds private financing {comp_scope}."
+                )
+            else:
+                parts.append(
+                    f"Midpoint compensation estimates indicate private financing exceeds taxpayer-funded financing {comp_scope}."
+                )
+
+        tfl_against = 0
+        tfl_for = 0
+        tfl_on = 0
+        witness_scope = "scope"
+        for bullet in _safe_list(focus_section_local.get("bullets")):
+            bullet_txt = _safe_str(bullet)
+            if "witness positions" not in bullet_txt.lower():
+                continue
+            parsed_against = _first_int_after_keyword(bullet_txt, "Against")
+            parsed_for = _first_int_after_keyword(bullet_txt, "For")
+            parsed_on = _first_int_after_keyword(bullet_txt, "On")
+            if parsed_against is not None:
+                tfl_against = parsed_against
+            if parsed_for is not None:
+                tfl_for = parsed_for
+            if parsed_on is not None:
+                tfl_on = parsed_on
+            witness_scope = "focus"
+            focus_specific_signals += 1
+            break
+        if (tfl_against + tfl_for + tfl_on) <= 0:
+            tfl_bucket = _safe_dict(_safe_dict(payload.get("witness_counts", {})).get("tfl", {}))
+            tfl_against = int(_safe_float(tfl_bucket.get("Against"), 0.0))
+            tfl_for = int(_safe_float(tfl_bucket.get("For"), 0.0))
+            tfl_on = int(_safe_float(tfl_bucket.get("On"), 0.0))
+
+        witness_total = tfl_against + tfl_for + tfl_on
+        if witness_total > 0:
+            signals_used += 1
+            witness_prefix = "Across the selected scope, " if witness_scope == "scope" else "At the focus level, "
+            if tfl_against > max(tfl_for, tfl_on):
+                parts.append(
+                    f"{witness_prefix}witness posture skews toward opposition ({tfl_against:,} Against vs {tfl_for:,} For)."
+                )
+            elif tfl_for > max(tfl_against, tfl_on):
+                parts.append(
+                    f"{witness_prefix}witness posture skews toward support ({tfl_for:,} For vs {tfl_against:,} Against)."
+                )
+            else:
+                parts.append(
+                    f"{witness_prefix}witness posture is mixed ({tfl_against:,} Against, {tfl_for:,} For, {tfl_on:,} On)."
+                )
+
+        bill_signal_count = _metric_int("bills opposed by tfl lobbyists", "tfl lobbyists opposed")
+        if bill_signal_count > 0 and focus_type != "legislator":
+            signals_used += 1
+            focus_specific_signals += 1
+            if bill_signal_count >= 10:
+                parts.append(
+                    "Focus-level opposition intensity is high, with double-digit taxpayer-funded opposition tied to at least one measure."
+                )
+            elif bill_signal_count >= 5:
+                parts.append("Focus-level opposition intensity is moderate across selected measures.")
+            else:
+                parts.append("Focus-level opposition is present but not concentrated at high volume.")
+        elif bill_signal_count <= 0:
+            top_bill_counts = [
+                int(_safe_float(_safe_dict(bill).get("tfl"), 0.0))
+                for bill in _safe_list(payload.get("top_bills"))
+                if int(_safe_float(_safe_dict(bill).get("tfl"), 0.0)) > 0
+            ]
+            total_top_bill = sum(top_bill_counts)
+            top_bill_opp = max(top_bill_counts) if top_bill_counts else 0
+            top_bill_share = (top_bill_opp / total_top_bill) if total_top_bill > 0 else 0.0
+            if top_bill_opp > 0:
+                signals_used += 1
+                if top_bill_opp >= 10 or top_bill_share >= 0.45:
+                    parts.append("Scope-level bill data indicates concentrated opposition around a narrow set of proposals.")
+                elif top_bill_opp >= 5 or top_bill_share >= 0.30:
+                    parts.append("Scope-level bill data indicates moderate concentration in opposition activity.")
+                else:
+                    parts.append("Scope-level bill data indicates opposition activity is relatively diffuse.")
+
+        if focus_specific_signals >= 3:
+            parts.append(
+                "Taken together, focus-specific signals indicate a clear and internally consistent advocacy profile within the broader taxpayer-funded lobbying landscape."
+            )
+        elif signals_used >= 3:
+            parts.append(
+                "Taken together, the available indicators provide a coherent directional profile for this focus, though portions of the profile rely on scope-level context."
+            )
+        else:
+            parts.append(
+                "Available focus-specific indicators are limited, but the observable record still places this focus within the broader taxpayer-funded lobbying landscape."
+            )
+
+        clean_parts = [_sentence_case(p.rstrip(".")) + "." for p in parts if _safe_str(p).strip()]
+        return " ".join(clean_parts)
+
+    if not _safe_str(payload.get("focus_snapshot_paragraph")).strip():
+        payload["focus_snapshot_paragraph"] = _derive_focus_snapshot_paragraph()
+
+    def _derive_section_conditionals() -> dict[str, str]:
+        out = {
+            "scale": "",
+            "activity": "",
+            "bills": "",
+            "subjects": "",
+            "conclusion": "",
+        }
+
+        total_clients = int(_safe_float(payload.get("unique_clients_total"), 0.0))
+        tfl_clients = int(_safe_float(payload.get("unique_clients_tfl"), 0.0))
+        if total_clients > 0:
+            tfl_client_share = (tfl_clients / total_clients) * 100.0
+            if tfl_client_share >= 50:
+                out["scale"] = (
+                    "Taxpayer-funded entities make up a majority of unique clients in this scope, indicating broad institutional participation in lobbying activity."
+                )
+            elif tfl_client_share >= 30:
+                out["scale"] = (
+                    "Taxpayer-funded entities represent a substantial minority of unique clients in this scope, indicating durable institutional presence in lobbying activity."
+                )
+            elif tfl_client_share > 0:
+                out["scale"] = (
+                    "Taxpayer-funded entities represent a smaller but observable share of unique clients in this scope."
+                )
+
+        tfl_counts = _safe_dict(payload.get("witness_counts", {})).get("tfl", {})
+        pri_counts = _safe_dict(payload.get("witness_counts", {})).get("private", {})
+        tfl_against = int(_safe_float(_safe_dict(tfl_counts).get("Against"), 0.0))
+        tfl_for = int(_safe_float(_safe_dict(tfl_counts).get("For"), 0.0))
+        pri_against = int(_safe_float(_safe_dict(pri_counts).get("Against"), 0.0))
+        pri_for = int(_safe_float(_safe_dict(pri_counts).get("For"), 0.0))
+        if (tfl_against + tfl_for + pri_against + pri_for) > 0:
+            if tfl_against > tfl_for and pri_against > pri_for:
+                out["activity"] = (
+                    "Both taxpayer-funded and private interests show a net-opposition profile in witness testimony for this scope."
+                )
+            elif tfl_against > tfl_for and not (pri_against > pri_for):
+                out["activity"] = (
+                    "Taxpayer-funded witness activity leans more opposition-oriented than private witness activity in this scope."
+                )
+            elif tfl_for > tfl_against:
+                out["activity"] = (
+                    "Taxpayer-funded witness activity includes a stronger support component than opposition in this scope."
+                )
+
+        top_bills = _safe_list(payload.get("top_bills"))
+        if top_bills:
+            bill_counts = [int(_safe_float(_safe_dict(row).get("tfl"), 0.0)) for row in top_bills]
+            total_bill_opp = sum(bill_counts)
+            top_bill_opp = max(bill_counts) if bill_counts else 0
+            if total_bill_opp > 0 and top_bill_opp > 0:
+                concentration = (top_bill_opp / total_bill_opp) * 100.0
+                if concentration >= 40:
+                    out["bills"] = (
+                        "Opposition is relatively concentrated in the top-ranked bill, suggesting focused taxpayer-funded advocacy around a narrow set of proposals."
+                    )
+                else:
+                    out["bills"] = (
+                        "Opposition is distributed across multiple high-priority bills rather than concentrated in a single proposal."
+                    )
+
+        top_subjects = _safe_list(payload.get("top_subjects"))
+        if top_subjects:
+            subject_counts = [
+                int(_safe_float(_safe_dict(row).get("Oppositions"), 0.0))
+                for row in top_subjects
+            ]
+            total_subject_opp = sum(subject_counts)
+            top_subject_opp = max(subject_counts) if subject_counts else 0
+            if total_subject_opp > 0 and top_subject_opp > 0:
+                concentration = (top_subject_opp / total_subject_opp) * 100.0
+                if concentration >= 45:
+                    out["subjects"] = (
+                        "Policy-area opposition is concentrated in a leading subject, indicating a tighter taxpayer-funded advocacy focus."
+                    )
+                else:
+                    out["subjects"] = (
+                        "Policy-area opposition is spread across several subjects, indicating broader taxpayer-funded issue engagement."
+                    )
+
+        tfl_mid_share = _safe_float(payload.get("tfl_mid_share_pct_value"), 0.0)
+        if tfl_mid_share >= 50:
+            out["conclusion"] = (
+                "At midpoint estimates, taxpayer-funded activity constitutes a majority share of reported lobbying compensation in this scope."
+            )
+        elif tfl_mid_share >= 35:
+            out["conclusion"] = (
+                "At midpoint estimates, taxpayer-funded activity constitutes a substantial share of reported lobbying compensation in this scope."
+            )
+        elif tfl_mid_share > 0:
+            out["conclusion"] = (
+                "At midpoint estimates, taxpayer-funded activity remains an identifiable share of reported lobbying compensation in this scope."
+            )
+        return out
+
+    section_conditionals = _derive_section_conditionals()
+
     class ReportPDF(FPDF):
         def __init__(self, header_title: str, header_subtitle: str, generated_date: str):
             super().__init__(orientation="P", unit="mm", format="A4")
@@ -19648,56 +21048,79 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         def header(self):
             if self.page_no() == 1:
                 return
-            self.set_text_color(60, 60, 60)
-            self.set_font("Helvetica", "B", 9)
-            self.cell(0, 5, _pdf_safe_text(self.header_title), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-            self.set_font("Helvetica", "", 8)
+            self.set_y(7.2)
+            self.set_text_color(*PDF_COLOR_NAVY_DARK)
+            self.set_font(PDF_FONT_SANS, "B", 7.6)
+            width = self.w - self.l_margin - self.r_margin
+            left_w = width * 0.78
+            right_w = width - left_w
+            self.cell(left_w, 4.3, _pdf_safe_text(self.header_title), new_x=XPos.RIGHT, new_y=YPos.TOP, align="L")
+            self.set_font(PDF_FONT_SANS, "", 6.8)
+            self.set_text_color(*PDF_COLOR_MUTED)
+            self.cell(right_w, 4.3, _pdf_safe_text("Policy Brief"), new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="R")
+            self.set_x(self.l_margin)
             subtitle = str(self.header_subtitle or "")
-            if len(subtitle) > 110:
-                subtitle = subtitle[:107].rstrip() + "..."
-            self.cell(0, 4, _pdf_safe_text(subtitle), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-            self.set_draw_color(200, 200, 200)
-            self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
-            self.ln(3)
-            self.set_text_color(0, 0, 0)
+            if len(subtitle) > 90:
+                subtitle = subtitle[:87].rstrip() + "..."
+            self.set_font(PDF_FONT_SANS, "", 6.5)
+            self.set_text_color(*PDF_COLOR_MUTED)
+            self.cell(0, 3.2, _pdf_safe_text(subtitle), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            self.set_draw_color(*PDF_COLOR_BORDER)
+            self.line(self.l_margin, self.get_y() + 0.4, self.w - self.r_margin, self.get_y() + 0.4)
+            self.ln(1.8)
+            self.set_text_color(*PDF_COLOR_TEXT)
 
         def footer(self):
             self.set_y(-12)
-            self.set_text_color(120, 120, 120)
-            self.set_font("Helvetica", "", 8)
+            self.set_text_color(*PDF_COLOR_MUTED)
+            self.set_font(PDF_FONT_SANS, "", PDF_FOOTNOTE_SIZE)
             w = self.w - self.l_margin - self.r_margin
-            left_w = w * 0.6
+            self.set_draw_color(*PDF_COLOR_BORDER)
+            self.line(self.l_margin, self.get_y() - 1.2, self.w - self.r_margin, self.get_y() - 1.2)
+            left_w = w * 0.68
             right_w = w - left_w
             self.cell(left_w, 4, _pdf_safe_text(f"Generated {self.generated_date}"), new_x=XPos.RIGHT, new_y=YPos.TOP, align="L")
+            self.set_font(PDF_FONT_SANS, "B", PDF_FOOTNOTE_SIZE)
+            self.set_text_color(*PDF_COLOR_NAVY)
             self.cell(right_w, 4, _pdf_safe_text(f"Page {self.page_no()}"), new_x=XPos.RIGHT, new_y=YPos.TOP, align="R")
-            self.set_text_color(0, 0, 0)
+            self.set_text_color(*PDF_COLOR_TEXT)
 
     header_title = payload.get("report_title", "Lobby Look-Up Report")
     scope_sub = payload.get("scope_session_label") or payload.get("scope_label", "")
     header_subtitle = f"{scope_sub} | {payload['focus_label']}".strip(" |")
     pdf = ReportPDF(header_title, header_subtitle, payload["generated_date"])
-    pdf.set_margins(12, 12, 12)
+    pdf.set_margins(12, 20, 12)
     pdf.set_auto_page_break(auto=True, margin=12)
     pdf.set_title(_pdf_safe_text(header_title))
     pdf.set_author(_pdf_safe_text("Lobby Look-Up"))
     pdf.add_page()
+    _pdf_add_cover_page(pdf, payload)
+    _pdf_add_contents_page(
+        pdf,
+        payload,
+        include_focus_snapshot=bool(payload.get("focus_section") and isinstance(payload.get("focus_section"), dict)),
+    )
+    pdf.add_page()
+    setattr(pdf, "_figure_counter", 0)
 
-    pdf.set_fill_color(16, 35, 58)
-    pdf.rect(pdf.l_margin, pdf.get_y(), pdf.w - pdf.l_margin - pdf.r_margin, 2, "F")
-    pdf.ln(4)
+    y0 = pdf.get_y()
+    pdf.set_fill_color(*PDF_COLOR_NAVY_DARK)
+    pdf.rect(pdf.l_margin, y0, pdf.w - pdf.l_margin - pdf.r_margin, 1.8, "F")
+    pdf.ln(2.6)
 
-    _pdf_add_heading(pdf, "TAXPAYER-FUNDED LOBBYING IN TEXAS", size=16)
+    _pdf_add_heading(pdf, "TAXPAYER-FUNDED LOBBYING IN TEXAS", size=17)
     _pdf_add_subheading(
         pdf,
         f"Analysis of the {payload['session_label']} Legislative Session",
         size=12,
     )
-    pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 5, _pdf_safe_text("Prepared by Texas Taxpayer Lobbying Transparency Center"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.cell(0, 5, _pdf_safe_text(f"Generated: {payload['generated_date']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.cell(0, 5, _pdf_safe_text(f"Scope: {payload['scope_session_label']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.cell(0, 5, _pdf_safe_text(f"Focus: {payload['focus_label']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(2)
+    pdf.set_font(PDF_FONT_SANS, "", PDF_BODY_SIZE - 0.3)
+    pdf.set_text_color(*PDF_COLOR_TEXT)
+    pdf.cell(0, 4.8, _pdf_safe_text("Prepared by Texas Taxpayer Lobbying Transparency Center"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 4.8, _pdf_safe_text(f"Generated: {payload['generated_date']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 4.8, _pdf_safe_text(f"Scope: {payload['scope_session_label']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 4.8, _pdf_safe_text(f"Focus: {payload['focus_label']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(1.2)
     _pdf_add_rule(pdf)
 
     _pdf_add_section_title(pdf, "Executive Summary")
@@ -19722,6 +21145,13 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         "public services, not to finance political advocacy."
     )
     _pdf_add_paragraph(pdf, exec_summary_2, size=11)
+    exec_conditional = [
+        str(s).strip() for s in payload.get("conditional_exec_sentences", []) if str(s).strip()
+    ]
+    if exec_conditional:
+        _pdf_add_callout_box(pdf, "Data-Driven Context", exec_conditional[0])
+        if len(exec_conditional) > 1:
+            _pdf_add_bullets(pdf, exec_conditional[1:], size=9.8, line_h=4.8)
 
     _pdf_add_subheading(pdf, "Key Metrics", size=11)
     metrics = [
@@ -19742,6 +21172,15 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
     ]
     _pdf_add_subheading(pdf, "Report Highlights", size=10)
     _pdf_add_bullets(pdf, highlights, size=10)
+    _pdf_add_callout_box(
+        pdf,
+        "Key Claim: Taxpayer-Funded Share Range",
+        (
+            f"Even under conservative assumptions, taxpayer-funded lobbying represented "
+            f"{payload['tfl_share_low_pct']}% to {payload['tfl_share_high_pct']}% of all reported "
+            "lobbying compensation in this scope."
+        ),
+    )
 
     focus_section = payload.get("focus_section")
     if focus_section and isinstance(focus_section, dict):
@@ -19757,12 +21196,26 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
                 _pdf_add_subheading(pdf, title, size=11)
             if summary:
                 _pdf_add_paragraph(pdf, summary, size=11)
-            if metrics:
-                _pdf_add_subheading(pdf, "Key Focus Metrics", size=10)
-                _pdf_add_kpi_table(pdf, metrics, size=10)
+            focus_dynamic_sentence = str(payload.get("conditional_focus_sentence", "")).strip()
+            if focus_dynamic_sentence:
+                _pdf_add_callout_box(
+                    pdf,
+                    "Focus Lens",
+                    focus_dynamic_sentence,
+                    accent=(34, 96, 74),
+                )
+            focus_snapshot_paragraph = _safe_str(payload.get("focus_snapshot_paragraph", "")).strip()
+            if focus_snapshot_paragraph:
+                _pdf_add_paragraph(pdf, focus_snapshot_paragraph, size=10.8, line_h=5.2)
             if bullets:
                 _pdf_add_subheading(pdf, "Focus Highlights", size=10)
-                _pdf_add_bullets(pdf, bullets, size=10)
+                _pdf_add_paragraph(
+                    pdf,
+                    str(payload.get("focus_highlights_intro", "Most relevant findings for the selected focus.")),
+                    size=9.8,
+                    line_h=5.0,
+                )
+                _pdf_add_focus_highlights(pdf, bullets, size=10)
             if charts:
                 _pdf_add_subheading(pdf, "Focus Charts", size=10)
                 for chart in charts:
@@ -19772,7 +21225,7 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
                         _pdf_add_chart(pdf, fig, caption)
             _pdf_add_rule(pdf)
 
-    _pdf_add_section_title(pdf, f"I. THE SCALE OF LOBBYING IN {payload['session_label']}")
+    _pdf_add_numbered_section_title(pdf, 1, f"THE SCALE OF LOBBYING IN {payload['session_label']}")
     scale_p1 = (
         "Lobbying in Texas is a major industry, and the compensation ranges reported to the state reflect the scale "
         "at which public policy is contested. For the "
@@ -19795,6 +21248,8 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         "and resisting reforms that would otherwise be evaluated on their merits."
     )
     _pdf_add_paragraph(pdf, scale_p2, size=11)
+    if _safe_str(section_conditionals.get("scale")).strip():
+        _pdf_add_paragraph(pdf, section_conditionals["scale"], size=10.5)
 
     comp_df = pd.DataFrame(
         [
@@ -19846,7 +21301,7 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         )
         _pdf_add_chart(pdf, fig_share, "Chart 2. Share of Total Lobbying - Taxpayer vs Private", width_px=700, height_px=420)
 
-    _pdf_add_section_title(pdf, "II. WHAT TAXPAYER-FUNDED LOBBYING IS - AND WHY IT MATTERS")
+    _pdf_add_numbered_section_title(pdf, 2, "WHAT TAXPAYER-FUNDED LOBBYING IS - AND WHY IT MATTERS")
     def_p1 = (
         "Taxpayer-funded lobbying occurs when political subdivisions use public funds to employ registered lobbyists, "
         "contract with lobbying firms, or pay dues and assessments to associations that, in turn, employ lobbyists. "
@@ -19889,7 +21344,7 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         )
         _pdf_add_chart(pdf, fig_entities, "Chart 3. Taxpayer-Funded Clients by Entity Type")
 
-    _pdf_add_section_title(pdf, f"III. LEGISLATIVE ACTIVITY PATTERNS IN {payload['session_label']}")
+    _pdf_add_numbered_section_title(pdf, 3, f"LEGISLATIVE ACTIVITY PATTERNS IN {payload['session_label']}")
     act_p1 = (
         "Compensation totals explain scale, but legislative activity signals show how that scale is used. "
         f"Across the {payload['session_label']} session, taxpayer-funded lobbyists appeared repeatedly in committee "
@@ -19904,6 +21359,8 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         "incentives embedded in taxpayer-funded lobbying."
     )
     _pdf_add_paragraph(pdf, act_p2, size=11)
+    if _safe_str(section_conditionals.get("activity")).strip():
+        _pdf_add_paragraph(pdf, section_conditionals["activity"], size=10.5)
 
     w_counts = payload.get("witness_counts", {})
     if w_counts:
@@ -19938,7 +21395,7 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
             )
             _pdf_add_chart(pdf, fig_wit, "Chart 4. Witness Positions by Funding Type")
 
-    _pdf_add_section_title(pdf, "IV. THE BILLS MOST OPPOSED BY TAXPAYER-FUNDED LOBBYISTS")
+    _pdf_add_numbered_section_title(pdf, 4, "THE BILLS MOST OPPOSED BY TAXPAYER-FUNDED LOBBYISTS")
     if payload.get("has_top_bills"):
         bills_p = (
             "The most direct way to see taxpayer-funded lobbying in action is to identify the bills that generated "
@@ -19946,6 +21403,8 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
             "Against filings by taxpayer-funded lobbyists."
         )
         _pdf_add_paragraph(pdf, bills_p, size=11)
+        if _safe_str(section_conditionals.get("bills")).strip():
+            _pdf_add_paragraph(pdf, section_conditionals["bills"], size=10.5)
         top_bills = payload.get("top_bills", [])
         if top_bills:
             bill_df = pd.DataFrame(
@@ -19971,7 +21430,7 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
     else:
         _pdf_add_paragraph(pdf, "No bill-level opposition data was available for the selected scope/session.", size=11)
 
-    _pdf_add_section_title(pdf, "V. THE POLICY AREAS MOST OPPOSED BY TAXPAYER-FUNDED LOBBYISTS")
+    _pdf_add_numbered_section_title(pdf, 5, "THE POLICY AREAS MOST OPPOSED BY TAXPAYER-FUNDED LOBBYISTS")
     if payload.get("has_top_subjects"):
         subject_p = (
             "Bills are discrete, but policy areas reveal patterns. When opposition is aggregated by subject matter, "
@@ -19979,6 +21438,8 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
             "local fiscal and regulatory authority."
         )
         _pdf_add_paragraph(pdf, subject_p, size=11)
+        if _safe_str(section_conditionals.get("subjects")).strip():
+            _pdf_add_paragraph(pdf, section_conditionals["subjects"], size=10.5)
         top_subjects = payload.get("top_subjects", [])
         if top_subjects:
             subj_df = pd.DataFrame(
@@ -20004,7 +21465,7 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
     else:
         _pdf_add_paragraph(pdf, "No subject-level opposition data was available for the selected scope/session.", size=11)
 
-    _pdf_add_section_title(pdf, "VI. STRUCTURAL INCENTIVES AND THE COMPULSION PROBLEM")
+    _pdf_add_numbered_section_title(pdf, 6, "STRUCTURAL INCENTIVES AND THE COMPULSION PROBLEM")
     _pdf_add_paragraph(
         pdf,
         "Taxpayer-funded lobbying persists because it is rational for institutions. Political subdivisions face "
@@ -20025,7 +21486,7 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         size=11,
     )
 
-    _pdf_add_section_title(pdf, "VII. LEGAL PARITY AND STATUTORY INCONSISTENCY")
+    _pdf_add_numbered_section_title(pdf, 7, "LEGAL PARITY AND STATUTORY INCONSISTENCY")
     _pdf_add_paragraph(
         pdf,
         "Texas has already recognized that using public money to hire lobbyists raises concerns. State agencies face "
@@ -20044,7 +21505,7 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         size=11,
     )
 
-    _pdf_add_section_title(pdf, "VIII. POLICY SOLUTION: A COMPREHENSIVE BAN ON TAXPAYER-FUNDED LOBBYING")
+    _pdf_add_numbered_section_title(pdf, 8, "POLICY SOLUTION: A COMPREHENSIVE BAN ON TAXPAYER-FUNDED LOBBYING")
     _pdf_add_paragraph(
         pdf,
         "The policy principle is simple: public money should not be used to lobby government. A workable statutory "
@@ -20052,6 +21513,11 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         "political subdivisions and close indirect funding pathways that allow local governments to outsource lobbying "
         "through membership associations.",
         size=11,
+    )
+    _pdf_add_callout_box(
+        pdf,
+        "Key Claim: Recommended Statutory Reform",
+        f"Recommended statutory reform: {payload['recommended_fix_statute']}",
     )
     _pdf_add_paragraph(
         pdf,
@@ -20071,7 +21537,7 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         size=11,
     )
 
-    _pdf_add_section_title(pdf, "IX. DATA SOURCES AND METHODOLOGY")
+    _pdf_add_numbered_section_title(pdf, 9, "DATA SOURCES AND METHODOLOGY")
     _pdf_add_paragraph(pdf, "This report is based on public information drawn from:", size=11)
     bullets = [
         b.strip().lstrip("- ").strip()
@@ -20089,7 +21555,7 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         size=11,
     )
 
-    _pdf_add_section_title(pdf, "CONCLUSION")
+    _pdf_add_numbered_section_title(pdf, 10, "CONCLUSION")
     _pdf_add_paragraph(
         pdf,
         f"During the {payload['session_label']} Legislative Session, taxpayers indirectly financed lobbying activity "
@@ -20104,9 +21570,12 @@ def _build_report_pdf_bytes(payload: dict) -> bytes:
         "funding pathways. Public money should be used to provide public services -- not to finance political advocacy.",
         size=11,
     )
+    if _safe_str(section_conditionals.get("conclusion")).strip():
+        _pdf_add_paragraph(pdf, section_conditionals["conclusion"], size=10.5)
     pdf.ln(2)
-    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_font("Helvetica", "I", PDF_CAPTION_SIZE)
     pdf.cell(0, 5, _pdf_safe_text("Prepared by Texas Taxpayer Lobbying Transparency Center"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_font("Helvetica", "I", PDF_FOOTNOTE_SIZE)
     pdf.cell(0, 5, _pdf_safe_text(payload["disclaimer_note"]), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     output = pdf.output()
