@@ -1,4 +1,4 @@
-﻿import gc
+import gc
 import os
 import re
 import difflib
@@ -3178,6 +3178,17 @@ def _page_client_lookup():
     if "client_bill_search_seed" not in st.session_state:
         st.session_state.client_bill_search_seed = ""
 
+    if "client_query_input" not in st.session_state:
+        st.session_state.client_query_input = st.session_state.client_query
+    if "client_bill_search_input" not in st.session_state:
+        st.session_state.client_bill_search_input = st.session_state.client_bill_search
+    if "client_activity_search_input" not in st.session_state:
+        st.session_state.client_activity_search_input = st.session_state.client_activity_search
+    if "client_disclosure_search_input" not in st.session_state:
+        st.session_state.client_disclosure_search_input = st.session_state.client_disclosure_search
+    if "client_filter_input" not in st.session_state:
+        st.session_state.client_filter_input = st.session_state.client_filter
+
     pending_client_bill_search = str(st.session_state.get("client_bill_search_seed", "")).strip()
     if pending_client_bill_search:
         st.session_state.client_bill_search = pending_client_bill_search
@@ -3217,7 +3228,6 @@ def _page_client_lookup():
     with top1:
         st.session_state.client_query = st.text_input(
             "Search client",
-            value=st.session_state.client_query,
             placeholder="e.g., City of Austin",
             key="client_query_input",
             help="Search by client name. Suggestions appear when close matches exist.",
@@ -3278,6 +3288,25 @@ def _page_client_lookup():
         else:
             st.write("-")
 
+    def _reuse_recent_client_search(value: str) -> None:
+        rec = str(value).strip()
+        if not rec:
+            return
+        st.session_state.client_query = rec
+        st.session_state.client_query_input = rec
+        st.session_state.client_name = ""
+        st.session_state.client_suggestions_select = "Select a client..."
+        st.session_state.client_bill_search = ""
+        st.session_state.client_bill_search_input = ""
+        st.session_state.client_bill_search_seed = ""
+        st.session_state.client_activity_search = ""
+        st.session_state.client_activity_search_input = ""
+        st.session_state.client_disclosure_search = ""
+        st.session_state.client_disclosure_search_input = ""
+        st.session_state.client_policy_focus = {}
+        st.session_state.client_filter = ""
+        st.session_state.client_filter_input = ""
+
     recent = st.session_state.get("recent_client_searches", [])
     if recent:
         st.markdown('<div class="section-sub">Recent lookups</div>', unsafe_allow_html=True)
@@ -3285,20 +3314,14 @@ def _page_client_lookup():
         for idx, rec in enumerate(recent[:8]):
             col = recent_cols[idx % len(recent_cols)]
             label = rec if len(rec) <= 28 else rec[:25] + "..."
-            if col.button(
+            col.button(
                 f"Reuse {label}",
                 key=f"recent_client_lookup_{idx}",
                 help="Reuse a recent client search",
                 width="stretch",
-            ):
-                st.session_state.client_query = rec
-                st.session_state.client_query_input = rec
-                st.session_state.client_name = ""
-                st.session_state.client_bill_search = ""
-                st.session_state.client_activity_search = ""
-                st.session_state.client_disclosure_search = ""
-                st.session_state.client_policy_focus = {}
-                st.session_state.client_filter = ""
+                on_click=_reuse_recent_client_search,
+                args=(rec,),
+            )
 
     tfl_session_val = _tfl_session_for_filter(st.session_state.client_session, tfl_sessions)
 
@@ -3318,12 +3341,13 @@ def _page_client_lookup():
         )
         st.caption(f"Selected client: {st.session_state.client_name or '-'}")
     with f2:
-        if st.button(
+        st.button(
             "Clear filters",
             width="stretch",
             help="Reset client search and primary filters to defaults.",
-        ):
-            reset_client_filters(default_session)
+            on_click=reset_client_filters,
+            args=(default_session,),
+        )
     st.markdown(
         '<div class="app-note"><strong>Interpretation:</strong> Client totals reflect reported low-high compensation ranges, not audited exact spend. Keep session and scope aligned when comparing entities.</div>',
         unsafe_allow_html=True,
@@ -3654,7 +3678,6 @@ def _page_client_lookup():
 
             st.session_state.client_filter = st.text_input(
                 "Filter client (contains)",
-                value=st.session_state.client_filter,
                 placeholder="e.g., Austin",
                 key="client_filter_input",
                 help="Filter the All Clients table by a name substring.",
@@ -4144,7 +4167,6 @@ def _page_client_lookup():
         else:
             st.session_state.client_bill_search = st.text_input(
                 "Search bills (Bill / Author / Caption / Organization)",
-                value=st.session_state.client_bill_search,
                 placeholder="e.g., HB 4 or housing",
                 key="client_bill_search_input",
                 help="Filter bills by bill number, author, caption, organization, or lobbyist.",
@@ -4561,7 +4583,6 @@ def _page_client_lookup():
 
             st.session_state.client_activity_search = st.text_input(
                 "Search activities (lobbyist, filer, member, description)",
-                value=st.session_state.client_activity_search,
                 key="client_activity_search_input",
                 help="Search activity rows by lobbyist, filer, member, or description.",
             )
@@ -4625,7 +4646,6 @@ def _page_client_lookup():
 
             st.session_state.client_disclosure_search = st.text_input(
                 "Search disclosures (lobbyist, filer, description, entity)",
-                value=st.session_state.client_disclosure_search,
                 key="client_disclosure_search_input",
                 help="Search disclosure rows by lobbyist, filer, description, or entity.",
             )
@@ -7235,6 +7255,17 @@ def _page_member_lookup():
     if "recent_member_searches" not in st.session_state:
         st.session_state.recent_member_searches = []
 
+    if "member_query_input" not in st.session_state:
+        st.session_state.member_query_input = st.session_state.member_query
+    if "member_bill_search_input" not in st.session_state:
+        st.session_state.member_bill_search_input = st.session_state.member_bill_search
+    if "member_witness_search_input" not in st.session_state:
+        st.session_state.member_witness_search_input = st.session_state.member_witness_search
+    if "member_activity_search_input" not in st.session_state:
+        st.session_state.member_activity_search_input = st.session_state.member_activity_search
+    if "member_filter_input" not in st.session_state:
+        st.session_state.member_filter_input = st.session_state.member_filter
+
     st.sidebar.header("Filters")
 
     sessions = sorted(
@@ -7261,7 +7292,6 @@ def _page_member_lookup():
     with top1:
         st.session_state.member_query = st.text_input(
             "Search legislator",
-            value=st.session_state.member_query,
             placeholder="e.g., Bell, Keith",
             key="member_query_input",
             help="Search by legislator name. Suggestions appear when close matches exist.",
@@ -7323,6 +7353,23 @@ def _page_member_lookup():
         else:
             st.write("-")
 
+    def _reuse_recent_member_search(value: str) -> None:
+        rec = str(value).strip()
+        if not rec:
+            return
+        st.session_state.member_query = rec
+        st.session_state.member_query_input = rec
+        st.session_state.member_name = ""
+        st.session_state.member_suggestions_select = "Select a legislator..."
+        st.session_state.member_bill_search = ""
+        st.session_state.member_bill_search_input = ""
+        st.session_state.member_witness_search = ""
+        st.session_state.member_witness_search_input = ""
+        st.session_state.member_activity_search = ""
+        st.session_state.member_activity_search_input = ""
+        st.session_state.member_filter = ""
+        st.session_state.member_filter_input = ""
+
     recent = st.session_state.get("recent_member_searches", [])
     if recent:
         st.markdown('<div class="section-sub">Recent lookups</div>', unsafe_allow_html=True)
@@ -7330,19 +7377,14 @@ def _page_member_lookup():
         for idx, rec in enumerate(recent[:8]):
             col = recent_cols[idx % len(recent_cols)]
             label = rec if len(rec) <= 28 else rec[:25] + "..."
-            if col.button(
+            col.button(
                 f"Reuse {label}",
                 key=f"recent_member_lookup_{idx}",
                 help="Reuse a recent legislator search",
                 width="stretch",
-            ):
-                st.session_state.member_query = rec
-                st.session_state.member_query_input = rec
-                st.session_state.member_name = ""
-                st.session_state.member_bill_search = ""
-                st.session_state.member_witness_search = ""
-                st.session_state.member_activity_search = ""
-                st.session_state.member_filter = ""
+                on_click=_reuse_recent_member_search,
+                args=(rec,),
+            )
 
     tfl_session_val = _tfl_session_for_filter(st.session_state.member_session, tfl_sessions)
 
@@ -7359,12 +7401,13 @@ def _page_member_lookup():
         )
         st.caption(f"Selected member: {st.session_state.member_name or '-'}")
     with f2:
-        if st.button(
+        st.button(
             "Clear filters",
             width="stretch",
             help="Reset legislator search and primary filters to defaults.",
-        ):
-            reset_member_filters(default_session)
+            on_click=reset_member_filters,
+            args=(default_session,),
+        )
     st.markdown(
         '<div class="app-note"><strong>Interpretation:</strong> Bills, witness rows, and staff records are linked for context. Correlation in these records does not establish motive or direction.</div>',
         unsafe_allow_html=True,
@@ -7610,7 +7653,6 @@ def _page_member_lookup():
 
             st.session_state.member_filter = st.text_input(
                 "Filter legislator (contains)",
-                value=st.session_state.member_filter,
                 placeholder="e.g., Johnson",
                 key="member_filter_input",
                 help="Filter the All Legislators table by a name substring.",
@@ -8015,7 +8057,6 @@ def _page_member_lookup():
             else:
                 st.session_state.member_bill_search = st.text_input(
                     "Search bills (Bill / Caption / Status)",
-                    value=st.session_state.member_bill_search,
                     placeholder="e.g., HB 1 or education",
                     key="member_bill_search_input",
                     help="Filter authored bills by bill number, caption, or status.",
@@ -8094,7 +8135,6 @@ def _page_member_lookup():
         else:
             st.session_state.member_witness_search = st.text_input(
                 "Search witness list (Bill / Lobbyist / Organization)",
-                value=st.session_state.member_witness_search,
                 key="member_witness_search_input",
                 help="Filter witness list rows by bill, lobbyist, organization, or witness name.",
             )
@@ -8306,7 +8346,6 @@ def _page_member_lookup():
 
             st.session_state.member_activity_search = st.text_input(
                 "Search activities (lobbyist, description, filer)",
-                value=st.session_state.member_activity_search,
                 key="member_activity_search_input",
                 help="Search activity rows by lobbyist, description, or filer.",
             )
@@ -9109,7 +9148,7 @@ def _page_map_address_full_pass():
         "map_distance_cap_miles": 160,
         "map_subdivision_types_filter": [],
         "map_min_match_count": 1,
-        "map_subdivision_map_cap": 700,
+        "map_subdivision_map_cap": 550,
         "map_subdivision_name_filter": "",
         "map_subdivision_sort_v4": "Highest Signal",
         "map_subdivision_pick_v4": "",
@@ -9128,6 +9167,7 @@ def _page_map_address_full_pass():
         "map_overlap_focus_selected_subdivision": False,
         "map_overlap_focus_selected_clients": False,
         "map_overlap_sort_v4": "Signal Score",
+        "map_forensics_show_charts": False,
         "map_watchlist": [],
         "map_batch_input_v4": "",
         "map_batch_max_v4": 8,
@@ -9307,23 +9347,62 @@ def _page_map_address_full_pass():
     session_for_filter = _tfl_session_for_filter(
         st.session_state.map_session, tfl_sessions,
     )
-    totals = _map_scoped_totals(PATH, st.session_state.map_scope, session_for_filter)
-    tfl_spend, names = _map_tfl_spend_and_names(totals)
-    subdivision_matches = build_tfl_political_subdivision_matches(names) if names else pd.DataFrame()
-    subdivision_matches = _attach_subdivision_spend_totals(subdivision_matches, totals)
-    if not subdivision_matches.empty:
-        subdivision_matches["match_count"] = pd.to_numeric(
-            subdivision_matches.get("match_count", 0), errors="coerce",
-        ).fillna(0).astype(int)
-        subdivision_matches["low_total"] = pd.to_numeric(
-            subdivision_matches.get("low_total", 0.0), errors="coerce",
-        ).fillna(0.0)
-        subdivision_matches["high_total"] = pd.to_numeric(
-            subdivision_matches.get("high_total", 0.0), errors="coerce",
-        ).fillna(0.0)
-    matched_clients, total_tfl, total_high, mapped_high, mapped_rate, unmapped_count = _map_coverage_metrics(
-        subdivision_matches, tfl_spend,
+    _atlas_cache_key = (
+        str(PATH),
+        str(st.session_state.get("map_scope", "")),
+        str(st.session_state.get("map_session", "")),
+        str(session_for_filter),
     )
+    _atlas_bundle = st.session_state.get("_mp5_atlas_bundle_v3", {})
+    _atlas_cache_hit = (
+        isinstance(_atlas_bundle, dict)
+        and _atlas_bundle.get("key") == _atlas_cache_key
+        and isinstance(_atlas_bundle.get("totals"), pd.DataFrame)
+        and isinstance(_atlas_bundle.get("tfl_spend"), pd.DataFrame)
+        and isinstance(_atlas_bundle.get("subdivision_matches"), pd.DataFrame)
+    )
+    if _atlas_cache_hit:
+        totals = _atlas_bundle.get("totals", pd.DataFrame()).copy()
+        tfl_spend = _atlas_bundle.get("tfl_spend", pd.DataFrame()).copy()
+        names = tuple(_atlas_bundle.get("names", ()))
+        subdivision_matches = _atlas_bundle.get("subdivision_matches", pd.DataFrame()).copy()
+        matched_clients = set(_atlas_bundle.get("matched_clients", set()))
+        total_tfl = int(_atlas_bundle.get("total_tfl", 0) or 0)
+        total_high = float(_atlas_bundle.get("total_high", 0.0) or 0.0)
+        mapped_high = float(_atlas_bundle.get("mapped_high", 0.0) or 0.0)
+        mapped_rate = float(_atlas_bundle.get("mapped_rate", 0.0) or 0.0)
+        unmapped_count = int(_atlas_bundle.get("unmapped_count", 0) or 0)
+    else:
+        totals = _map_scoped_totals(PATH, st.session_state.map_scope, session_for_filter)
+        tfl_spend, names = _map_tfl_spend_and_names(totals)
+        subdivision_matches = build_tfl_political_subdivision_matches(names) if names else pd.DataFrame()
+        subdivision_matches = _attach_subdivision_spend_totals(subdivision_matches, totals)
+        if not subdivision_matches.empty:
+            subdivision_matches["match_count"] = pd.to_numeric(
+                subdivision_matches.get("match_count", 0), errors="coerce",
+            ).fillna(0).astype(int)
+            subdivision_matches["low_total"] = pd.to_numeric(
+                subdivision_matches.get("low_total", 0.0), errors="coerce",
+            ).fillna(0.0)
+            subdivision_matches["high_total"] = pd.to_numeric(
+                subdivision_matches.get("high_total", 0.0), errors="coerce",
+            ).fillna(0.0)
+        matched_clients, total_tfl, total_high, mapped_high, mapped_rate, unmapped_count = _map_coverage_metrics(
+            subdivision_matches, tfl_spend,
+        )
+        st.session_state["_mp5_atlas_bundle_v3"] = {
+            "key": _atlas_cache_key,
+            "totals": totals.copy(),
+            "tfl_spend": tfl_spend.copy(),
+            "names": tuple(names),
+            "subdivision_matches": subdivision_matches.copy(),
+            "matched_clients": set(matched_clients),
+            "total_tfl": int(total_tfl),
+            "total_high": float(total_high),
+            "mapped_high": float(mapped_high),
+            "mapped_rate": float(mapped_rate),
+            "unmapped_count": int(unmapped_count),
+        }
 
     # top hotspot
     top_hotspot = (
@@ -9733,7 +9812,7 @@ def _page_map_address_full_pass():
                     )
                     cap = max(100, min(
                         1600,
-                        int(st.session_state.get("map_subdivision_map_cap", 700) or 700),
+                        int(st.session_state.get("map_subdivision_map_cap", 550) or 550),
                     ))
                     render_tfl_subdivision_arcgis_map(
                         filtered_cov.head(cap), height=630, basemap=active_basemap,
@@ -10107,6 +10186,14 @@ def _page_map_address_full_pass():
         geocode_message = ""
         overlap_points = pd.DataFrame()
         overlap_spend = pd.DataFrame()
+        forensics_data_stamp = (
+            str(st.session_state.get("map_scope", "")),
+            str(st.session_state.get("map_session", "")),
+            int(len(subdivision_matches)),
+            int(len(tfl_spend)),
+            round(float(total_high), 2),
+        )
+        forensics_cache_key = None
 
         # -- input panel + context sidebar ----------------------------
         lcol, rcol = st.columns([1.1, 1.7], gap="large")
@@ -10180,6 +10267,11 @@ def _page_map_address_full_pass():
                             "lon": float(geo.get("lon", 0.0)),
                             "score": float(geo.get("score", 0.0)),
                         }
+                        forensics_cache_key = (
+                            "addr",
+                            str(active_query).strip().lower(),
+                            forensics_data_stamp,
+                        )
                         score = float(analysis_point["score"])
                         floor = float(st.session_state.get("map_geocode_floor", 82))
                         geocode_message = f"Geocode score: {score:.1f}"
@@ -10219,22 +10311,44 @@ def _page_map_address_full_pass():
                         "lon": lon_q,
                         "score": None,
                     }
+                    forensics_cache_key = (
+                        "coord",
+                        round(lat_q, 6),
+                        round(lon_q, 6),
+                        forensics_data_stamp,
+                    )
                     geocode_message = "Coordinate mode — no geocode confidence score"
 
             if analysis_point is not None:
-                overlap_sub = query_texas_subdivisions_for_point(
-                    round(float(analysis_point["lon"]), 6),
-                    round(float(analysis_point["lat"]), 6),
+                _cached_forensics = st.session_state.get("_mp5_forensics_bundle_v1", {})
+                _cache_hit = (
+                    isinstance(_cached_forensics, dict)
+                    and _cached_forensics.get("key") == forensics_cache_key
+                    and isinstance(_cached_forensics.get("overlap_points"), pd.DataFrame)
+                    and isinstance(_cached_forensics.get("overlap_spend"), pd.DataFrame)
                 )
-                overlap_points = build_overlap_map_points(
-                    overlap_subdivisions=overlap_sub,
-                    subdivision_matches=subdivision_matches,
-                )
-                overlap_spend = build_address_overlap_spending_rows(
-                    overlap_subdivisions=overlap_sub,
-                    subdivision_matches=subdivision_matches,
-                    tfl_spending=tfl_spend,
-                )
+                if _cache_hit:
+                    overlap_points = _cached_forensics.get("overlap_points", pd.DataFrame()).copy()
+                    overlap_spend = _cached_forensics.get("overlap_spend", pd.DataFrame()).copy()
+                else:
+                    overlap_sub = query_texas_subdivisions_for_point(
+                        round(float(analysis_point["lon"]), 6),
+                        round(float(analysis_point["lat"]), 6),
+                    )
+                    overlap_points = build_overlap_map_points(
+                        overlap_subdivisions=overlap_sub,
+                        subdivision_matches=subdivision_matches,
+                    )
+                    overlap_spend = build_address_overlap_spending_rows(
+                        overlap_subdivisions=overlap_sub,
+                        subdivision_matches=subdivision_matches,
+                        tfl_spending=tfl_spend,
+                    )
+                    st.session_state["_mp5_forensics_bundle_v1"] = {
+                        "key": forensics_cache_key,
+                        "overlap_points": overlap_points.copy(),
+                        "overlap_spend": overlap_spend.copy(),
+                    }
 
         # -- results panel --------------------------------------------
         filtered = pd.DataFrame()
@@ -10268,50 +10382,68 @@ def _page_map_address_full_pass():
                 if overlap_spend.empty:
                     st.info("No matched entities at this location.")
                 else:
-                    rows = overlap_spend.copy()
-                    rows["Low"] = pd.to_numeric(rows["Low"], errors="coerce").fillna(0.0)
-                    rows["High"] = pd.to_numeric(rows["High"], errors="coerce").fillna(0.0)
-                    rows["Mid"] = pd.to_numeric(rows["Mid"], errors="coerce").fillna(0.0)
-                    rows["Entity Type"] = rows.get("Entity Type", "").fillna("").astype(str).str.strip()
-                    missing_type = rows["Entity Type"] == ""
-                    rows.loc[missing_type, "Entity Type"] = rows.loc[
-                        missing_type, "TFL Entity"
-                    ].map(classify_requested_entity_type)
-
-                    dist_lookup: dict[tuple, float] = {}
-                    if isinstance(overlap_points, pd.DataFrame) and not overlap_points.empty:
-                        for p in overlap_points.itertuples(index=False):
-                            key = (
-                                str(getattr(p, "subdivision_type", "")).strip(),
-                                str(getattr(p, "subdivision_name", "")).strip(),
-                                str(getattr(p, "subdivision_code", "")).strip(),
-                            )
-                            dist_lookup[key] = _mp5_miles(
-                                float(analysis_point["lat"]),
-                                float(analysis_point["lon"]),
-                                float(getattr(p, "lat", 0.0)),
-                                float(getattr(p, "lon", 0.0)),
-                            )
-
-                    _rk = list(zip(
-                        rows.get("Subdivision Type", pd.Series("", index=rows.index)).fillna("").astype(str).str.strip(),
-                        rows.get("Subdivision", pd.Series("", index=rows.index)).fillna("").astype(str).str.strip(),
-                        rows.get("Code", pd.Series("", index=rows.index)).fillna("").astype(str).str.strip(),
-                    ))
-                    rows["Distance Miles"] = pd.Series([dist_lookup.get(k, float("nan")) for k in _rk], index=rows.index)
-                    rows["Method Weight"] = rows["Match Method"].map(_mp5_method_weight)
-                    rows["Confidence Weight"] = rows["Match Confidence"].map(_mp5_confidence_weight)
-                    rows["Boundary Match"] = (
-                        rows["Match Method"].astype(str).str.lower().str.startswith("spatial boundary")
+                    _rows_cache = st.session_state.get("_mp5_forensics_rows_v1", {})
+                    _rows_cache_key = (
+                        forensics_cache_key,
+                        round(float(analysis_point.get("lat", 0.0)), 6),
+                        round(float(analysis_point.get("lon", 0.0)), 6),
                     )
-                    _rd = rows["Distance Miles"].astype(float)
-                    _dist_factor = (1.0 / (1.0 + (_rd.clip(lower=0.0) / 70.0))).fillna(0.72)
-                    rows["Row Signal"] = (
-                        rows["High"]
-                        * rows["Method Weight"]
-                        * rows["Confidence Weight"]
-                        * _dist_factor
+                    _rows_cache_hit = (
+                        isinstance(_rows_cache, dict)
+                        and _rows_cache.get("key") == _rows_cache_key
+                        and isinstance(_rows_cache.get("rows"), pd.DataFrame)
                     )
+                    if _rows_cache_hit:
+                        rows = _rows_cache.get("rows", pd.DataFrame()).copy()
+                    else:
+                        rows = overlap_spend.copy()
+                        rows["Low"] = pd.to_numeric(rows["Low"], errors="coerce").fillna(0.0)
+                        rows["High"] = pd.to_numeric(rows["High"], errors="coerce").fillna(0.0)
+                        rows["Mid"] = pd.to_numeric(rows["Mid"], errors="coerce").fillna(0.0)
+                        rows["Entity Type"] = rows.get("Entity Type", "").fillna("").astype(str).str.strip()
+                        missing_type = rows["Entity Type"] == ""
+                        rows.loc[missing_type, "Entity Type"] = rows.loc[
+                            missing_type, "TFL Entity"
+                        ].map(classify_requested_entity_type)
+
+                        dist_lookup: dict[tuple, float] = {}
+                        if isinstance(overlap_points, pd.DataFrame) and not overlap_points.empty:
+                            for p in overlap_points.itertuples(index=False):
+                                key = (
+                                    str(getattr(p, "subdivision_type", "")).strip(),
+                                    str(getattr(p, "subdivision_name", "")).strip(),
+                                    str(getattr(p, "subdivision_code", "")).strip(),
+                                )
+                                dist_lookup[key] = _mp5_miles(
+                                    float(analysis_point["lat"]),
+                                    float(analysis_point["lon"]),
+                                    float(getattr(p, "lat", 0.0)),
+                                    float(getattr(p, "lon", 0.0)),
+                                )
+
+                        _rk = list(zip(
+                            rows.get("Subdivision Type", pd.Series("", index=rows.index)).fillna("").astype(str).str.strip(),
+                            rows.get("Subdivision", pd.Series("", index=rows.index)).fillna("").astype(str).str.strip(),
+                            rows.get("Code", pd.Series("", index=rows.index)).fillna("").astype(str).str.strip(),
+                        ))
+                        rows["Distance Miles"] = pd.Series([dist_lookup.get(k, float("nan")) for k in _rk], index=rows.index)
+                        rows["Method Weight"] = rows["Match Method"].map(_mp5_method_weight)
+                        rows["Confidence Weight"] = rows["Match Confidence"].map(_mp5_confidence_weight)
+                        rows["Boundary Match"] = (
+                            rows["Match Method"].astype(str).str.lower().str.startswith("spatial boundary")
+                        )
+                        _rd = rows["Distance Miles"].astype(float)
+                        _dist_factor = (1.0 / (1.0 + (_rd.clip(lower=0.0) / 70.0))).fillna(0.72)
+                        rows["Row Signal"] = (
+                            rows["High"]
+                            * rows["Method Weight"]
+                            * rows["Confidence Weight"]
+                            * _dist_factor
+                        )
+                        st.session_state["_mp5_forensics_rows_v1"] = {
+                            "key": _rows_cache_key,
+                            "rows": rows.copy(),
+                        }
 
                     # -- evidence filters (in left column) ------------
                     conf_opts = [
@@ -10358,9 +10490,14 @@ def _page_map_address_full_pass():
                             key="map_overlap_focus_selected_clients",
                             disabled=not bool(selected_clients),
                         )
+                        st.toggle(
+                            "Show advanced charts",
+                            key="map_forensics_show_charts",
+                            help="Keeps the page fast by rendering Plotly charts only when enabled.",
+                        )
 
                     # -- apply evidence filters -----------------------
-                    filtered = rows
+                    filtered = rows.copy()
                     filtered = filtered[
                         filtered["Match Confidence"].astype(str).isin(
                             st.session_state.get("map_overlap_confidence_filter", []),
@@ -10496,9 +10633,12 @@ def _page_map_address_full_pass():
                     ].rename(columns={"Mid": "Midpoint"})
                     st.dataframe(probe_view, use_container_width=True, height=300, hide_index=True)
                     _ = export_dataframe(filtered, "address_forensics_rows.csv", label="Download Evidence CSV")
+                    show_charts = bool(st.session_state.get("map_forensics_show_charts", False))
+                    if not show_charts:
+                        st.caption("Advanced charts are disabled for faster reruns. Enable **Show advanced charts** in Evidence Filters.")
 
                     # -- signal scatter chart -------------------------
-                    if not filtered.empty and len(filtered) > 1:
+                    if show_charts and not filtered.empty and len(filtered) > 1:
                         chart_df = filtered
                         chart_df["Confidence"] = chart_df["Match Confidence"].astype(str)
                         fig_scatter = px.scatter(
@@ -10539,7 +10679,7 @@ def _page_map_address_full_pass():
                         st.markdown("</div>", unsafe_allow_html=True)
 
                     # -- confidence — method heatmap + entity-type spend --
-                    if not filtered.empty and len(filtered) > 2:
+                    if show_charts and not filtered.empty and len(filtered) > 2:
                         _fc_left, _fc_right = st.columns(2, gap="medium")
                         with _fc_left:
                             # Heatmap — confidence vs method row counts
@@ -10703,7 +10843,7 @@ def _page_map_address_full_pass():
                         _ = export_dataframe(leads, "address_ranked_leads.csv", label="Download Ranked Leads CSV")
 
                         # -- lead score bar chart ---------------------
-                        if len(leads) > 1:
+                        if show_charts and len(leads) > 1:
                             chart_leads = leads.head(20)
                             chart_leads["Entity"] = chart_leads["TFL Entity"].astype(str).str[:40]
                             fig_leads = px.bar(
@@ -10839,11 +10979,11 @@ def _page_map_address_full_pass():
                 deduped = deduped[: int(st.session_state.get("map_batch_max_v4", 8) or 8)]
 
                 batch_rows: list[dict] = []
-                for addr in deduped:
-                    geo = geocode_address_arcgis(addr)
-                    if not geo:
-                        batch_rows.append({
-                            "Input": addr,
+                def _triage_one_address(addr: str) -> dict:
+                    addr_val = str(addr).strip()
+                    if not addr_val:
+                        return {
+                            "Input": "",
                             "Status": "Geocode Failed",
                             "Matched Address": "",
                             "Geocode Score": 0.0,
@@ -10853,60 +10993,113 @@ def _page_map_address_full_pass():
                             "High Confidence Share": 0.0,
                             "Triage Score": 0.0,
                             "Top Entity": "",
-                        })
-                        continue
+                        }
+                    try:
+                        geo = geocode_address_arcgis(addr_val)
+                        if not geo:
+                            return {
+                                "Input": addr_val,
+                                "Status": "Geocode Failed",
+                                "Matched Address": "",
+                                "Geocode Score": 0.0,
+                                "Overlap Rows": 0,
+                                "Unique Entities": 0,
+                                "Combined High": 0.0,
+                                "High Confidence Share": 0.0,
+                                "Triage Score": 0.0,
+                                "Top Entity": "",
+                            }
 
-                    lon_i = float(geo.get("lon", 0.0))
-                    lat_i = float(geo.get("lat", 0.0))
-                    overlap_sub_i = query_texas_subdivisions_for_point(round(lon_i, 6), round(lat_i, 6))
-                    overlap_rows_i = build_address_overlap_spending_rows(
-                        overlap_subdivisions=overlap_sub_i,
-                        subdivision_matches=subdivision_matches,
-                        tfl_spending=tfl_spend,
-                    )
-                    if overlap_rows_i.empty:
-                        batch_rows.append({
-                            "Input": addr,
-                            "Status": "No Overlap",
-                            "Matched Address": str(geo.get("matched_address", addr)).strip(),
+                        lon_i = float(geo.get("lon", 0.0))
+                        lat_i = float(geo.get("lat", 0.0))
+                        overlap_sub_i = query_texas_subdivisions_for_point(round(lon_i, 6), round(lat_i, 6))
+                        overlap_rows_i = build_address_overlap_spending_rows(
+                            overlap_subdivisions=overlap_sub_i,
+                            subdivision_matches=subdivision_matches,
+                            tfl_spending=tfl_spend,
+                        )
+                        if overlap_rows_i.empty:
+                            return {
+                                "Input": addr_val,
+                                "Status": "No Overlap",
+                                "Matched Address": str(geo.get("matched_address", addr_val)).strip(),
+                                "Geocode Score": float(geo.get("score", 0.0) or 0.0),
+                                "Overlap Rows": 0,
+                                "Unique Entities": 0,
+                                "Combined High": 0.0,
+                                "High Confidence Share": 0.0,
+                                "Triage Score": 0.0,
+                                "Top Entity": "",
+                            }
+
+                        overlap_rows_i["High"] = pd.to_numeric(
+                            overlap_rows_i.get("High", 0.0), errors="coerce",
+                        ).fillna(0.0)
+                        high_total_i = float(overlap_rows_i["High"].sum())
+                        entity_totals_i = (
+                            overlap_rows_i.groupby("TFL Entity", as_index=False)["High"]
+                            .sum()
+                            .sort_values("High", ascending=False)
+                        )
+                        top_entity_i = str(entity_totals_i.iloc[0]["TFL Entity"]).strip() if not entity_totals_i.empty else ""
+                        high_share_i = float((overlap_rows_i["Match Confidence"].astype(str) == "High").mean())
+                        triage_i = (
+                            (math.log10(high_total_i + 1.0) * 34.0)
+                            + (high_share_i * 45.0)
+                            + (int(overlap_rows_i["TFL Entity"].astype(str).nunique()) * 1.7)
+                        )
+                        return {
+                            "Input": addr_val,
+                            "Status": "Matched",
+                            "Matched Address": str(geo.get("matched_address", addr_val)).strip(),
                             "Geocode Score": float(geo.get("score", 0.0) or 0.0),
+                            "Overlap Rows": int(len(overlap_rows_i)),
+                            "Unique Entities": int(overlap_rows_i["TFL Entity"].astype(str).nunique()),
+                            "Combined High": high_total_i,
+                            "High Confidence Share": high_share_i,
+                            "Triage Score": float(triage_i),
+                            "Top Entity": top_entity_i,
+                        }
+                    except Exception:
+                        return {
+                            "Input": addr_val,
+                            "Status": "Error",
+                            "Matched Address": "",
+                            "Geocode Score": 0.0,
                             "Overlap Rows": 0,
                             "Unique Entities": 0,
                             "Combined High": 0.0,
                             "High Confidence Share": 0.0,
                             "Triage Score": 0.0,
                             "Top Entity": "",
-                        })
-                        continue
+                        }
 
-                    overlap_rows_i["High"] = pd.to_numeric(
-                        overlap_rows_i.get("High", 0.0), errors="coerce",
-                    ).fillna(0.0)
-                    high_total_i = float(overlap_rows_i["High"].sum())
-                    entity_totals_i = (
-                        overlap_rows_i.groupby("TFL Entity", as_index=False)["High"]
-                        .sum()
-                        .sort_values("High", ascending=False)
-                    )
-                    top_entity_i = str(entity_totals_i.iloc[0]["TFL Entity"]).strip() if not entity_totals_i.empty else ""
-                    high_share_i = float((overlap_rows_i["Match Confidence"].astype(str) == "High").mean())
-                    triage_i = (
-                        (math.log10(high_total_i + 1.0) * 34.0)
-                        + (high_share_i * 45.0)
-                        + (int(overlap_rows_i["TFL Entity"].astype(str).nunique()) * 1.7)
-                    )
-                    batch_rows.append({
-                        "Input": addr,
-                        "Status": "Matched",
-                        "Matched Address": str(geo.get("matched_address", addr)).strip(),
-                        "Geocode Score": float(geo.get("score", 0.0) or 0.0),
-                        "Overlap Rows": int(len(overlap_rows_i)),
-                        "Unique Entities": int(overlap_rows_i["TFL Entity"].astype(str).nunique()),
-                        "Combined High": high_total_i,
-                        "High Confidence Share": high_share_i,
-                        "Triage Score": float(triage_i),
-                        "Top Entity": top_entity_i,
-                    })
+                if deduped:
+                    _workers = max(1, min(6, len(deduped)))
+                    ordered_rows: list[dict | None] = [None] * len(deduped)
+                    with ThreadPoolExecutor(max_workers=_workers) as pool:
+                        future_map = {
+                            pool.submit(_triage_one_address, addr): idx
+                            for idx, addr in enumerate(deduped)
+                        }
+                        for future in as_completed(future_map):
+                            idx = future_map[future]
+                            try:
+                                ordered_rows[idx] = future.result()
+                            except Exception:
+                                ordered_rows[idx] = {
+                                    "Input": str(deduped[idx]).strip(),
+                                    "Status": "Error",
+                                    "Matched Address": "",
+                                    "Geocode Score": 0.0,
+                                    "Overlap Rows": 0,
+                                    "Unique Entities": 0,
+                                    "Combined High": 0.0,
+                                    "High Confidence Share": 0.0,
+                                    "Triage Score": 0.0,
+                                    "Top Entity": "",
+                                }
+                    batch_rows = [r for r in ordered_rows if isinstance(r, dict)]
 
                 st.session_state.map_batch_results_v4 = batch_rows
 
@@ -15062,10 +15255,33 @@ def render_address_overlap_arcgis_map(
     font-weight:700; color:rgba(100,200,255,0.95); font-size:10px;
     text-transform:uppercase; letter-spacing:0.08em; margin-bottom:3px;
   }}
+  #tfl-addr-adv-btn {{
+    position:absolute; top:12px; right:12px; z-index:95;
+    border:1px solid rgba(100,180,255,0.32);
+    background:rgba(10,20,32,0.92);
+    color:rgba(190,220,245,0.92);
+    border-radius:8px;
+    padding:5px 10px;
+    font-family:'Avenir Next LT Pro',system-ui,sans-serif;
+    font-size:10px;
+    letter-spacing:0.04em;
+    cursor:pointer;
+    backdrop-filter:blur(6px);
+    transition:all .2s ease;
+  }}
+  #tfl-addr-adv-btn:hover {{
+    border-color:rgba(100,180,255,0.52);
+    background:rgba(16,34,52,0.95);
+  }}
+  #tfl-addr-adv-btn[disabled] {{
+    opacity:0.7;
+    cursor:default;
+  }}
 </style>
 <div style="width:100%;height:{height}px;position:relative;">
   <div id="tfl-address-overlap-map" style="width:100%;height:100%;border-radius:14px;overflow:hidden;"></div>
   <div id="tfl-addr-legend"></div>
+  <button id="tfl-addr-adv-btn" type="button">Load advanced tools</button>
   <div id="tfl-addr-loading"><div class="ld-spinner"></div><div class="ld-label">Loading map layers&hellip;</div></div>
   <div id="tfl-addr-coord">&ndash;</div>
   <div id="tfl-addr-sel-info"></div>
@@ -15076,6 +15292,14 @@ def render_address_overlap_arcgis_map(
   const addressPoint = {address_json};
   const baseMapId = {basemap_safe};
   const legendEntries = {legend_json};
+  const advBtn = document.getElementById("tfl-addr-adv-btn");
+  const scheduleAdvancedLoad = (fn) => {{
+    if (typeof window.requestIdleCallback === "function") {{
+      window.requestIdleCallback(fn, {{ timeout: 2600 }});
+    }} else {{
+      setTimeout(fn, 1500);
+    }}
+  }};
 
   /* Build on-map legend */
   (function() {{
@@ -15214,7 +15438,15 @@ def render_address_overlap_arcgis_map(
       }}
 
       /* -- Phase 2: Deferred load of reference FeatureLayers and secondary widgets -- */
-      require([
+      let advancedLoaded = false;
+      const loadAdvanced = () => {{
+        if (advancedLoaded) return;
+        advancedLoaded = true;
+        if (advBtn) {{
+          advBtn.textContent = "Loading advanced tools...";
+          advBtn.disabled = true;
+        }}
+        require([
         "esri/layers/FeatureLayer",
         "esri/widgets/Compass",
         "esri/widgets/Fullscreen",
@@ -15409,7 +15641,18 @@ def render_address_overlap_arcgis_map(
             setTimeout(() => {{ selInfo.style.display = "none"; }}, 3000);
           }}
         }});
+        if (advBtn) {{
+          advBtn.textContent = "Advanced tools ready";
+          setTimeout(() => {{
+            try {{ advBtn.remove(); }} catch (e) {{}}
+          }}, 1100);
+        }}
       }}); /* end deferred require */
+      }};
+      if (advBtn) {{
+        advBtn.addEventListener("click", () => loadAdvanced(), {{ once: true }});
+      }}
+      scheduleAdvancedLoad(() => loadAdvanced());
     }}); /* end view.when */
   }});
 </script>
@@ -24373,27 +24616,33 @@ else:
                             st.session_state.member_session = st.session_state.session
                             st.switch_page(_member_page)
                     with bnav2:
-                        if st.button(
-                            "Run Top Bill In Bill Mode",
-                            key="lobby_bills_bill_mode_btn",
-                            width="stretch",
-                            disabled=not bool(top_filtered_bill),
-                            help="Switch this workspace into bill-first mode using the top bill in the current filtered view.",
-                        ):
-                            st.session_state.search_query = top_filtered_bill
+                        def _run_bill_mode_from_filtered_bill(bill_id: str) -> None:
+                            bill = str(bill_id).strip()
+                            if not bill:
+                                return
+                            st.session_state.search_query = bill
                             st.session_state.lobbyshort = ""
                             st.session_state.lobby_filerid = None
                             st.session_state.lobby_selected_key = ""
                             st.session_state.lobby_all_matches = False
                             st.session_state.lobby_merge_keys = []
                             st.session_state.lobby_candidate_map = {}
-                            st.session_state.lobby_match_query = top_filtered_bill
+                            st.session_state.lobby_match_query = bill
                             st.session_state.lobby_match_select = "No match"
                             st.session_state.bill_search = ""
                             st.session_state.activity_search = ""
                             st.session_state.disclosure_search = ""
                             st.session_state.lobby_policy_focus = {}
-                            st.rerun()
+
+                        st.button(
+                            "Run Top Bill In Bill Mode",
+                            key="lobby_bills_bill_mode_btn",
+                            width="stretch",
+                            disabled=not bool(top_filtered_bill),
+                            help="Switch this workspace into bill-first mode using the top bill in the current filtered view.",
+                            on_click=_run_bill_mode_from_filtered_bill,
+                            args=(top_filtered_bill,),
+                        )
                     with bnav3:
                         if st.button(
                             "Carry Filtered Bills To Policy",
