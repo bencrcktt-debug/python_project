@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:transparent;overflow:hidden;">
+<iframe
+  id="persistent-frame"
+  style="width:100%;border:0;display:block;background:transparent;"
+  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+  allow="geolocation"
+></iframe>
+<script>
+(function () {
+  const frame = document.getElementById("persistent-frame");
+  let currentSignature = "";
+
+  function send(type, extra) {
+    const message = { isStreamlitMessage: true, type: type };
+    if (extra) {
+      Object.keys(extra).forEach(function (key) {
+        message[key] = extra[key];
+      });
+    }
+    window.parent.postMessage(message, "*");
+  }
+
+  function setFrameHeight(height) {
+    send("streamlit:setFrameHeight", { height: height });
+  }
+
+  function rebroadcastToParentFrames(data) {
+    try {
+      const parentFrames = window.parent && window.parent.frames ? window.parent.frames : [];
+      for (let i = 0; i < parentFrames.length; i += 1) {
+        try {
+          parentFrames[i].postMessage(data, "*");
+        } catch (err) {
+        }
+      }
+    } catch (err) {
+    }
+  }
+
+  function applyRender(args) {
+    const height = Math.max(120, Number((args || {}).height || 0));
+    const html = String((args || {}).html || "");
+    const signature = String((args || {}).signature || "");
+    frame.style.height = height + "px";
+    if (signature !== currentSignature) {
+      frame.srcdoc = html;
+      currentSignature = signature;
+    }
+    setFrameHeight(height + 8);
+  }
+
+  send("streamlit:componentReady", { apiVersion: 1 });
+  setFrameHeight(8);
+
+  window.addEventListener("message", function (event) {
+    const data = event.data;
+    if (!data) {
+      return;
+    }
+    if (data.type === "streamlit:render") {
+      applyRender(data.args || {});
+      return;
+    }
+    if (event.source === frame.contentWindow) {
+      try {
+        window.parent.postMessage(data, "*");
+      } catch (err) {
+      }
+      rebroadcastToParentFrames(data);
+    }
+  });
+})();
+</script>
+</body>
+</html>
