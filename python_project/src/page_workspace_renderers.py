@@ -71,6 +71,15 @@ def _workspace_data_with_lazy_tables(ctx: dict[str, Any], keys: tuple[str, ...])
     return data
 
 
+def _fmt_usd_series(series: pd.Series) -> pd.Series:
+    cleaned = series.fillna("").astype(str).str.strip()
+    cleaned = cleaned.str.replace(r"^\((.*)\)$", r"-\1", regex=True)
+    cleaned = cleaned.str.replace("$", "", regex=False).str.replace(",", "", regex=False)
+    cleaned = cleaned.where(~cleaned.str.lower().isin({"", "nan", "none"}), "")
+    numeric = pd.to_numeric(cleaned, errors="coerce").fillna(0.0)
+    return numeric.map(fmt_usd)
+
+
 def _staff_metrics(
     staff_rows: pd.DataFrame,
     bills_df: pd.DataFrame,
@@ -379,10 +388,10 @@ def render_client_workspace(ctx: dict[str, Any]) -> None:
                         view["Client"].astype(str).str.contains(st.session_state.client_filter.strip(), case=False, na=False)
                     ]
 
-                view_disp = view
+                view_disp = view.copy()
                 view_disp["Taxpayer Funded"] = view_disp["IsTFL"].map({1: "Yes", 0: "No"})
-                view_disp["Low"] = view_disp["Low"].astype(float).map(fmt_usd)
-                view_disp["High"] = view_disp["High"].astype(float).map(fmt_usd)
+                view_disp["Low"] = _fmt_usd_series(view_disp["Low"])
+                view_disp["High"] = _fmt_usd_series(view_disp["High"])
 
                 show_cols = ["Client", "Taxpayer Funded", "Lobbyists", "Low", "High"]
                 st.dataframe(
@@ -860,9 +869,9 @@ def render_client_workspace(ctx: dict[str, Any]) -> None:
             if lobbyist_totals.empty:
                 st.info("No lobbyists found for this client in the selected session.")
             else:
-                view = lobbyist_totals
-                view["Low"] = view["Low"].astype(float).map(fmt_usd)
-                view["High"] = view["High"].astype(float).map(fmt_usd)
+                view = lobbyist_totals.copy()
+                view["Low"] = _fmt_usd_series(view["Low"])
+                view["High"] = _fmt_usd_series(view["High"])
                 view_disp = view.rename(columns={"LobbyShort": "Last name + first initial"})
                 show_cols = ["Lobbyist", "Last name + first initial", "Low", "High"]
                 show_cols = [c for c in show_cols if c in view_disp.columns]
@@ -2619,9 +2628,9 @@ def render_lobby_workspace(ctx: dict[str, Any]) -> None:
                 view_disp = view.copy()
                 for c in ["Low_TFL", "High_TFL", "Low_Private", "High_Private"]:
                     if c in view_disp.columns:
-                        view_disp[c] = view_disp[c].astype(float).map(fmt_usd)
+                        view_disp[c] = _fmt_usd_series(view_disp[c])
                 if "Total_Mid" in view_disp.columns:
-                    view_disp["Total_Mid"] = view_disp["Total_Mid"].astype(float).map(fmt_usd)
+                    view_disp["Total_Mid"] = _fmt_usd_series(view_disp["Total_Mid"])
                 if "TFL_Share" in view_disp.columns:
                     view_disp["TFL_Share"] = (
                         (view_disp["TFL_Share"].fillna(0) * 100).round(0).astype("Int64").astype(str) + "%"
