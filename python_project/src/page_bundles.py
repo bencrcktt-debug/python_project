@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Callable, Mapping
 
 import pandas as pd
@@ -58,6 +59,18 @@ def _session_base_number_series(s: pd.Series) -> pd.Series:
     return pd.to_numeric(base, errors="coerce")
 
 
+def _session_series(df: pd.DataFrame) -> pd.Series:
+    if not isinstance(df, pd.DataFrame):
+        return pd.Series(dtype="string")
+    if "SessionKey" in df.columns:
+        return df["SessionKey"].fillna("").astype(str)
+    if "Session" in df.columns:
+        return df["Session"].fillna("").astype(str).str.strip()
+    if "session" in df.columns:
+        return df["session"].fillna("").astype(str).str.strip()
+    return pd.Series("", index=df.index, dtype="string")
+
+
 def _session_base_label(base_val: float | int) -> str:
     if pd.isna(base_val):
         return ""
@@ -100,8 +113,23 @@ def build_data_health_table(data: dict, source_labels: Mapping[str, str]) -> pd.
     ]
     rows: list[dict[str, Any]] = []
     for key in order:
-        df = data.get(key)
         label = source_labels.get(key, key)
+        value = data.get(key)
+        if isinstance(value, dict):
+            rows.append(
+                {
+                    "Source": label,
+                    "Rows": int(value.get("rows", 0) or 0),
+                    "Cols": int(value.get("cols", 0) or 0),
+                    "Has Session": "Yes" if bool(value.get("has_session", False)) else "No",
+                    "Empty": "Yes" if bool(value.get("empty", True)) else "No",
+                    "Sessions": int(value.get("sessions", 0) or 0),
+                    "Last name + first initial": int(value.get("lobby_count", 0) or 0),
+                }
+            )
+            continue
+
+        df = value
         if isinstance(df, pd.DataFrame):
             sess_count = int(df["Session"].dropna().astype(str).nunique()) if "Session" in df.columns else 0
             lobby_count = int(df["LobbyShort"].dropna().astype(str).nunique()) if "LobbyShort" in df.columns else 0
@@ -189,7 +217,7 @@ def filter_filer_rows(
 
     d = df.copy()
     if session is not None:
-        d = d[d["Session"].astype(str).str.strip() == str(session)]
+        d = d[_session_series(d) == str(session)]
     if d.empty:
         return d
 
@@ -308,7 +336,7 @@ def filter_filer_rows_multi(
 
     d = df.copy()
     if session is not None:
-        d = d[d["Session"].astype(str).str.strip() == str(session)]
+        d = d[_session_series(d) == str(session)]
     if d.empty:
         return d
 
@@ -715,9 +743,9 @@ def build_lobby_subject_counts(
         return pd.DataFrame(columns=["Topic", "Mentions"]), 0.0
 
     lobby_sub = lobby_sub.assign(
-        Subject=lobby_sub.get("Subject Matter", "").fillna("").astype(str).str.strip(),
-        Other=lobby_sub.get("Other Subject Matter Description", "").fillna("").astype(str).str.strip(),
-        PrimaryBusiness=lobby_sub.get("Primary Business", "").fillna("").astype(str).str.strip(),
+        Subject=lobby_sub.get("Subject Matter", pd.Series([""] * len(lobby_sub), index=lobby_sub.index)).fillna("").astype(str).str.strip(),
+        Other=lobby_sub.get("Other Subject Matter Description", pd.Series([""] * len(lobby_sub), index=lobby_sub.index)).fillna("").astype(str).str.strip(),
+        PrimaryBusiness=lobby_sub.get("Primary Business", pd.Series([""] * len(lobby_sub), index=lobby_sub.index)).fillna("").astype(str).str.strip(),
     )
     for col in ["Subject", "Other"]:
         series = lobby_sub[col]
@@ -725,7 +753,7 @@ def build_lobby_subject_counts(
 
     subject_non_empty = lobby_sub["Subject"].ne("").mean() if len(lobby_sub) else 0
 
-    unnamed0 = lobby_sub.get("Unnamed: 0", "").fillna("").astype(str).str.strip()
+    unnamed0 = lobby_sub.get("Unnamed: 0", pd.Series([""] * len(lobby_sub), index=lobby_sub.index)).fillna("").astype(str).str.strip()
     unnamed0 = unnamed0.where(~unnamed0.str.lower().isin(["nan", "none"]), "")
 
     topic = lobby_sub["Subject"]
@@ -1065,9 +1093,11 @@ def build_disclosures(
     d = filter_filer_rows(df_cvr, session, lobbyshort, name_to_short, lobbyist_norms, filerid_to_short, filer_ids_set)
     if not d.empty:
         date = d.get("filedDt", d.get("periodStartDt", "")).fillna("").astype(str)
-        desc = d.get("subjectMatterMemo", "").fillna("").astype(str)
-        desc = desc.where(desc.str.strip() != "", d.get("docketsMemo", "").fillna("").astype(str))
-        desc = desc.where(desc.str.strip() != "", d.get("sourceCategoryCd", "").fillna("").astype(str))
+        desc = d.get("subjectMatterMemo", pd.Series([""] * len(d), index=d.index)).fillna("").astype(str)
+        dockets = d.get("docketsMemo", pd.Series([""] * len(d), index=d.index)).fillna("").astype(str)
+        source_codes = d.get("sourceCategoryCd", pd.Series([""] * len(d), index=d.index)).fillna("").astype(str)
+        desc = desc.where(desc.str.strip() != "", dockets)
+        desc = desc.where(desc.str.strip() != "", source_codes)
         out.append(pd.DataFrame({
             "Session": d.get("Session", ""),
             "Date": date,
@@ -1093,9 +1123,9 @@ def build_disclosures(
     if not d.empty:
         date = d.get("periodStartDt", "").fillna("").astype(str)
         entity = (
-            d.get("onbehalfName", "").fillna("").astype(str)
+            d.get("onbehalfName", pd.Series([""] * len(d), index=d.index)).fillna("").astype(str)
             + " -- "
-            + d.get("onbehalfMailingCity", "").fillna("").astype(str)
+            + d.get("onbehalfMailingCity", pd.Series([""] * len(d), index=d.index)).fillna("").astype(str)
         ).str.replace(r"\s+--\s+$", "", regex=True)
         out.append(pd.DataFrame({
             "Session": d.get("Session", ""),
@@ -1109,8 +1139,11 @@ def build_disclosures(
     d = filter_filer_rows(df_sub, session, lobbyshort, name_to_short, lobbyist_norms, filerid_to_short, filer_ids_set)
     if not d.empty:
         date = d.get("periodStartDt", "").fillna("").astype(str)
-        desc = d.get("subjectMatterCodeValue", "").fillna("").astype(str)
-        desc = desc.where(desc.str.strip() != "", d.get("subjectMatterDescr", "").fillna("").astype(str))
+        desc = d.get("subjectMatterCodeValue", pd.Series([""] * len(d), index=d.index)).fillna("").astype(str)
+        desc = desc.where(
+            desc.str.strip() != "",
+            d.get("subjectMatterDescr", pd.Series([""] * len(d), index=d.index)).fillna("").astype(str),
+        )
         out.append(pd.DataFrame({
             "Session": d.get("Session", ""),
             "Date": date,
@@ -1170,9 +1203,11 @@ def build_disclosures_multi(
     d = keep(df_cvr)
     if not d.empty:
         date = d.get("filedDt", d.get("periodStartDt", "")).fillna("").astype(str)
-        desc = d.get("subjectMatterMemo", "").fillna("").astype(str)
-        desc = desc.where(desc.str.strip() != "", d.get("docketsMemo", "").fillna("").astype(str))
-        desc = desc.where(desc.str.strip() != "", d.get("sourceCategoryCd", "").fillna("").astype(str))
+        desc = d.get("subjectMatterMemo", pd.Series([""] * len(d), index=d.index)).fillna("").astype(str)
+        dockets = d.get("docketsMemo", pd.Series([""] * len(d), index=d.index)).fillna("").astype(str)
+        source_codes = d.get("sourceCategoryCd", pd.Series([""] * len(d), index=d.index)).fillna("").astype(str)
+        desc = desc.where(desc.str.strip() != "", dockets)
+        desc = desc.where(desc.str.strip() != "", source_codes)
         out.append(pd.DataFrame({
             "Session": d.get("Session", ""),
             "Date": date,
@@ -1200,9 +1235,9 @@ def build_disclosures_multi(
     if not d.empty:
         date = d.get("periodStartDt", "").fillna("").astype(str)
         entity = (
-            d.get("onbehalfName", "").fillna("").astype(str)
+            d.get("onbehalfName", pd.Series([""] * len(d), index=d.index)).fillna("").astype(str)
             + " - "
-            + d.get("onbehalfMailingCity", "").fillna("").astype(str)
+            + d.get("onbehalfMailingCity", pd.Series([""] * len(d), index=d.index)).fillna("").astype(str)
         ).str.replace(r"\s+-\s+$", "", regex=True)
         out.append(pd.DataFrame({
             "Session": d.get("Session", ""),
@@ -1217,8 +1252,11 @@ def build_disclosures_multi(
     d = keep(df_sub)
     if not d.empty:
         date = d.get("periodStartDt", "").fillna("").astype(str)
-        desc = d.get("subjectMatterCodeValue", "").fillna("").astype(str)
-        desc = desc.where(desc.str.strip() != "", d.get("subjectMatterDescr", "").fillna("").astype(str))
+        desc = d.get("subjectMatterCodeValue", pd.Series([""] * len(d), index=d.index)).fillna("").astype(str)
+        desc = desc.where(
+            desc.str.strip() != "",
+            d.get("subjectMatterDescr", pd.Series([""] * len(d), index=d.index)).fillna("").astype(str),
+        )
         out.append(pd.DataFrame({
             "Session": d.get("Session", ""),
             "Date": date,
@@ -1244,7 +1282,7 @@ def build_disclosures_multi(
 def _build_tfl_trend_data(df: pd.DataFrame) -> pd.DataFrame:
     """Pre-compute TFL trend data for 85th-89th sessions (cached)."""
     d = df.copy()
-    d["Session"] = d["Session"].astype(str).str.strip()
+    d["Session"] = _session_series(d)
     d = ensure_cols(d, {"IsTFL": 0, "Low_num": 0.0, "High_num": 0.0})
     d = d[d["IsTFL"] == 1]
     d["SessionBase"] = _session_base_number_series(d["Session"])
@@ -1263,7 +1301,7 @@ def _build_tfl_trend_data(df: pd.DataFrame) -> pd.DataFrame:
 def _build_top5_tfl_clients(df: pd.DataFrame, session_val: str | None, scope_val: str) -> pd.DataFrame:
     """Pre-compute top-5 taxpayer-funded clients (cached)."""
     clients = df.copy()
-    clients["Session"] = clients["Session"].astype(str).str.strip()
+    clients["Session"] = _session_series(clients)
     if scope_val == "This Session" and session_val is not None:
         clients = clients[clients["Session"] == str(session_val)]
     clients = ensure_cols(clients, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0})
@@ -1309,7 +1347,7 @@ def build_all_lobbyists_overview_fast(df: pd.DataFrame, session_val: str | None,
         return pd.DataFrame(), {}
 
     d = df.copy()
-    d["Session"] = d["Session"].astype(str).str.strip()
+    d["Session"] = _session_series(d)
 
     if scope_val == "This Session" and session_val is not None:
         d = d[d["Session"] == str(session_val)]
@@ -1397,7 +1435,7 @@ def build_client_scope_bundle(
         return ClientScopeBundle(pd.DataFrame(), {}, build_category_chart_data(df))
 
     d = df.copy()
-    d["Session"] = d["Session"].astype(str).str.strip()
+    d["Session"] = _session_series(d)
     if scope_val == "This Session" and session_val is not None:
         d = d[d["Session"] == str(session_val)]
 
@@ -1449,7 +1487,7 @@ def build_member_session_bundle(author_bills: pd.DataFrame, wit_all: pd.DataFram
         return MemberSessionBundle(pd.DataFrame(), {})
 
     d = author_bills.copy()
-    d["Session"] = d["Session"].astype(str).str.strip()
+    d["Session"] = _session_series(d)
     d = d[d["Session"] == session]
     d = ensure_cols(d, {"Author": "", "Status": "", "Bill": ""})
     d = d[d["Author"].astype(str).str.strip() != ""]
@@ -1479,7 +1517,7 @@ def build_member_session_bundle(author_bills: pd.DataFrame, wit_all: pd.DataFram
     if isinstance(wit_all, pd.DataFrame) and not wit_all.empty:
         wit = wit_all.copy()
         wit = ensure_cols(wit, {"Session": "", "Bill": "", "LobbyShort": ""})
-        wit["Session"] = wit["Session"].astype(str).str.strip()
+        wit["Session"] = _session_series(wit)
         wit = wit[wit["Session"] == session]
         wit = wit[wit["Bill"].notna()]
         wit["Bill"] = wit["Bill"].astype(str)

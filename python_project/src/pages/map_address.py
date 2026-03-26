@@ -18,7 +18,6 @@ HELPER_KEYS = (
     'MAP_BASEMAP_OPTIONS',
     'PATH',
     '_MAP_WORKSPACE_CTX_KEYS',
-    '_build_fragment_ctx',
     '_map_fragments',
     'get_map_atlas_bundle',
     'require_map_state',
@@ -567,7 +566,10 @@ def render_page(ctx: dict[str, Any] | None = None) -> None:
             _forensics_label = "\U0001f50d Address Forensics"
             _docket_label = f"\U0001f4cb Case Docket ({_docket_count:,})" if _docket_count else "\U0001f4cb Case Docket"
 
-            st.session_state["_map_workspace_ctx"] = _build_fragment_ctx(_MAP_WORKSPACE_CTX_KEYS, locals())
+            _map_fragments.merge_fragment_session_context(
+                "_map_workspace_ctx",
+                {key: value for key, value in locals().items() if key in _MAP_WORKSPACE_CTX_KEYS},
+            )
             _map_fragments.render_map_workspace_fragment("_map_workspace_ctx")
             return
 

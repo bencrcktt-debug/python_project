@@ -17,7 +17,6 @@ from ._runtime import push_context as _push_context
 HELPER_KEYS = (
     'PATH',
     '_MEMBER_WORKSPACE_CTX_KEYS',
-    '_build_fragment_ctx',
     '_client_page',
     '_default_session_from_list',
     '_lobby_page',
@@ -34,6 +33,7 @@ HELPER_KEYS = (
     '_solutions_page',
     '_tfl_session_for_filter',
     'data_health_table',
+    'get_app_tables',
     'get_member_session_bundle',
     'html',
     'pd',
@@ -117,15 +117,10 @@ def render_page(ctx: dict[str, Any] | None = None) -> None:
 
         Wit_All = data["Wit_All"]
         Bill_Status_All = data["Bill_Status_All"]
-        Bill_Sub_All = data.get("Bill_Sub_All", pd.DataFrame())
         Lobby_TFL_Client_All = data["Lobby_TFL_Client_All"]
-        Staff_All = data["Staff_All"]
-        LaCvr = data["LaCvr"]
-        LaDock = data["LaDock"]
-        LaI4E = data["LaI4E"]
-        LaSub = data["LaSub"]
         name_to_short = app_state.name_to_short
         short_to_names = app_state.short_to_names
+        filerid_to_short = app_state.filerid_to_short
         tfl_sessions = set(app_state.tfl_sessions)
 
         if "member_session" not in st.session_state:
@@ -165,7 +160,7 @@ def render_page(ctx: dict[str, Any] | None = None) -> None:
 
         with st.sidebar.expander("Data health", expanded=False):
             st.caption(f"Data path: {PATH}")
-            health = data_health_table(data)
+            health = data_health_table(app_state.table_manifest)
             st.dataframe(health, width="stretch", height=260, hide_index=True)
 
         st.markdown('<div id="filter-bar-marker"></div>', unsafe_allow_html=True)
@@ -303,23 +298,28 @@ def render_page(ctx: dict[str, Any] | None = None) -> None:
             "name": st.session_state.member_name,
             "report_title": "Legislator Report",
             "tables": {
-                "Staff_All": Staff_All,
-                "LaFood": data.get("LaFood", pd.DataFrame()),
-                "LaEnt": data.get("LaEnt", pd.DataFrame()),
-                "LaTran": data.get("LaTran", pd.DataFrame()),
-                "LaGift": data.get("LaGift", pd.DataFrame()),
-                "LaEvnt": data.get("LaEvnt", pd.DataFrame()),
-                "LaAwrd": data.get("LaAwrd", pd.DataFrame()),
-                "LaCvr": LaCvr,
-                "LaDock": LaDock,
-                "LaI4E": LaI4E,
-                "LaSub": LaSub,
+                "Staff_All": data["Staff_All"],
             },
             "lookups": {
                 "name_to_short": name_to_short,
                 "short_to_names": short_to_names,
-                "filerid_to_short": data.get("filerid_to_short", {}),
+                "filerid_to_short": filerid_to_short,
             },
+            "table_loader": get_app_tables,
+            "table_loader_path": str(PATH),
+            "table_loader_keys": (
+                "Bill_Sub_All",
+                "LaFood",
+                "LaEnt",
+                "LaTran",
+                "LaGift",
+                "LaEvnt",
+                "LaAwrd",
+                "LaCvr",
+                "LaDock",
+                "LaI4E",
+                "LaSub",
+            ),
         }
         _ = _render_pdf_report_section(
             key_prefix="member",
@@ -329,19 +329,16 @@ def render_page(ctx: dict[str, Any] | None = None) -> None:
             Lobby_TFL_Client_All=Lobby_TFL_Client_All,
             Wit_All=Wit_All,
             Bill_Status_All=Bill_Status_All,
-            Bill_Sub_All=Bill_Sub_All,
+            Bill_Sub_All=pd.DataFrame(),
             tfl_session_val=tfl_session_val,
             focus_context=focus_context,
         )
-
-        member_session_bundle = get_member_session_bundle(
-            str(PATH),
-            st.session_state.member_session,
-        )
-        all_legislators = member_session_bundle.all_legislators
-        all_leg_stats = member_session_bundle.stats
-
-        st.session_state["_member_workspace_ctx"] = _build_fragment_ctx(_MEMBER_WORKSPACE_CTX_KEYS, locals())
+        _page_fragments.merge_fragment_session_context("_member_workspace_ctx", {
+            "PATH": str(PATH),
+            "member_session": st.session_state.member_session,
+            "member_name": st.session_state.member_name,
+            "tfl_session_val": tfl_session_val,
+        })
         _page_fragments.render_member_workspace_fragment("_member_workspace_ctx")
         return
     finally:

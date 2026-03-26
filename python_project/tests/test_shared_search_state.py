@@ -160,6 +160,21 @@ def test_lobbyist_autocomplete_candidates_preserve_ranked_matches(app_state: sea
     assert "FilerID 101" in candidates[0]["label"]
 
 
+def test_build_app_state_rebuilds_lobby_lookup_state_from_raw_tables(sample_workbook: dict[str, object]) -> None:
+    workbook = deepcopy(sample_workbook)
+    for key in ("lobby_index", "lobbyist_index", "name_to_short", "short_to_names", "known_shorts", "filerid_to_short"):
+        workbook.pop(key, None)
+
+    state = search_state.build_app_state("memory://derived", workbook)
+
+    assert not state.lobbyist_index.empty
+    assert state.name_to_short[search_state.norm_name("Charles Abbott")] == "ABBOTT C"
+    assert state.short_to_names["ABBOTT C"][0] in {"Charles Abbott", "Chuck Abbott"}
+    candidates = search_state.lobbyist_autocomplete_candidates("Abbott", state.lobbyist_index)
+    assert candidates
+    assert candidates[0]["lobbyshort"] == "ABBOTT C"
+
+
 def test_resolve_member_name_prefers_exact_normalized_match(app_state: search_state.AppState) -> None:
     resolved, suggestions = search_state.resolve_member_name("Keith Bell", app_state.member_index)
     assert resolved == "Bell, Keith"

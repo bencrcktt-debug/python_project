@@ -32,6 +32,101 @@ def _pop_context(previous: dict[str, Any], ctx: dict[str, Any]) -> None:
         else:
             globals()[key] = old_value
 
+
+def _resolve_workspace_table(ctx: dict[str, Any], key: str) -> pd.DataFrame:
+    ctx_value = ctx.get(key, _MISSING)
+    if isinstance(ctx_value, pd.DataFrame):
+        return ctx_value
+
+    data = ctx.get("data", {})
+    if isinstance(data, dict):
+        data_value = data.get(key, _MISSING)
+        if isinstance(data_value, pd.DataFrame):
+            return data_value
+
+    global_value = globals().get(key, _MISSING)
+    if isinstance(global_value, pd.DataFrame):
+        return global_value
+
+    loader = globals().get("get_app_tables")
+    path = str(ctx.get("PATH", "")).strip()
+    if path and callable(loader):
+        try:
+            loaded = loader(path, (key,))
+        except Exception:
+            return pd.DataFrame()
+        loaded_value = loaded.get(key, _MISSING)
+        if isinstance(loaded_value, pd.DataFrame):
+            return loaded_value
+
+    return pd.DataFrame()
+
+
+def _workspace_data_with_lazy_tables(ctx: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
+    data = dict(ctx.get("data", {}) or {})
+    for key in keys:
+        table = _resolve_workspace_table(ctx, key)
+        if isinstance(table, pd.DataFrame):
+            data[key] = table
+    return data
+
+
+def _staff_metrics(
+    staff_rows: pd.DataFrame,
+    bills_df: pd.DataFrame,
+    session_val: str,
+    bill_status_all: pd.DataFrame,
+) -> pd.DataFrame:
+    if staff_rows.empty or bills_df.empty:
+        return pd.DataFrame(columns=["Legislator", "% Against that Failed", "% For that Passed"])
+
+    legs = sorted(staff_rows["Legislator"].dropna().astype(str).unique().tolist())
+    out = []
+    bs = bill_status_all[bill_status_all["Session"].astype(str).str.strip() == str(session_val)]
+
+    for leg in legs:
+        authored = bs[bs["Author"].fillna("").astype(str).str.contains(leg, case=False, na=False)][
+            ["Session", "Bill", "Status"]
+        ]
+        if authored.empty:
+            out.append({"Legislator": leg, "% Against that Failed": None, "% For that Passed": None})
+            continue
+
+        joined = authored.merge(
+            bills_df[["Session", "Bill", "Position", "Status"]],
+            on=["Session", "Bill"],
+            how="inner",
+            suffixes=("_authored", "_witness"),
+        )
+        if joined.empty:
+            out.append({"Legislator": leg, "% Against that Failed": None, "% For that Passed": None})
+            continue
+        status_col = "Status"
+        if status_col not in joined.columns:
+            if "Status_authored" in joined.columns:
+                status_col = "Status_authored"
+            elif "Status_witness" in joined.columns:
+                status_col = "Status_witness"
+
+        against = joined[joined["Position"].astype(str).str.contains("Against", na=False)]
+        denom_a = len(against)
+        pct_against_failed = (against[status_col].eq("Failed").sum() / denom_a) if denom_a else None
+
+        for_ = joined[joined["Position"].astype(str).str.contains(r"\bFor\b", regex=True, na=False)]
+        denom_f = len(for_)
+        pct_for_passed = (for_[status_col].eq("Passed").sum() / denom_f) if denom_f else None
+
+        out.append(
+            {
+                "Legislator": leg,
+                "% Against that Failed": pct_against_failed,
+                "% For that Passed": pct_for_passed,
+            }
+        )
+
+    return pd.DataFrame(out)
+
+
 def render_client_workspace(ctx: dict[str, Any]) -> None:
     _previous = _push_context(ctx)
     try:
@@ -319,259 +414,304 @@ def render_client_workspace(ctx: dict[str, Any]) -> None:
             return
 
         session = str(st.session_state.client_session).strip()
-        client_norm = norm_name(st.session_state.client_name)
+        if ctx.get("_prepared_client_workspace"):
+            client_rows_all = ctx.get("client_rows_all", pd.DataFrame())
+            client_lt = ctx.get("client_lt", pd.DataFrame())
+            if not ctx.get("client_has_rows", False):
+                with tab_overview:
+                    if not client_rows_all.empty:
+                        st.info("No rows found for this client in the selected session. Try another session.")
+                    else:
+                        st.info("No rows found for this client.")
+                with tab_lobbyists:
+                    _no_client_msg()
+                with tab_bills:
+                    _no_client_msg()
+                with tab_policy:
+                    _no_client_msg()
+                with tab_staff:
+                    _no_client_msg()
+                with tab_activities:
+                    _no_client_msg()
+                with tab_disclosures:
+                    _no_client_msg()
+                return
 
-        _client_norms = norm_name_series(Lobby_TFL_Client_All["Client"])
-        client_rows_all = Lobby_TFL_Client_All[_client_norms == client_norm]
-
-        tfl_session = str(tfl_session_val) if tfl_session_val is not None else session
-        client_lt = client_rows_all[client_rows_all["Session"].astype(str).str.strip() == tfl_session]
-        client_lt = ensure_cols(
-            client_lt,
-            {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0, "LobbyShort": "", "Lobby Name": ""},
-        )
-
-        if client_lt.empty:
-            with tab_overview:
-                if not client_rows_all.empty:
-                    st.info("No rows found for this client in the selected session. Try another session.")
-                else:
-                    st.info("No rows found for this client.")
-            with tab_lobbyists:
-                _no_client_msg()
-            with tab_bills:
-                _no_client_msg()
-            with tab_policy:
-                _no_client_msg()
-            with tab_staff:
-                _no_client_msg()
-            with tab_activities:
-                _no_client_msg()
-            with tab_disclosures:
-                _no_client_msg()
-            return
-
-        def _first_nonempty(series: pd.Series) -> str:
-            if series is None or len(series) == 0:
-                return ""
-            s = series.dropna().astype(str).str.strip()
-            s = s[s != ""]
-            return s.iloc[0] if not s.empty else ""
-
-        lobbyist_totals = (
-            client_lt.groupby("LobbyShort", as_index=False)
-            .agg(
-                Low=("Low_num", "sum"),
-                High=("High_num", "sum"),
-                LobbyName=("Lobby Name", _first_nonempty),
+            lobbyist_totals = ctx.get("lobbyist_totals", pd.DataFrame())
+            top_lobbyist_label = str(ctx.get("top_lobbyist_label", "")).strip()
+            top_lobbyist_short = str(ctx.get("top_lobbyist_short", "")).strip()
+            lobbyshorts = list(ctx.get("lobbyshorts", []) or [])
+            lobbyshort_norms = set(ctx.get("lobbyshort_norms", set()) or set())
+            lobbyshort_to_name = dict(ctx.get("lobbyshort_to_name", {}) or {})
+            lobbyist_names = list(ctx.get("lobbyist_names", []) or [])
+            lobbyist_norms = set(ctx.get("lobbyist_norms", set()) or set())
+            lobbyist_norms_tuple = tuple(ctx.get("lobbyist_norms_tuple", ()) or ())
+            client_is_tfl = bool(ctx.get("client_is_tfl", False))
+            total_low = float(ctx.get("total_low", 0.0) or 0.0)
+            total_high = float(ctx.get("total_high", 0.0) or 0.0)
+            wit = ctx.get("wit", pd.DataFrame())
+            bills = ctx.get("bills", pd.DataFrame())
+            bill_subjects = ctx.get("bill_subjects", pd.DataFrame())
+            mentions = ctx.get("mentions", pd.DataFrame())
+            lobby_sub_counts = ctx.get("lobby_sub_counts", pd.DataFrame())
+            activities = ctx.get("activities", pd.DataFrame())
+            disclosures = ctx.get("disclosures", pd.DataFrame())
+            staff_pick = ctx.get("staff_pick", pd.DataFrame())
+            staff_pick_session = ctx.get("staff_pick_session", pd.DataFrame())
+            staff_stats = ctx.get("staff_stats", pd.DataFrame())
+        else:
+            data = _workspace_data_with_lazy_tables(
+                ctx,
+                (
+                    "Fiscal_Impact",
+                    "Bill_Sub_All",
+                    "Lobby_Sub_All",
+                    "LaFood",
+                    "LaEnt",
+                    "LaTran",
+                    "LaGift",
+                    "LaEvnt",
+                    "LaAwrd",
+                    "LaCvr",
+                    "LaDock",
+                    "LaI4E",
+                    "LaSub",
+                ),
             )
-        )
-        lobbyist_totals = lobbyist_totals.rename(columns={"LobbyName": "Lobby Name"})
-        lobbyist_totals["Lobbyist"] = lobbyist_totals["Lobby Name"].fillna("").astype(str).str.strip()
-        lobbyist_totals["Lobbyist"] = lobbyist_totals["Lobbyist"].where(
-            lobbyist_totals["Lobbyist"] != "", lobbyist_totals["LobbyShort"]
-        )
-        lobbyist_totals = lobbyist_totals.sort_values(["High", "Low"], ascending=[False, False])
-        top_lobbyist_label = ""
-        top_lobbyist_short = ""
-        if not lobbyist_totals.empty:
-            top_lobby_row = lobbyist_totals.iloc[0]
-            top_lobbyist_label = str(top_lobby_row.get("Lobbyist", "")).strip()
-            top_lobbyist_short = str(top_lobby_row.get("LobbyShort", "")).strip()
+            Fiscal_Impact = data["Fiscal_Impact"]
+            Bill_Sub_All = data["Bill_Sub_All"]
+            Lobby_Sub_All = data["Lobby_Sub_All"]
+            LaCvr = data["LaCvr"]
+            LaDock = data["LaDock"]
+            LaI4E = data["LaI4E"]
+            LaSub = data["LaSub"]
 
-        lobbyshorts = lobbyist_totals["LobbyShort"].dropna().astype(str).unique().tolist()
-        lobbyshort_norms = {norm_name(s) for s in lobbyshorts if s}
-        lobbyshort_to_name = dict(zip(lobbyist_totals["LobbyShort"], lobbyist_totals["Lobbyist"]))
+            client_norm = norm_name(st.session_state.client_name)
 
-        lobbyist_names = lobbyist_totals["Lobbyist"].dropna().astype(str).tolist()
-        lobbyist_norms = set()
-        for name in lobbyist_names + lobbyshorts:
-            lobbyist_norms |= norm_person_variants(name)
-            init_key = _last_first_initial_key(name)
-            if init_key:
-                lobbyist_norms.add(init_key)
-        lobbyist_norms_tuple = tuple(sorted(lobbyist_norms))
+            _client_norms = norm_name_series(Lobby_TFL_Client_All["Client"])
+            client_rows_all = Lobby_TFL_Client_All[_client_norms == client_norm]
 
-        client_is_tfl = bool((client_lt["IsTFL"] == 1).any())
-        total_low = float(client_lt["Low_num"].sum()) if not client_lt.empty else 0.0
-        total_high = float(client_lt["High_num"].sum()) if not client_lt.empty else 0.0
+            tfl_session = str(tfl_session_val) if tfl_session_val is not None else session
+            client_lt = client_rows_all[client_rows_all["Session"].astype(str).str.strip() == tfl_session]
+            client_lt = ensure_cols(
+                client_lt,
+                {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0, "LobbyShort": "", "Lobby Name": ""},
+            )
 
-        wit_all = Wit_All
-        if "LobbyShortNorm" not in wit_all.columns:
-            wit_all = wit_all.copy()
-            wit_all["LobbyShortNorm"] = norm_name_series(wit_all["LobbyShort"])
-        session_col = wit_all["Session"].astype(str).str.strip()
-        wit = wit_all[(session_col == session) & (wit_all["LobbyShortNorm"].isin(lobbyshort_norms))]
-        if not wit.empty:
-            norm_to_short = {norm_name(s): s for s in lobbyshorts if s}
-            wit["LobbyShort"] = wit["LobbyShortNorm"].map(norm_to_short).fillna(wit["LobbyShort"])
+            if client_lt.empty:
+                with tab_overview:
+                    if not client_rows_all.empty:
+                        st.info("No rows found for this client in the selected session. Try another session.")
+                    else:
+                        st.info("No rows found for this client.")
+                with tab_lobbyists:
+                    _no_client_msg()
+                with tab_bills:
+                    _no_client_msg()
+                with tab_policy:
+                    _no_client_msg()
+                with tab_staff:
+                    _no_client_msg()
+                with tab_activities:
+                    _no_client_msg()
+                with tab_disclosures:
+                    _no_client_msg()
+                return
 
-        bill_pos = bill_position_from_flags(wit)
-        bills = (
-            bill_pos.merge(Bill_Status_All, on=["Session", "Bill"], how="left")
-            if not bill_pos.empty else
-            pd.DataFrame(columns=["Session", "Bill", "LobbyShort", "Position", "Author", "Caption", "Status"])
-        )
+            def _first_nonempty(series: pd.Series) -> str:
+                if series is None or len(series) == 0:
+                    return ""
+                s = series.dropna().astype(str).str.strip()
+                s = s[s != ""]
+                return s.iloc[0] if not s.empty else ""
 
-        if not wit.empty and "org" in wit.columns:
-            orgs = wit
-            orgs["Organization"] = orgs.get("org", "").fillna("").astype(str).str.strip()
-            orgs = orgs.groupby(["Session", "Bill", "LobbyShort"])["Organization"].apply(
-                lambda s: ", ".join(sorted({x for x in s if x}))
-            ).reset_index()
-            bills = bills.merge(orgs, on=["Session", "Bill", "LobbyShort"], how="left")
-
-        if not bills.empty:
-            fi = Fiscal_Impact[Fiscal_Impact["Session"].astype(str).str.strip() == session]
-            if not fi.empty and {"Version", "EstimatedTwoYearNetImpactGR"}.issubset(fi.columns):
-                fi["Version"] = fi["Version"].astype(str).str.upper().str.strip()
-                fi["EstimatedTwoYearNetImpactGR"] = pd.to_numeric(fi["EstimatedTwoYearNetImpactGR"], errors="coerce").fillna(0)
-                fi_p = (
-                    fi.groupby(["Session", "Bill", "Version"], as_index=False)["EstimatedTwoYearNetImpactGR"]
-                      .sum()
-                      .pivot(index=["Session", "Bill"], columns="Version", values="EstimatedTwoYearNetImpactGR")
-                      .reset_index()
-                      .rename(columns={"H": "Fiscal Impact H", "S": "Fiscal Impact S"})
+            lobbyist_totals = (
+                client_lt.groupby("LobbyShort", as_index=False)
+                .agg(
+                    Low=("Low_num", "sum"),
+                    High=("High_num", "sum"),
+                    LobbyName=("Lobby Name", _first_nonempty),
                 )
-                bills = bills.merge(fi_p, on=["Session", "Bill"], how="left")
-
-        bills = ensure_cols(bills, {"LobbyShort": "", "Organization": "", "Fiscal Impact H": 0, "Fiscal Impact S": 0})
-        bills["Lobbyist"] = bills.get("LobbyShort", "").map(lobbyshort_to_name).fillna(bills.get("LobbyShort", ""))
-
-        bill_subjects = Bill_Sub_All[Bill_Sub_All["Session"].astype(str).str.strip() == session].merge(
-            bills[["Session", "Bill"]].drop_duplicates(), on=["Session", "Bill"], how="inner"
-        )
-        if not bill_subjects.empty:
-            mentions = (
-                bill_subjects.groupby("Subject")["Bill"]
-                .nunique()
-                .reset_index(name="Mentions")
-                .sort_values("Mentions", ascending=False)
             )
-            total_mentions = int(mentions["Mentions"].sum()) or 1
-            mentions["Share"] = (mentions["Mentions"] / total_mentions).fillna(0)
-        else:
-            mentions = pd.DataFrame(columns=["Subject", "Mentions", "Share"])
-
-        lobby_sub = Lobby_Sub_All
-        if "Session" in lobby_sub.columns:
-            lobby_sub = lobby_sub[lobby_sub["Session"].astype(str).str.strip() == session]
-        elif "session" in lobby_sub.columns:
-            lobby_sub = lobby_sub[lobby_sub["session"].astype(str).str.strip() == session]
-        if "LobbyShortNorm" in lobby_sub.columns:
-            lobby_sub = lobby_sub[lobby_sub["LobbyShortNorm"].isin(lobbyshort_norms)]
-        elif "LobbyShort" in lobby_sub.columns:
-            lobby_sub = lobby_sub[lobby_sub["LobbyShort"].astype(str).str.strip().isin(lobbyshorts)]
-        else:
-            lobby_sub = lobby_sub.iloc[0:0]
-
-        if not lobby_sub.empty:
-            lobby_sub = lobby_sub.assign(
-                Subject=lobby_sub.get("Subject Matter", "").fillna("").astype(str).str.strip(),
-                Other=lobby_sub.get("Other Subject Matter Description", "").fillna("").astype(str).str.strip(),
+            lobbyist_totals = lobbyist_totals.rename(columns={"LobbyName": "Lobby Name"})
+            lobbyist_totals["Lobbyist"] = lobbyist_totals["Lobby Name"].fillna("").astype(str).str.strip()
+            lobbyist_totals["Lobbyist"] = lobbyist_totals["Lobbyist"].where(
+                lobbyist_totals["Lobbyist"] != "", lobbyist_totals["LobbyShort"]
             )
-            for col in ["Subject", "Other"]:
-                series = lobby_sub[col]
-                lobby_sub[col] = series.where(~series.str.lower().isin(["nan", "none"]), "")
+            lobbyist_totals = lobbyist_totals.sort_values(["High", "Low"], ascending=[False, False])
+            top_lobbyist_label = ""
+            top_lobbyist_short = ""
+            if not lobbyist_totals.empty:
+                top_lobby_row = lobbyist_totals.iloc[0]
+                top_lobbyist_label = str(top_lobby_row.get("Lobbyist", "")).strip()
+                top_lobbyist_short = str(top_lobby_row.get("LobbyShort", "")).strip()
 
-            unnamed0 = lobby_sub.get("Unnamed: 0", lobby_sub.get("Column1", "")).fillna("").astype(str).str.strip()
-            unnamed0 = unnamed0.where(~unnamed0.str.lower().isin(["nan", "none"]), "")
+            lobbyshorts = lobbyist_totals["LobbyShort"].dropna().astype(str).unique().tolist()
+            lobbyshort_norms = {norm_name(s) for s in lobbyshorts if s}
+            lobbyshort_to_name = dict(zip(lobbyist_totals["LobbyShort"], lobbyist_totals["Lobbyist"]))
 
-            topic = lobby_sub["Subject"]
-            topic = topic.where(topic != "", lobby_sub["Other"])
-            topic = topic.where(topic != "", unnamed0)
-            topic = topic.where(topic != "", "Unspecified")
-            lobby_sub["Topic"] = topic
+            lobbyist_names = lobbyist_totals["Lobbyist"].dropna().astype(str).tolist()
+            lobbyist_norms = set()
+            for name in lobbyist_names + lobbyshorts:
+                lobbyist_norms |= norm_person_variants(name)
+                init_key = _last_first_initial_key(name)
+                if init_key:
+                    lobbyist_norms.add(init_key)
+            lobbyist_norms_tuple = tuple(sorted(lobbyist_norms))
 
-            lobby_sub_counts = (
-                lobby_sub.groupby("Topic")
-                .size()
-                .reset_index(name="Mentions")
-                .sort_values("Mentions", ascending=False)
-            )
-        else:
-            lobby_sub_counts = pd.DataFrame(columns=["Topic", "Mentions"])
+            client_is_tfl = bool((client_lt["IsTFL"] == 1).any())
+            total_low = float(client_lt["Low_num"].sum()) if not client_lt.empty else 0.0
+            total_high = float(client_lt["High_num"].sum()) if not client_lt.empty else 0.0
 
-        activities = build_activities_multi(
-            data["LaFood"], data["LaEnt"], data["LaTran"], data["LaGift"], data["LaEvnt"], data["LaAwrd"],
-            lobbyshorts=lobbyshorts,
-            session=session,
-            name_to_short=name_to_short,
-            lobbyist_norms_tuple=lobbyist_norms_tuple,
-            filerid_to_short=data.get("filerid_to_short", {}),
-            lobbyshort_to_name=lobbyshort_to_name,
-        )
+            wit_all = Wit_All
+            if "LobbyShortNorm" not in wit_all.columns:
+                wit_all = wit_all.copy()
+                wit_all["LobbyShortNorm"] = norm_name_series(wit_all["LobbyShort"])
+            session_col = wit_all["Session"].astype(str).str.strip()
+            wit = wit_all[(session_col == session) & (wit_all["LobbyShortNorm"].isin(lobbyshort_norms))]
+            if not wit.empty:
+                norm_to_short = {norm_name(s): s for s in lobbyshorts if s}
+                wit["LobbyShort"] = wit["LobbyShortNorm"].map(norm_to_short).fillna(wit["LobbyShort"])
 
-        disclosures = build_disclosures_multi(
-            LaCvr, LaDock, LaI4E, LaSub,
-            lobbyshorts=lobbyshorts,
-            session=session,
-            name_to_short=name_to_short,
-            lobbyist_norms_tuple=lobbyist_norms_tuple,
-            filerid_to_short=data.get("filerid_to_short", {}),
-            lobbyshort_to_name=lobbyshort_to_name,
-        )
-
-        staff_df = Staff_All
-        staff_session = staff_df["Session"].astype(str).str.strip() == session if "Session" in staff_df.columns else pd.Series(False, index=staff_df.index)
-
-        last_names = {last_name_norm_from_text(n) for n in lobbyist_names if last_name_norm_from_text(n)}
-        init_map = {k: v for k, v in ((_last_first_initial_key(n), n) for n in lobbyist_names) if k}
-        full_map = {norm_name(n): n for n in lobbyist_names if n}
-        last_map = {k: v for k, v in ((last_name_norm_from_text(n), n) for n in lobbyist_names) if k}
-
-        match_mask = pd.Series(False, index=staff_df.index)
-        if lobbyist_norms:
-            match_mask = match_mask | staff_df.get("StaffNameNorm", pd.Series(False, index=staff_df.index)).isin(lobbyist_norms)
-            match_mask = match_mask | staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)).isin(lobbyist_norms)
-        if last_names:
-            match_mask = match_mask | staff_df.get("StaffLastNorm", pd.Series(False, index=staff_df.index)).isin(last_names)
-        if lobbyshort_norms:
-            match_mask = match_mask | staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)).isin(lobbyshort_norms)
-
-        staff_pick = staff_df[match_mask]
-        staff_pick_session = staff_df[staff_session & match_mask]
-
-        if not staff_pick.empty:
-            staff_pick["Matched Lobbyist"] = (
-                staff_pick.get("StaffNameNorm", pd.Series([""] * len(staff_pick))).map(full_map)
-                .fillna(staff_pick.get("StaffLastInitialNorm", pd.Series([""] * len(staff_pick))).map(init_map))
-                .fillna(staff_pick.get("StaffLastNorm", pd.Series([""] * len(staff_pick))).map(last_map))
+            bill_pos = bill_position_from_flags(wit)
+            bills = (
+                bill_pos.merge(Bill_Status_All, on=["Session", "Bill"], how="left")
+                if not bill_pos.empty else
+                pd.DataFrame(columns=["Session", "Bill", "LobbyShort", "Position", "Author", "Caption", "Status"])
             )
 
-        @st.cache_data(show_spinner=False, ttl=300, max_entries=4)
-        def staff_metrics(staff_rows: pd.DataFrame, bills_df: pd.DataFrame, session_val: str, bs_all: pd.DataFrame) -> pd.DataFrame:
-            if staff_rows.empty or bills_df.empty:
-                return pd.DataFrame(columns=["Legislator", "% Against that Failed", "% For that Passed"])
+            if not wit.empty and "org" in wit.columns:
+                orgs = wit
+                orgs["Organization"] = orgs.get("org", "").fillna("").astype(str).str.strip()
+                orgs = orgs.groupby(["Session", "Bill", "LobbyShort"])["Organization"].apply(
+                    lambda s: ", ".join(sorted({x for x in s if x}))
+                ).reset_index()
+                bills = bills.merge(orgs, on=["Session", "Bill", "LobbyShort"], how="left")
 
-            legs = sorted(staff_rows["Legislator"].dropna().astype(str).unique().tolist())
-            out = []
-            bs = bs_all[bs_all["Session"].astype(str).str.strip() == str(session_val)]
+            if not bills.empty:
+                fi = Fiscal_Impact[Fiscal_Impact["Session"].astype(str).str.strip() == session]
+                if not fi.empty and {"Version", "EstimatedTwoYearNetImpactGR"}.issubset(fi.columns):
+                    fi["Version"] = fi["Version"].astype(str).str.upper().str.strip()
+                    fi["EstimatedTwoYearNetImpactGR"] = pd.to_numeric(fi["EstimatedTwoYearNetImpactGR"], errors="coerce").fillna(0)
+                    fi_p = (
+                        fi.groupby(["Session", "Bill", "Version"], as_index=False)["EstimatedTwoYearNetImpactGR"]
+                          .sum()
+                          .pivot(index=["Session", "Bill"], columns="Version", values="EstimatedTwoYearNetImpactGR")
+                          .reset_index()
+                          .rename(columns={"H": "Fiscal Impact H", "S": "Fiscal Impact S"})
+                    )
+                    bills = bills.merge(fi_p, on=["Session", "Bill"], how="left")
 
-            for leg in legs:
-                authored = bs[bs["Author"].fillna("").astype(str).str.contains(leg, case=False, na=False)][["Session", "Bill", "Status"]]
-                if authored.empty:
-                    out.append({"Legislator": leg, "% Against that Failed": None, "% For that Passed": None})
-                    continue
+            bills = ensure_cols(bills, {"LobbyShort": "", "Organization": "", "Fiscal Impact H": 0, "Fiscal Impact S": 0})
+            bills["Lobbyist"] = bills.get("LobbyShort", "").map(lobbyshort_to_name).fillna(bills.get("LobbyShort", ""))
 
-                joined = authored.merge(bills_df[["Session", "Bill", "Position", "Status"]], on=["Session", "Bill"], how="inner")
-                if joined.empty:
-                    out.append({"Legislator": leg, "% Against that Failed": None, "% For that Passed": None})
-                    continue
+            bill_subjects = Bill_Sub_All[Bill_Sub_All["Session"].astype(str).str.strip() == session].merge(
+                bills[["Session", "Bill"]].drop_duplicates(), on=["Session", "Bill"], how="inner"
+            )
+            if not bill_subjects.empty:
+                mentions = (
+                    bill_subjects.groupby("Subject")["Bill"]
+                    .nunique()
+                    .reset_index(name="Mentions")
+                    .sort_values("Mentions", ascending=False)
+                )
+                total_mentions = int(mentions["Mentions"].sum()) or 1
+                mentions["Share"] = (mentions["Mentions"] / total_mentions).fillna(0)
+            else:
+                mentions = pd.DataFrame(columns=["Subject", "Mentions", "Share"])
 
-                against = joined[joined["Position"].astype(str).str.contains("Against", na=False)]
-                denom_a = len(against)
-                pct_against_failed = (against["Status"].eq("Failed").sum() / denom_a) if denom_a else None
+            lobby_sub = Lobby_Sub_All
+            if "Session" in lobby_sub.columns:
+                lobby_sub = lobby_sub[lobby_sub["Session"].astype(str).str.strip() == session]
+            elif "session" in lobby_sub.columns:
+                lobby_sub = lobby_sub[lobby_sub["session"].astype(str).str.strip() == session]
+            if "LobbyShortNorm" in lobby_sub.columns:
+                lobby_sub = lobby_sub[lobby_sub["LobbyShortNorm"].isin(lobbyshort_norms)]
+            elif "LobbyShort" in lobby_sub.columns:
+                lobby_sub = lobby_sub[lobby_sub["LobbyShort"].astype(str).str.strip().isin(lobbyshorts)]
+            else:
+                lobby_sub = lobby_sub.iloc[0:0]
 
-                for_ = joined[joined["Position"].astype(str).str.contains(r"\bFor\b", regex=True, na=False)]
-                denom_f = len(for_)
-                pct_for_passed = (for_["Status"].eq("Passed").sum() / denom_f) if denom_f else None
+            if not lobby_sub.empty:
+                lobby_sub = lobby_sub.assign(
+                    Subject=lobby_sub.get("Subject Matter", "").fillna("").astype(str).str.strip(),
+                    Other=lobby_sub.get("Other Subject Matter Description", "").fillna("").astype(str).str.strip(),
+                )
+                for col in ["Subject", "Other"]:
+                    series = lobby_sub[col]
+                    lobby_sub[col] = series.where(~series.str.lower().isin(["nan", "none"]), "")
 
-                out.append({"Legislator": leg, "% Against that Failed": pct_against_failed, "% For that Passed": pct_for_passed})
+                unnamed0 = lobby_sub.get("Unnamed: 0")
+                if not isinstance(unnamed0, pd.Series):
+                    unnamed0 = lobby_sub.get("Column1")
+                if not isinstance(unnamed0, pd.Series):
+                    unnamed0 = pd.Series([""] * len(lobby_sub), index=lobby_sub.index)
+                unnamed0 = unnamed0.fillna("").astype(str).str.strip()
+                unnamed0 = unnamed0.where(~unnamed0.str.lower().isin(["nan", "none"]), "")
 
-            return pd.DataFrame(out)
+                topic = lobby_sub["Subject"]
+                topic = topic.where(topic != "", lobby_sub["Other"])
+                topic = topic.where(topic != "", unnamed0)
+                topic = topic.where(topic != "", "Unspecified")
+                lobby_sub["Topic"] = topic
 
-        staff_stats = staff_metrics(staff_pick_session, bills, session, Bill_Status_All) if not staff_pick_session.empty else pd.DataFrame()
+                lobby_sub_counts = (
+                    lobby_sub.groupby("Topic")
+                    .size()
+                    .reset_index(name="Mentions")
+                    .sort_values("Mentions", ascending=False)
+                )
+            else:
+                lobby_sub_counts = pd.DataFrame(columns=["Topic", "Mentions"])
+
+            activities = build_activities_multi(
+                data["LaFood"], data["LaEnt"], data["LaTran"], data["LaGift"], data["LaEvnt"], data["LaAwrd"],
+                lobbyshorts=lobbyshorts,
+                session=session,
+                name_to_short=name_to_short,
+                lobbyist_norms_tuple=lobbyist_norms_tuple,
+                filerid_to_short=data.get("filerid_to_short", {}),
+                lobbyshort_to_name=lobbyshort_to_name,
+            )
+
+            disclosures = build_disclosures_multi(
+                LaCvr, LaDock, LaI4E, LaSub,
+                lobbyshorts=lobbyshorts,
+                session=session,
+                name_to_short=name_to_short,
+                lobbyist_norms_tuple=lobbyist_norms_tuple,
+                filerid_to_short=data.get("filerid_to_short", {}),
+                lobbyshort_to_name=lobbyshort_to_name,
+            )
+
+            staff_df = Staff_All
+            staff_session = staff_df["Session"].astype(str).str.strip() == session if "Session" in staff_df.columns else pd.Series(False, index=staff_df.index)
+
+            last_names = {last_name_norm_from_text(n) for n in lobbyist_names if last_name_norm_from_text(n)}
+            init_map = {k: v for k, v in ((_last_first_initial_key(n), n) for n in lobbyist_names) if k}
+            full_map = {norm_name(n): n for n in lobbyist_names if n}
+            last_map = {k: v for k, v in ((last_name_norm_from_text(n), n) for n in lobbyist_names) if k}
+
+            match_mask = pd.Series(False, index=staff_df.index)
+            if lobbyist_norms:
+                match_mask = match_mask | staff_df.get("StaffNameNorm", pd.Series(False, index=staff_df.index)).isin(lobbyist_norms)
+                match_mask = match_mask | staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)).isin(lobbyist_norms)
+            if last_names:
+                match_mask = match_mask | staff_df.get("StaffLastNorm", pd.Series(False, index=staff_df.index)).isin(last_names)
+            if lobbyshort_norms:
+                match_mask = match_mask | staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)).isin(lobbyshort_norms)
+
+            staff_pick = staff_df[match_mask]
+            staff_pick_session = staff_df[staff_session & match_mask]
+
+            if not staff_pick.empty:
+                staff_pick["Matched Lobbyist"] = (
+                    staff_pick.get("StaffNameNorm", pd.Series([""] * len(staff_pick))).map(full_map)
+                    .fillna(staff_pick.get("StaffLastInitialNorm", pd.Series([""] * len(staff_pick))).map(init_map))
+                    .fillna(staff_pick.get("StaffLastNorm", pd.Series([""] * len(staff_pick))).map(last_map))
+                )
+
+            staff_stats = _staff_metrics(staff_pick_session, bills, session, Bill_Status_All) if not staff_pick_session.empty else pd.DataFrame()
 
         with tab_overview:
             st.markdown('<div class="section-title">Overview</div>', unsafe_allow_html=True)
@@ -1455,151 +1595,164 @@ def render_member_workspace(ctx: dict[str, Any]) -> None:
 
         session = str(st.session_state.member_session).strip()
         member_name = st.session_state.member_name
-        member_norm = norm_name(member_name)
-        member_info = parse_member_name(member_name)
+        if ctx.get("_prepared_member_workspace"):
+            authored = ctx.get("authored", pd.DataFrame())
+            lt = ctx.get("lt", pd.DataFrame())
+            tfl_flag = ctx.get("tfl_flag", pd.DataFrame())
+            lobbyshort_to_name = dict(ctx.get("lobbyshort_to_name", {}) or {})
+            bill_list = list(ctx.get("bill_list", []) or [])
+            wit = ctx.get("wit", pd.DataFrame())
+            witness = ctx.get("witness", pd.DataFrame())
+            activities = ctx.get("activities", pd.DataFrame())
+            staff_matches = ctx.get("staff_matches", pd.DataFrame())
+            staff_lobbyists = ctx.get("staff_lobbyists", pd.DataFrame())
+            member_info = dict(ctx.get("member_info", {}) or {})
+        else:
+            member_norm = norm_name(member_name)
+            member_info = parse_member_name(member_name)
 
-        authored = author_bills_all
-        authored = authored[authored["AuthorNorm"] == member_norm]
-        authored = authored[authored["Session"].astype(str).str.strip() == session]
-        authored = authored.drop_duplicates(subset=["Session", "Bill", "Author"])
+            authored = author_bills_all
+            authored = authored[authored["AuthorNorm"] == member_norm]
+            authored = authored[authored["Session"].astype(str).str.strip() == session]
+            authored = authored.drop_duplicates(subset=["Session", "Bill", "Author"])
 
-        tfl_session = str(tfl_session_val) if tfl_session_val is not None else session
-        lt = Lobby_TFL_Client_All
-        if "Session" in lt.columns:
-            lt = lt[lt["Session"].astype(str).str.strip() == tfl_session]
-        lt = ensure_cols(lt, {"LobbyShort": "", "IsTFL": 0})
-        tfl_flag = (
-            lt.groupby("LobbyShort", as_index=False)["IsTFL"]
-            .max()
-            .rename(columns={"IsTFL": "Has TFL Client"})
-        )
-
-        lobbyshort_to_name = {}
-        if short_to_names:
-            lobbyshort_to_name = {k: (v[0] if v else k) for k, v in short_to_names.items()}
-        if not lobbyshort_to_name and not Lobby_TFL_Client_All.empty:
-            tmp = Lobby_TFL_Client_All[["LobbyShort", "Lobby Name"]].dropna()
-            tmp["LobbyShort"] = tmp["LobbyShort"].astype(str).str.strip()
-            tmp["Lobby Name"] = tmp["Lobby Name"].astype(str).str.strip()
-            lobbyshort_to_name = (
-                tmp.groupby("LobbyShort")["Lobby Name"]
-                .first()
-                .to_dict()
+            tfl_session = str(tfl_session_val) if tfl_session_val is not None else session
+            lt = Lobby_TFL_Client_All
+            if "Session" in lt.columns:
+                lt = lt[lt["Session"].astype(str).str.strip() == tfl_session]
+            lt = ensure_cols(lt, {"LobbyShort": "", "IsTFL": 0})
+            tfl_flag = (
+                lt.groupby("LobbyShort", as_index=False)["IsTFL"]
+                .max()
+                .rename(columns={"IsTFL": "Has TFL Client"})
             )
 
-        bill_list = authored["Bill"].dropna().astype(str).unique().tolist()
-        wit_all = Wit_All
-        if "LobbyShortNorm" not in wit_all.columns and "LobbyShort" in wit_all.columns:
-            wit_all = wit_all.copy()
-            wit_all["LobbyShortNorm"] = norm_name_series(wit_all["LobbyShort"])
-
-        if bill_list:
-            wit = wit_all[
-                (wit_all["Session"].astype(str).str.strip() == session) &
-                (wit_all["Bill"].astype(str).isin(bill_list))
-            ]
-        else:
-            wit = wit_all.iloc[0:0]
-
-        if "LobbyShort" in wit.columns:
-            wit = wit[wit["LobbyShort"].notna() & (wit["LobbyShort"].astype(str).str.strip() != "")]
-
-        witness = pd.DataFrame()
-        if not wit.empty:
-            positions = bill_position_from_flags(wit)
-
-            orgs = pd.DataFrame(columns=["Session", "Bill", "LobbyShort", "Organization"])
-            if "org" in wit.columns:
-                orgs = (
-                    wit.assign(Organization=wit.get("org", "").fillna("").astype(str).str.strip())
-                    .groupby(["Session", "Bill", "LobbyShort"])["Organization"]
-                    .apply(lambda s: ", ".join(sorted({x for x in s if x})))
-                    .reset_index()
+            lobbyshort_to_name = {}
+            if short_to_names:
+                lobbyshort_to_name = {k: (v[0] if v else k) for k, v in short_to_names.items()}
+            if not lobbyshort_to_name and not Lobby_TFL_Client_All.empty:
+                tmp = Lobby_TFL_Client_All[["LobbyShort", "Lobby Name"]].dropna()
+                tmp["LobbyShort"] = tmp["LobbyShort"].astype(str).str.strip()
+                tmp["Lobby Name"] = tmp["Lobby Name"].astype(str).str.strip()
+                lobbyshort_to_name = (
+                    tmp.groupby("LobbyShort")["Lobby Name"]
+                    .first()
+                    .to_dict()
                 )
 
-            names = pd.DataFrame(columns=["Session", "Bill", "LobbyShort", "Witness Name"])
-            if "name" in wit.columns:
-                names = (
-                    wit.assign(WitnessName=wit.get("name", "").fillna("").astype(str).str.strip())
-                    .groupby(["Session", "Bill", "LobbyShort"])["WitnessName"]
-                    .apply(lambda s: ", ".join(sorted({x for x in s if x})))
-                    .reset_index()
-                    .rename(columns={"WitnessName": "Witness Name"})
-                )
+            bill_list = authored["Bill"].dropna().astype(str).unique().tolist()
+            wit_all = Wit_All
+            if "LobbyShortNorm" not in wit_all.columns and "LobbyShort" in wit_all.columns:
+                wit_all = wit_all.copy()
+                wit_all["LobbyShortNorm"] = norm_name_series(wit_all["LobbyShort"])
 
-            witness = positions.merge(orgs, on=["Session", "Bill", "LobbyShort"], how="left")
-            witness = witness.merge(names, on=["Session", "Bill", "LobbyShort"], how="left")
-            witness = witness.merge(tfl_flag, on="LobbyShort", how="left")
-            witness["Has TFL Client"] = witness["Has TFL Client"].map({1: "Yes", 0: "No"}).fillna("Unknown")
-            witness["Lobbyist"] = witness["LobbyShort"].map(lobbyshort_to_name).fillna(witness["LobbyShort"])
+            if bill_list:
+                wit = wit_all[
+                    (wit_all["Session"].astype(str).str.strip() == session) &
+                    (wit_all["Bill"].astype(str).isin(bill_list))
+                ]
+            else:
+                wit = wit_all.iloc[0:0]
 
-            authored_base_cols = [c for c in ["Session", "Bill", "Status", "Caption", "Link"] if c in authored.columns]
-            authored_base = authored[authored_base_cols].drop_duplicates()
-            witness = witness.merge(authored_base, on=["Session", "Bill"], how="left")
+            if "LobbyShort" in wit.columns:
+                wit = wit[wit["LobbyShort"].notna() & (wit["LobbyShort"].astype(str).str.strip() != "")]
 
-        activities = build_member_activities(
-            data["LaFood"], data["LaEnt"], data["LaTran"], data["LaGift"], data["LaEvnt"], data["LaAwrd"],
-            member_name=member_name,
-            session=session,
-            name_to_short=name_to_short,
-            filerid_to_short=data.get("filerid_to_short", {}),
-            lobbyshort_to_name=lobbyshort_to_name,
-        )
+            witness = pd.DataFrame()
+            if not wit.empty:
+                positions = bill_position_from_flags(wit)
 
-        if not activities.empty:
-            activities = activities.merge(tfl_flag, on="LobbyShort", how="left")
-            activities["Has TFL Client"] = activities["Has TFL Client"].map({1: "Yes", 0: "No"}).fillna("Unknown")
-        else:
-            activities = pd.DataFrame(columns=["Session", "Date", "Type", "LobbyShort", "Lobbyist", "Filer", "Member", "Description", "Amount", "Has TFL Client"])
+                orgs = pd.DataFrame(columns=["Session", "Bill", "LobbyShort", "Organization"])
+                if "org" in wit.columns:
+                    orgs = (
+                        wit.assign(Organization=wit.get("org", "").fillna("").astype(str).str.strip())
+                        .groupby(["Session", "Bill", "LobbyShort"])["Organization"]
+                        .apply(lambda s: ", ".join(sorted({x for x in s if x})))
+                        .reset_index()
+                    )
 
-        staff_df = Staff_All
-        staff_matches = pd.DataFrame()
-        if not staff_df.empty and "Legislator" in staff_df.columns:
-            leg_norm = staff_df.get("LegislatorNorm", norm_name_series(staff_df["Legislator"]))
-            leg_last_norm = staff_df.get("LegislatorLastNorm", last_name_norm_series(staff_df["Legislator"]))
-            leg_init_key = staff_df.get("LegislatorInitKey", staff_df["Legislator"].fillna("").astype(str).map(_last_first_initial_key))
+                names = pd.DataFrame(columns=["Session", "Bill", "LobbyShort", "Witness Name"])
+                if "name" in wit.columns:
+                    names = (
+                        wit.assign(WitnessName=wit.get("name", "").fillna("").astype(str).str.strip())
+                        .groupby(["Session", "Bill", "LobbyShort"])["WitnessName"]
+                        .apply(lambda s: ", ".join(sorted({x for x in s if x})))
+                        .reset_index()
+                        .rename(columns={"WitnessName": "Witness Name"})
+                    )
 
-            match = pd.Series(False, index=staff_df.index)
-            last_norm = member_info.get("last_norm", "")
-            if last_norm:
-                match = leg_last_norm == last_norm
-                if member_info.get("initial_key"):
-                    match = match & (leg_init_key == member_info["initial_key"])
+                witness = positions.merge(orgs, on=["Session", "Bill", "LobbyShort"], how="left")
+                witness = witness.merge(names, on=["Session", "Bill", "LobbyShort"], how="left")
+                witness = witness.merge(tfl_flag, on="LobbyShort", how="left")
+                witness["Has TFL Client"] = witness["Has TFL Client"].map({1: "Yes", 0: "No"}).fillna("Unknown")
+                witness["Lobbyist"] = witness["LobbyShort"].map(lobbyshort_to_name).fillna(witness["LobbyShort"])
 
-            full_norm = member_info.get("full_norm", "")
-            if full_norm:
-                match = match | leg_norm.str.contains(full_norm, na=False)
+                authored_base_cols = [c for c in ["Session", "Bill", "Status", "Caption", "Link"] if c in authored.columns]
+                authored_base = authored[authored_base_cols].drop_duplicates()
+                witness = witness.merge(authored_base, on=["Session", "Bill"], how="left")
 
-            staff_matches = staff_df[match]
-
-        staff_lobbyists = pd.DataFrame()
-        if not staff_matches.empty and "Staffer" in staff_matches.columns:
-            tmp_short = Lobby_TFL_Client_All[["LobbyShort"]].dropna()
-            tmp_short["InitialKey"] = tmp_short["LobbyShort"].map(_last_first_initial_key)
-            init_counts = (
-                tmp_short.groupby(["InitialKey", "LobbyShort"])
-                .size()
-                .reset_index(name="n")
-                .sort_values(["InitialKey", "n"], ascending=[True, False])
-                .drop_duplicates("InitialKey")
+            activities = build_member_activities(
+                data["LaFood"], data["LaEnt"], data["LaTran"], data["LaGift"], data["LaEvnt"], data["LaAwrd"],
+                member_name=member_name,
+                session=session,
+                name_to_short=name_to_short,
+                filerid_to_short=data.get("filerid_to_short", {}),
+                lobbyshort_to_name=lobbyshort_to_name,
             )
-            initial_to_short = dict(zip(init_counts["InitialKey"], init_counts["LobbyShort"]))
 
-            def map_staffer(name: str) -> str:
-                if not name:
+            if not activities.empty:
+                activities = activities.merge(tfl_flag, on="LobbyShort", how="left")
+                activities["Has TFL Client"] = activities["Has TFL Client"].map({1: "Yes", 0: "No"}).fillna("Unknown")
+            else:
+                activities = pd.DataFrame(columns=["Session", "Date", "Type", "LobbyShort", "Lobbyist", "Filer", "Member", "Description", "Amount", "Has TFL Client"])
+
+            staff_df = Staff_All
+            staff_matches = pd.DataFrame()
+            if not staff_df.empty and "Legislator" in staff_df.columns:
+                leg_norm = staff_df.get("LegislatorNorm", norm_name_series(staff_df["Legislator"]))
+                leg_last_norm = staff_df.get("LegislatorLastNorm", last_name_norm_series(staff_df["Legislator"]))
+                leg_init_key = staff_df.get("LegislatorInitKey", staff_df["Legislator"].fillna("").astype(str).map(_last_first_initial_key))
+
+                match = pd.Series(False, index=staff_df.index)
+                last_norm = member_info.get("last_norm", "")
+                if last_norm:
+                    match = leg_last_norm == last_norm
+                    if member_info.get("initial_key"):
+                        match = match & (leg_init_key == member_info["initial_key"])
+
+                full_norm = member_info.get("full_norm", "")
+                if full_norm:
+                    match = match | leg_norm.str.contains(full_norm, na=False)
+
+                staff_matches = staff_df[match]
+
+            staff_lobbyists = pd.DataFrame()
+            if not staff_matches.empty and "Staffer" in staff_matches.columns:
+                tmp_short = Lobby_TFL_Client_All[["LobbyShort"]].dropna()
+                tmp_short["InitialKey"] = tmp_short["LobbyShort"].map(_last_first_initial_key)
+                init_counts = (
+                    tmp_short.groupby(["InitialKey", "LobbyShort"])
+                    .size()
+                    .reset_index(name="n")
+                    .sort_values(["InitialKey", "n"], ascending=[True, False])
+                    .drop_duplicates("InitialKey")
+                )
+                initial_to_short = dict(zip(init_counts["InitialKey"], init_counts["LobbyShort"]))
+
+                def map_staffer(name: str) -> str:
+                    if not name:
+                        return ""
+                    for v in norm_person_variants(name):
+                        if v in name_to_short:
+                            return str(name_to_short[v])
+                    init_key = _last_first_initial_key(name)
+                    if init_key and init_key in initial_to_short:
+                        return str(initial_to_short[init_key])
                     return ""
-                for v in norm_person_variants(name):
-                    if v in name_to_short:
-                        return str(name_to_short[v])
-                init_key = _last_first_initial_key(name)
-                if init_key and init_key in initial_to_short:
-                    return str(initial_to_short[init_key])
-                return ""
 
-            staff_lobbyists = staff_matches
-            staff_lobbyists["LobbyShort"] = staff_lobbyists["Staffer"].fillna("").astype(str).map(map_staffer)
-            staff_lobbyists = staff_lobbyists[staff_lobbyists["LobbyShort"].astype(str).str.strip() != ""]
-            staff_lobbyists["Lobbyist"] = staff_lobbyists["LobbyShort"].map(lobbyshort_to_name).fillna(staff_lobbyists["LobbyShort"])
+                staff_lobbyists = staff_matches
+                staff_lobbyists["LobbyShort"] = staff_lobbyists["Staffer"].fillna("").astype(str).map(map_staffer)
+                staff_lobbyists = staff_lobbyists[staff_lobbyists["LobbyShort"].astype(str).str.strip() != ""]
+                staff_lobbyists["Lobbyist"] = staff_lobbyists["LobbyShort"].map(lobbyshort_to_name).fillna(staff_lobbyists["LobbyShort"])
 
         with tab_overview:
             st.markdown('<div class="section-title">Overview</div>', unsafe_allow_html=True)
@@ -2142,6 +2295,8 @@ def render_member_workspace(ctx: dict[str, Any]) -> None:
 def render_lobby_workspace(ctx: dict[str, Any]) -> None:
     _previous = _push_context(ctx)
     try:
+        Bill_Sub_All = _resolve_workspace_table(ctx, "Bill_Sub_All")
+
         tab_all, tab_overview, tab_bills, tab_policy, tab_activities, tab_disclosures, tab_staff = st.tabs(
             [
                 "1. Statewide Baseline (Read First)",
@@ -2562,242 +2717,259 @@ def render_lobby_workspace(ctx: dict[str, Any]) -> None:
             else:
                 session = str(st.session_state.session).strip()
                 lobbyshort = str(st.session_state.lobbyshort).strip()
-                typed_norms_tuple = tuple(sorted(typed_norms))
-                selected_filer_ids = set()
-                if st.session_state.lobby_filerid is not None:
-                    try:
-                        selected_filer_ids = {int(st.session_state.lobby_filerid)}
-                    except Exception:
-                        selected_filer_ids = set()
-                lobbyist_label = lobbyshort
-                selected_names = []
-                candidate_map = st.session_state.lobby_candidate_map or {}
-                merge_keys = st.session_state.lobby_merge_keys or []
-                if st.session_state.lobby_filerid and not lobbyist_index.empty:
-                    filer_series = pd.to_numeric(lobbyist_index.get("FilerID", pd.Series(dtype=float)), errors="coerce")
-                    match_row = lobbyist_index[
-                        (lobbyist_index["LobbyShort"].astype(str).str.strip() == lobbyshort) &
-                        (filer_series == int(st.session_state.lobby_filerid))
-                    ]
-                    if not match_row.empty:
-                        lobbyist_label = match_row["Lobby Name"].iloc[0]
-                        selected_names = match_row["Lobby Name"].dropna().astype(str).unique().tolist()
-
-                if merge_keys:
-                    for key in merge_keys:
-                        cand = candidate_map.get(key, {})
-                        name = cand.get("name", "")
-                        if name and name not in selected_names:
-                            selected_names.append(name)
-                        fid = cand.get("filerid", None)
-                        if fid is not None:
-                            try:
-                                selected_filer_ids.add(int(fid))
-                            except Exception:
-                                pass
-
-                # Wit_All filtered
-                lobbyshort_norm = norm_name(lobbyshort)
-                wit_all = ensure_cols(
-                    Wit_All,
-                    {"Session": "", "Bill": "", "LobbyShort": "", "IsFor": 0, "IsAgainst": 0, "IsOn": 0},
-                )
-                if "LobbyShortNorm" not in wit_all.columns:
-                    wit_all = wit_all.copy()
-                    wit_all["LobbyShortNorm"] = norm_name_series(wit_all["LobbyShort"])
-                session_col = wit_all["Session"].astype(str).str.strip()
-                base_wit = wit_all[session_col == session]
-                witness_match_note = ""
-                if selected_names:
-                    name_variants = set()
-                    name_pairs = []
-                    for name in selected_names:
-                        if not name:
-                            continue
-                        name_variants |= norm_person_variants_with_nicknames(name)
-                        info = parse_person_name(name)
-                        first_norm = info.get("first_norm", "")
-                        last_norm = info.get("last_norm", "")
-                        first_initial = info.get("first_initial", "")
-                        if first_norm and last_norm:
-                            name_pairs.append((first_norm, last_norm, first_initial))
-
-                    name_mask = pd.Series(False, index=base_wit.index)
-                    if name_variants:
-                        name_norm = base_wit.get("NameNorm")
-                        if not isinstance(name_norm, pd.Series):
-                            name_norm = base_wit.get("name", pd.Series([""] * len(base_wit))).fillna("").astype(str).map(norm_name)
-                        name_mask = name_mask | name_norm.isin(name_variants)
-                    if name_pairs and "NameLastNorm" in base_wit.columns:
-                        name_last = base_wit.get("NameLastNorm")
-                        name_first = base_wit.get("NameFirstNorm")
-                        name_first_initial = base_wit.get("NameFirstInitialNorm")
-                        if isinstance(name_last, pd.Series) and isinstance(name_first, pd.Series):
-                            for first_norm, last_norm, first_initial in name_pairs:
-                                first_match = name_first == first_norm
-                                if first_initial and isinstance(name_first_initial, pd.Series):
-                                    first_match = first_match | (name_first_initial == first_initial)
-                                name_mask = name_mask | ((name_last == last_norm) & first_match)
-
-                    if "LobbyShortNorm" in base_wit.columns:
-                        short_norm = base_wit["LobbyShortNorm"].fillna("")
-                        short_mask = short_norm == lobbyshort_norm
-                        if short_mask.any():
-                            name_mask = name_mask & (short_mask | (short_norm == ""))
-
-                    if name_mask.any():
-                        wit = base_wit[name_mask]
-                        wit["LobbyShort"] = lobbyshort
-                        wit["LobbyShortNorm"] = lobbyshort_norm
-                        witness_match_note = "Witness list filtered to the selected name."
-                    else:
-                        wit = base_wit.iloc[0:0]
-                        witness_match_note = "No witness-list rows matched the selected name. Clear the specific match to see all rows for that last name + first initial."
+                if ctx.get("_prepared_lobby_workspace"):
+                    typed_norms_tuple = tuple(ctx.get("typed_norms_tuple", ()) or ())
+                    typed_norms = set(ctx.get("typed_norms", set()) or set())
+                    selected_filer_ids = set(ctx.get("selected_filer_ids", ()) or ())
+                    lobbyist_label = str(ctx.get("lobbyist_label", lobbyshort)).strip()
+                    selected_names = list(ctx.get("selected_names", ()) or [])
+                    wit = ctx.get("wit", pd.DataFrame())
+                    witness_match_note = str(ctx.get("witness_match_note", "")).strip()
+                    bills = ctx.get("bills", pd.DataFrame())
+                    mentions = ctx.get("mentions", pd.DataFrame())
+                    bill_subjects = ctx.get("bill_subjects", pd.DataFrame())
+                    lobby_sub_counts = ctx.get("lobby_sub_counts", pd.DataFrame())
+                    subject_non_empty = float(ctx.get("subject_non_empty", 0.0) or 0.0)
+                    lt = ctx.get("lt", pd.DataFrame())
+                    has_tfl = bool(ctx.get("has_tfl", False))
+                    has_private = bool(ctx.get("has_private", False))
+                    tfl_clients = list(ctx.get("tfl_clients", []) or [])
+                    private_clients = list(ctx.get("private_clients", []) or [])
+                    tfl_low = float(ctx.get("tfl_low", 0.0) or 0.0)
+                    tfl_high = float(ctx.get("tfl_high", 0.0) or 0.0)
+                    pri_low = float(ctx.get("pri_low", 0.0) or 0.0)
+                    pri_high = float(ctx.get("pri_high", 0.0) or 0.0)
+                    staff_pick = ctx.get("staff_pick", pd.DataFrame())
+                    staff_pick_session = ctx.get("staff_pick_session", pd.DataFrame())
+                    staff_stats = ctx.get("staff_stats", pd.DataFrame())
+                    activities = ctx.get("activities", pd.DataFrame())
+                    disclosures = ctx.get("disclosures", pd.DataFrame())
                 else:
-                    if "LobbyShortNorm" in base_wit.columns:
-                        wit = base_wit[base_wit["LobbyShortNorm"] == lobbyshort_norm]
-                        if not wit.empty:
+                    data = _workspace_data_with_lazy_tables(
+                        ctx,
+                        (
+                            "Fiscal_Impact",
+                            "Bill_Sub_All",
+                            "Lobby_Sub_All",
+                            "LaFood",
+                            "LaEnt",
+                            "LaTran",
+                            "LaGift",
+                            "LaEvnt",
+                            "LaAwrd",
+                            "LaCvr",
+                            "LaDock",
+                            "LaI4E",
+                            "LaSub",
+                        ),
+                    )
+                    Fiscal_Impact = data["Fiscal_Impact"]
+                    Bill_Sub_All = data["Bill_Sub_All"]
+                    Lobby_Sub_All = data["Lobby_Sub_All"]
+                    LaCvr = data["LaCvr"]
+                    LaDock = data["LaDock"]
+                    LaI4E = data["LaI4E"]
+                    LaSub = data["LaSub"]
+
+                    typed_norms_tuple = tuple(sorted(typed_norms))
+                    selected_filer_ids = set()
+                    if st.session_state.lobby_filerid is not None:
+                        try:
+                            selected_filer_ids = {int(st.session_state.lobby_filerid)}
+                        except Exception:
+                            selected_filer_ids = set()
+                    lobbyist_label = lobbyshort
+                    selected_names = []
+                    candidate_map = st.session_state.lobby_candidate_map or {}
+                    merge_keys = st.session_state.lobby_merge_keys or []
+                    if st.session_state.lobby_filerid and not lobbyist_index.empty:
+                        filer_series = pd.to_numeric(lobbyist_index.get("FilerID", pd.Series(dtype=float)), errors="coerce")
+                        match_row = lobbyist_index[
+                            (lobbyist_index["LobbyShort"].astype(str).str.strip() == lobbyshort) &
+                            (filer_series == int(st.session_state.lobby_filerid))
+                        ]
+                        if not match_row.empty:
+                            lobbyist_label = match_row["Lobby Name"].iloc[0]
+                            selected_names = match_row["Lobby Name"].dropna().astype(str).unique().tolist()
+
+                    if merge_keys:
+                        for key in merge_keys:
+                            cand = candidate_map.get(key, {})
+                            name = cand.get("name", "")
+                            if name and name not in selected_names:
+                                selected_names.append(name)
+                            fid = cand.get("filerid", None)
+                            if fid is not None:
+                                try:
+                                    selected_filer_ids.add(int(fid))
+                                except Exception:
+                                    pass
+
+                    lobbyshort_norm = norm_name(lobbyshort)
+                    wit_all = ensure_cols(
+                        Wit_All,
+                        {"Session": "", "Bill": "", "LobbyShort": "", "IsFor": 0, "IsAgainst": 0, "IsOn": 0},
+                    )
+                    if "LobbyShortNorm" not in wit_all.columns:
+                        wit_all = wit_all.copy()
+                        wit_all["LobbyShortNorm"] = norm_name_series(wit_all["LobbyShort"])
+                    session_col = wit_all["Session"].astype(str).str.strip()
+                    base_wit = wit_all[session_col == session]
+                    witness_match_note = ""
+                    if selected_names:
+                        name_variants = set()
+                        name_pairs = []
+                        for name in selected_names:
+                            if not name:
+                                continue
+                            name_variants |= norm_person_variants_with_nicknames(name)
+                            info = parse_person_name(name)
+                            first_norm = info.get("first_norm", "")
+                            last_norm = info.get("last_norm", "")
+                            first_initial = info.get("first_initial", "")
+                            if first_norm and last_norm:
+                                name_pairs.append((first_norm, last_norm, first_initial))
+
+                        name_mask = pd.Series(False, index=base_wit.index)
+                        if name_variants:
+                            name_norm = base_wit.get("NameNorm")
+                            if not isinstance(name_norm, pd.Series):
+                                name_norm = base_wit.get("name", pd.Series([""] * len(base_wit))).fillna("").astype(str).map(norm_name)
+                            name_mask = name_mask | name_norm.isin(name_variants)
+                        if name_pairs and "NameLastNorm" in base_wit.columns:
+                            name_last = base_wit.get("NameLastNorm")
+                            name_first = base_wit.get("NameFirstNorm")
+                            name_first_initial = base_wit.get("NameFirstInitialNorm")
+                            if isinstance(name_last, pd.Series) and isinstance(name_first, pd.Series):
+                                for first_norm, last_norm, first_initial in name_pairs:
+                                    first_match = name_first == first_norm
+                                    if first_initial and isinstance(name_first_initial, pd.Series):
+                                        first_match = first_match | (name_first_initial == first_initial)
+                                    name_mask = name_mask | ((name_last == last_norm) & first_match)
+
+                        if "LobbyShortNorm" in base_wit.columns:
+                            short_norm = base_wit["LobbyShortNorm"].fillna("")
+                            short_mask = short_norm == lobbyshort_norm
+                            if short_mask.any():
+                                name_mask = name_mask & (short_mask | (short_norm == ""))
+
+                        if name_mask.any():
+                            wit = base_wit[name_mask]
                             wit["LobbyShort"] = lobbyshort
+                            wit["LobbyShortNorm"] = lobbyshort_norm
+                            witness_match_note = "Witness list filtered to the selected name."
+                        else:
+                            wit = base_wit.iloc[0:0]
+                            witness_match_note = "No witness-list rows matched the selected name. Clear the specific match to see all rows for that last name + first initial."
                     else:
-                        wit = base_wit[
-                            base_wit["LobbyShort"].astype(str).str.strip() == lobbyshort
+                        if "LobbyShortNorm" in base_wit.columns:
+                            wit = base_wit[base_wit["LobbyShortNorm"] == lobbyshort_norm]
+                            if not wit.empty:
+                                wit["LobbyShort"] = lobbyshort
+                        else:
+                            wit = base_wit[
+                                base_wit["LobbyShort"].astype(str).str.strip() == lobbyshort
+                            ]
+
+                    bills = build_bills_with_status(wit, Bill_Status_All, Fiscal_Impact, session)
+                    mentions = build_policy_mentions(bills, Bill_Sub_All, session)
+                    bill_subjects = pd.DataFrame(columns=["Session", "Bill", "Subject"])
+                    if (
+                        isinstance(Bill_Sub_All, pd.DataFrame)
+                        and {"Session", "Bill", "Subject"}.issubset(Bill_Sub_All.columns)
+                        and isinstance(bills, pd.DataFrame)
+                        and {"Session", "Bill"}.issubset(bills.columns)
+                        and not bills.empty
+                    ):
+                        bill_subjects = Bill_Sub_All[
+                            Bill_Sub_All["Session"].astype(str).str.strip() == session
+                        ].merge(
+                            bills[["Session", "Bill"]].drop_duplicates(),
+                            on=["Session", "Bill"],
+                            how="inner",
+                        )
+                        bill_subjects = bill_subjects[
+                            bill_subjects["Subject"].fillna("").astype(str).str.strip() != ""
                         ]
 
-                bills = build_bills_with_status(wit, Bill_Status_All, Fiscal_Impact, session)
-                mentions = build_policy_mentions(bills, Bill_Sub_All, session)
-                bill_subjects = pd.DataFrame(columns=["Session", "Bill", "Subject"])
-                if (
-                    isinstance(Bill_Sub_All, pd.DataFrame)
-                    and {"Session", "Bill", "Subject"}.issubset(Bill_Sub_All.columns)
-                    and isinstance(bills, pd.DataFrame)
-                    and {"Session", "Bill"}.issubset(bills.columns)
-                    and not bills.empty
-                ):
-                    bill_subjects = Bill_Sub_All[
-                        Bill_Sub_All["Session"].astype(str).str.strip() == session
-                    ].merge(
-                        bills[["Session", "Bill"]].drop_duplicates(),
-                        on=["Session", "Bill"],
-                        how="inner",
+                    lobby_sub_counts, subject_non_empty = build_lobby_subject_counts(
+                        Lobby_Sub_All,
+                        session,
+                        lobbyshort,
+                        lobbyshort_norm,
+                        tuple(sorted(selected_filer_ids)) if selected_filer_ids else tuple(),
                     )
-                    bill_subjects = bill_subjects[
-                        bill_subjects["Subject"].fillna("").astype(str).str.strip() != ""
+
+                    tfl_session = str(tfl_session_val) if tfl_session_val is not None else session
+                    lt = Lobby_TFL_Client_All[
+                        (Lobby_TFL_Client_All["Session"].astype(str).str.strip() == tfl_session) &
+                        (Lobby_TFL_Client_All["LobbyShort"].astype(str).str.strip() == lobbyshort)
                     ]
+                    if selected_filer_ids and "FilerID" in lt.columns:
+                        fid = pd.to_numeric(lt["FilerID"], errors="coerce").fillna(-1).astype(int)
+                        lt = lt[fid.isin(selected_filer_ids)]
+                    lt = ensure_cols(lt, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0})
 
-                # Lobbyist-reported subject matters (Lobby_Sub_All)
-                lobby_sub_counts, subject_non_empty = build_lobby_subject_counts(
-                    Lobby_Sub_All,
-                    session,
-                    lobbyshort,
-                    lobbyshort_norm,
-                    tuple(sorted(selected_filer_ids)) if selected_filer_ids else tuple(),
-                )
+                    has_tfl = bool((lt["IsTFL"] == 1).any()) if not lt.empty else False
+                    has_private = bool((lt["IsTFL"] == 0).any()) if not lt.empty else False
 
-                # Lobbyist clients + totals (use precomputed Low_num/High_num)
-                tfl_session = str(tfl_session_val) if tfl_session_val is not None else session
-                lt = Lobby_TFL_Client_All[
-                    (Lobby_TFL_Client_All["Session"].astype(str).str.strip() == tfl_session) &
-                    (Lobby_TFL_Client_All["LobbyShort"].astype(str).str.strip() == lobbyshort)
-                ]
-                if selected_filer_ids and "FilerID" in lt.columns:
-                    fid = pd.to_numeric(lt["FilerID"], errors="coerce").fillna(-1).astype(int)
-                    lt = lt[fid.isin(selected_filer_ids)]
-                lt = ensure_cols(lt, {"IsTFL": 0, "Client": "", "Low_num": 0.0, "High_num": 0.0})
+                    tfl_clients = sorted(lt.loc[lt["IsTFL"] == 1, "Client"].dropna().astype(str).unique().tolist())
+                    private_clients = sorted(lt.loc[lt["IsTFL"] == 0, "Client"].dropna().astype(str).unique().tolist())
 
-                has_tfl = bool((lt["IsTFL"] == 1).any()) if not lt.empty else False
-                has_private = bool((lt["IsTFL"] == 0).any()) if not lt.empty else False
+                    tfl_low = float(lt.loc[lt["IsTFL"] == 1, "Low_num"].sum()) if not lt.empty else 0.0
+                    tfl_high = float(lt.loc[lt["IsTFL"] == 1, "High_num"].sum()) if not lt.empty else 0.0
+                    pri_low = float(lt.loc[lt["IsTFL"] == 0, "Low_num"].sum()) if not lt.empty else 0.0
+                    pri_high = float(lt.loc[lt["IsTFL"] == 0, "High_num"].sum()) if not lt.empty else 0.0
 
-                tfl_clients = sorted(lt.loc[lt["IsTFL"] == 1, "Client"].dropna().astype(str).unique().tolist())
-                private_clients = sorted(lt.loc[lt["IsTFL"] == 0, "Client"].dropna().astype(str).unique().tolist())
+                    staff_df = Staff_All
+                    _session_col = staff_df.get("Session")
+                    if _session_col is not None:
+                        staff_session = _session_col.astype(str).str.strip() == str(session)
+                    else:
+                        staff_session = pd.Series(False, index=staff_df.index)
+                    if typed_norms:
+                        typed_last_norm = last_name_norm_from_text(st.session_state.search_query)
+                        lobbyshort_norm = norm_name(lobbyshort)
+                        match_mask = (
+                            staff_df.get("StaffNameNorm", pd.Series(False, index=staff_df.index)).isin(typed_norms) |
+                            staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)).isin(typed_norms)
+                        )
+                        if typed_last_norm:
+                            match_mask = match_mask | (staff_df.get("StaffLastNorm", pd.Series(False, index=staff_df.index)) == typed_last_norm)
+                        if lobbyshort_norm:
+                            match_mask = match_mask | (staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)) == lobbyshort_norm)
+                    else:
+                        lobbyshort_norm = norm_name(lobbyshort)
+                        lobby_last_norm = last_name_norm_from_text(lobbyshort)
+                        match_mask = pd.Series(False, index=staff_df.index)
+                        if lobbyshort_norm:
+                            match_mask = match_mask | (staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)) == lobbyshort_norm)
+                        if lobby_last_norm:
+                            match_mask = match_mask | (staff_df.get("StaffLastNorm", pd.Series(False, index=staff_df.index)) == lobby_last_norm)
 
-                tfl_low  = float(lt.loc[lt["IsTFL"] == 1, "Low_num"].sum()) if not lt.empty else 0.0
-                tfl_high = float(lt.loc[lt["IsTFL"] == 1, "High_num"].sum()) if not lt.empty else 0.0
-                pri_low  = float(lt.loc[lt["IsTFL"] == 0, "Low_num"].sum()) if not lt.empty else 0.0
-                pri_high = float(lt.loc[lt["IsTFL"] == 0, "High_num"].sum()) if not lt.empty else 0.0
+                    staff_pick = staff_df[match_mask]
+                    staff_pick_session = staff_df[staff_session & match_mask]
+                    staff_stats = _staff_metrics(staff_pick_session, bills, session, Bill_Status_All) if not staff_pick_session.empty else pd.DataFrame()
 
-                # Staff history
-                staff_df = Staff_All
-                _session_col = staff_df.get("Session")
-                if _session_col is not None:
-                    staff_session = _session_col.astype(str).str.strip() == str(session)
-                else:
-                    staff_session = pd.Series(False, index=staff_df.index)
-                if typed_norms:
-                    typed_last_norm = last_name_norm_from_text(st.session_state.search_query)
-                    lobbyshort_norm = norm_name(lobbyshort)
-                    match_mask = (
-                        staff_df.get("StaffNameNorm", pd.Series(False, index=staff_df.index)).isin(typed_norms) |
-                        staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)).isin(typed_norms)
+                    activities = build_activities(
+                        data["LaFood"], data["LaEnt"], data["LaTran"], data["LaGift"], data["LaEvnt"], data["LaAwrd"],
+                        lobbyshort=lobbyshort,
+                        session=session,
+                        name_to_short=name_to_short,
+                        lobbyist_norms_tuple=typed_norms_tuple,
+                        filerid_to_short=data.get("filerid_to_short", {}),
+                        filer_ids=tuple(sorted(selected_filer_ids)) if selected_filer_ids else None,
                     )
-                    if typed_last_norm:
-                        match_mask = match_mask | (staff_df.get("StaffLastNorm", pd.Series(False, index=staff_df.index)) == typed_last_norm)
-                    if lobbyshort_norm:
-                        match_mask = match_mask | (staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)) == lobbyshort_norm)
-                else:
-                    lobbyshort_norm = norm_name(lobbyshort)
-                    lobby_last_norm = last_name_norm_from_text(lobbyshort)
-                    match_mask = pd.Series(False, index=staff_df.index)
-                    if lobbyshort_norm:
-                        match_mask = match_mask | (staff_df.get("StaffLastInitialNorm", pd.Series(False, index=staff_df.index)) == lobbyshort_norm)
-                    if lobby_last_norm:
-                        match_mask = match_mask | (staff_df.get("StaffLastNorm", pd.Series(False, index=staff_df.index)) == lobby_last_norm)
 
-                staff_pick = staff_df[match_mask]
-                staff_pick_session = staff_df[staff_session & match_mask]
-
-                @st.cache_data(show_spinner=False, ttl=300, max_entries=4)
-                def staff_metrics(staff_rows: pd.DataFrame, bills_df: pd.DataFrame, session_val: str, bs_all: pd.DataFrame) -> pd.DataFrame:
-                    if staff_rows.empty or bills_df.empty:
-                        return pd.DataFrame(columns=["Legislator", "% Against that Failed", "% For that Passed"])
-
-                    legs = sorted(staff_rows["Legislator"].dropna().astype(str).unique().tolist())
-                    out = []
-                    bs = bs_all[bs_all["Session"].astype(str).str.strip() == str(session_val)]
-
-                    for leg in legs:
-                        authored = bs[bs["Author"].fillna("").astype(str).str.contains(leg, case=False, na=False)][["Session", "Bill", "Status"]]
-                        if authored.empty:
-                            out.append({"Legislator": leg, "% Against that Failed": None, "% For that Passed": None})
-                            continue
-
-                        joined = authored.merge(bills_df[["Session", "Bill", "Position", "Status"]], on=["Session", "Bill"], how="inner")
-                        if joined.empty:
-                            out.append({"Legislator": leg, "% Against that Failed": None, "% For that Passed": None})
-                            continue
-
-                        against = joined[joined["Position"].astype(str).str.contains("Against", na=False)]
-                        denom_a = len(against)
-                        pct_against_failed = (against["Status"].eq("Failed").sum() / denom_a) if denom_a else None
-
-                        for_ = joined[joined["Position"].astype(str).str.contains(r"\bFor\b", regex=True, na=False)]
-                        denom_f = len(for_)
-                        pct_for_passed = (for_["Status"].eq("Passed").sum() / denom_f) if denom_f else None
-
-                        out.append({"Legislator": leg, "% Against that Failed": pct_against_failed, "% For that Passed": pct_for_passed})
-
-                    return pd.DataFrame(out)
-
-                staff_stats = staff_metrics(staff_pick_session, bills, session, Bill_Status_All) if not staff_pick_session.empty else pd.DataFrame()
-
-                activities = build_activities(
-                    data["LaFood"], data["LaEnt"], data["LaTran"], data["LaGift"], data["LaEvnt"], data["LaAwrd"],
-                    lobbyshort=lobbyshort,
-                    session=session,
-                    name_to_short=name_to_short,
-                    lobbyist_norms_tuple=typed_norms_tuple,
-                    filerid_to_short=data.get("filerid_to_short", {}),
-                    filer_ids=tuple(sorted(selected_filer_ids)) if selected_filer_ids else None,
-                )
-
-                disclosures = build_disclosures(
-                    LaCvr, LaDock, LaI4E, LaSub,
-                    lobbyshort=lobbyshort,
-                    session=session,
-                    name_to_short=name_to_short,
-                    lobbyist_norms_tuple=typed_norms_tuple,
-                    filerid_to_short=data.get("filerid_to_short", {}),
-                    filer_ids=tuple(sorted(selected_filer_ids)) if selected_filer_ids else None,
-                )
+                    disclosures = build_disclosures(
+                        LaCvr, LaDock, LaI4E, LaSub,
+                        lobbyshort=lobbyshort,
+                        session=session,
+                        name_to_short=name_to_short,
+                        lobbyist_norms_tuple=typed_norms_tuple,
+                        filerid_to_short=data.get("filerid_to_short", {}),
+                        filer_ids=tuple(sorted(selected_filer_ids)) if selected_filer_ids else None,
+                    )
 
                 # ---- Overview tab
                 with tab_overview:

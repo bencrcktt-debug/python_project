@@ -36,6 +36,7 @@ HELPER_KEYS = (
     '_tfl_session_for_filter',
     'data_health_table',
     'format_lobbyist_label',
+    'get_app_tables',
     'get_lobby_scope_bundle',
     'html',
     'is_bill_query',
@@ -130,20 +131,13 @@ def render_page(ctx: dict[str, Any] | None = None) -> None:
 
         Wit_All = data["Wit_All"]
         Bill_Status_All = data["Bill_Status_All"]
-        Fiscal_Impact = data["Fiscal_Impact"]
-        Bill_Sub_All = data["Bill_Sub_All"]
-        Lobby_Sub_All = data["Lobby_Sub_All"]
         Lobby_TFL_Client_All = data["Lobby_TFL_Client_All"]
-        Staff_All = data["Staff_All"]
-        LaCvr = data["LaCvr"]
-        LaDock = data["LaDock"]
-        LaI4E = data["LaI4E"]
-        LaSub = data["LaSub"]
         name_to_short = app_state.name_to_short
         short_to_names = app_state.short_to_names
         lobby_index = app_state.lobby_index
         lobbyist_index = app_state.lobbyist_index
         known_shorts = app_state.known_shorts
+        filerid_to_short = app_state.filerid_to_short
         tfl_sessions = set(app_state.tfl_sessions)
 
         if "scope" not in st.session_state:
@@ -196,7 +190,7 @@ def render_page(ctx: dict[str, Any] | None = None) -> None:
 
         with st.sidebar.expander("Data health", expanded=False):
             st.caption(f"Data path: {PATH}")
-            health = data_health_table(data)
+            health = data_health_table(app_state.table_manifest)
             st.dataframe(health, width="stretch", height=260, hide_index=True)
 
         st.markdown('<div id="filter-bar-marker"></div>', unsafe_allow_html=True)
@@ -625,23 +619,13 @@ def render_page(ctx: dict[str, Any] | None = None) -> None:
 
         report_title = "Bill Report" if bill_mode and st.session_state.search_query.strip() else "Lobbyist Report"
         focus_tables = {
-            "Staff_All": Staff_All,
-            "Lobby_Sub_All": Lobby_Sub_All,
-            "LaFood": data.get("LaFood", pd.DataFrame()),
-            "LaEnt": data.get("LaEnt", pd.DataFrame()),
-            "LaTran": data.get("LaTran", pd.DataFrame()),
-            "LaGift": data.get("LaGift", pd.DataFrame()),
-            "LaEvnt": data.get("LaEvnt", pd.DataFrame()),
-            "LaAwrd": data.get("LaAwrd", pd.DataFrame()),
-            "LaCvr": LaCvr,
-            "LaDock": LaDock,
-            "LaI4E": LaI4E,
-            "LaSub": LaSub,
+            "Staff_All": data["Staff_All"],
+            "Lobby_Sub_All": data["Lobby_Sub_All"],
         }
         focus_lookups = {
             "name_to_short": name_to_short,
             "short_to_names": short_to_names,
-            "filerid_to_short": data.get("filerid_to_short", {}),
+            "filerid_to_short": filerid_to_short,
         }
 
         focus_context = {
@@ -649,6 +633,21 @@ def render_page(ctx: dict[str, Any] | None = None) -> None:
             "report_title": report_title,
             "tables": focus_tables,
             "lookups": focus_lookups,
+            "table_loader": get_app_tables,
+            "table_loader_path": str(PATH),
+            "table_loader_keys": (
+                "Bill_Sub_All",
+                "LaFood",
+                "LaEnt",
+                "LaTran",
+                "LaGift",
+                "LaEvnt",
+                "LaAwrd",
+                "LaCvr",
+                "LaDock",
+                "LaI4E",
+                "LaSub",
+            ),
         }
         if bill_mode and st.session_state.search_query.strip():
             bill_id = ""
@@ -680,18 +679,10 @@ def render_page(ctx: dict[str, Any] | None = None) -> None:
             Lobby_TFL_Client_All=Lobby_TFL_Client_All,
             Wit_All=Wit_All,
             Bill_Status_All=Bill_Status_All,
-            Bill_Sub_All=Bill_Sub_All,
+            Bill_Sub_All=pd.DataFrame(),
             tfl_session_val=tfl_session_val,
             focus_context=focus_context,
         )
-
-        lobby_scope_bundle = get_lobby_scope_bundle(
-            str(PATH),
-            st.session_state.scope,
-            tfl_session_val,
-        )
-        all_pivot = lobby_scope_bundle.all_pivot
-        all_stats = lobby_scope_bundle.all_stats
 
         if bill_mode:
             st.subheader("Bill Search Results")
@@ -707,28 +698,46 @@ def render_page(ctx: dict[str, Any] | None = None) -> None:
             st.caption("Clear search to return to lobbyist view.")
             st.stop()
 
-        st.session_state["_lobby_workspace_ctx"] = {
-            "lobby_scope_bundle": lobby_scope_bundle,
-            "all_pivot": all_pivot,
-            "all_stats": all_stats,
+        typed_norms_tuple = tuple(sorted(typed_norms))
+        selected_filer_ids = set()
+        if st.session_state.lobby_filerid is not None:
+            try:
+                selected_filer_ids.add(int(st.session_state.lobby_filerid))
+            except Exception:
+                pass
+        selected_names = []
+        candidate_map = st.session_state.lobby_candidate_map or {}
+        merge_keys = st.session_state.lobby_merge_keys or []
+        if st.session_state.lobbyshort and st.session_state.lobby_filerid and not lobbyist_index.empty:
+            filer_series = pd.to_numeric(lobbyist_index.get("FilerID", pd.Series(dtype=float)), errors="coerce")
+            match_row = lobbyist_index[
+                (lobbyist_index["LobbyShort"].astype(str).str.strip() == str(st.session_state.lobbyshort)) &
+                (filer_series == int(st.session_state.lobby_filerid))
+            ]
+            if not match_row.empty:
+                selected_names.extend(match_row["Lobby Name"].dropna().astype(str).unique().tolist())
+        for key in merge_keys:
+            cand = candidate_map.get(key, {})
+            name = str(cand.get("name", "")).strip()
+            if name and name not in selected_names:
+                selected_names.append(name)
+            fid = cand.get("filerid")
+            if fid is not None:
+                try:
+                    selected_filer_ids.add(int(fid))
+                except Exception:
+                    pass
+
+        _page_fragments.merge_fragment_session_context("_lobby_workspace_ctx", {
+            "PATH": str(PATH),
+            "scope": st.session_state.scope,
+            "session": st.session_state.session,
             "tfl_session_val": tfl_session_val,
-            "typed_norms": typed_norms,
-            "data": data,
-            "Wit_All": Wit_All,
-            "Bill_Status_All": Bill_Status_All,
-            "Fiscal_Impact": Fiscal_Impact,
-            "Bill_Sub_All": Bill_Sub_All,
-            "Lobby_Sub_All": Lobby_Sub_All,
-            "Lobby_TFL_Client_All": Lobby_TFL_Client_All,
-            "Staff_All": Staff_All,
-            "LaCvr": LaCvr,
-            "LaDock": LaDock,
-            "LaI4E": LaI4E,
-            "LaSub": LaSub,
-            "name_to_short": name_to_short,
-            "short_to_names": short_to_names,
-            "lobbyist_index": lobbyist_index,
-        }
+            "lobbyshort": st.session_state.lobbyshort,
+            "typed_norms_tuple": typed_norms_tuple,
+            "selected_names": tuple(selected_names),
+            "selected_filer_ids": tuple(sorted(selected_filer_ids)),
+        })
         _page_fragments.render_lobby_workspace_fragment("_lobby_workspace_ctx")
         st.markdown(
             """

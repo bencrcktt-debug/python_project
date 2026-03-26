@@ -65,6 +65,7 @@ class AppState:
     path: str
     data: dict[str, object]
     tables: dict[str, pd.DataFrame]
+    table_manifest: dict[str, dict[str, Any]]
     client_index: pd.DataFrame
     author_bills_all: pd.DataFrame
     member_index: pd.DataFrame
@@ -569,6 +570,175 @@ def build_lobbyist_index(df: pd.DataFrame) -> pd.DataFrame:
     return base
 
 
+def _build_filerid_map(frames: list[tuple[pd.DataFrame, str, str]]) -> dict[int, str]:
+    rows = []
+    for df, fid_col, short_col in frames:
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            continue
+        if fid_col not in df.columns or short_col not in df.columns:
+            continue
+        fid = pd.to_numeric(df[fid_col], errors="coerce")
+        if fid.isna().all():
+            continue
+        short = df[short_col].fillna("").astype(str).str.strip()
+        tmp = pd.DataFrame({"FilerID": fid, "LobbyShort": short})
+        tmp = tmp.dropna(subset=["FilerID"])
+        tmp["FilerID"] = tmp["FilerID"].astype(int)
+        tmp = tmp[tmp["LobbyShort"].astype(str).str.strip() != ""]
+        if not tmp.empty:
+            rows.append(tmp)
+    if not rows:
+        return {}
+    all_rows = pd.concat(rows, ignore_index=True)
+    counts = (
+        all_rows.groupby(["FilerID", "LobbyShort"])
+        .size()
+        .reset_index(name="n")
+        .sort_values(["FilerID", "n"], ascending=[True, False])
+        .drop_duplicates("FilerID")
+    )
+    return dict(zip(counts["FilerID"], counts["LobbyShort"]))
+
+
+def _derive_lobby_lookup_state(data: dict[str, object]) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, str], dict[str, list[str]], frozenset[str], dict[int, str]]:
+    lobby_name_rows: list[pd.DataFrame] = []
+
+    def _append_lobby_names(df: pd.DataFrame, name_col: str, short_col: str, fid_col: str) -> None:
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            return
+        if name_col not in df.columns or short_col not in df.columns:
+            return
+        tmp = df[[name_col, short_col]].copy()
+        tmp = tmp.rename(columns={name_col: "Lobby Name", short_col: "LobbyShort"})
+        tmp["FilerID"] = df[fid_col] if fid_col in df.columns else pd.NA
+        lobby_name_rows.append(tmp)
+
+    _append_lobby_names(_dataframe_or_empty(data.get("Lobby_TFL_Client_All")), "Lobby Name", "LobbyShort", "FilerID")
+    _append_lobby_names(_dataframe_or_empty(data.get("Lobby_Sub_All")), "Lobby Name", "LobbyShort", "FilerID")
+    _append_lobby_names(_dataframe_or_empty(data.get("Lobbyist_Pol_Funds")), "Lobbyist", "LobbyShort", "FilerID")
+
+    if lobby_name_rows:
+        lobby_names = pd.concat(lobby_name_rows, ignore_index=True)
+        lobby_names["LobbyShort"] = lobby_names["LobbyShort"].astype(str).str.strip()
+        lobby_names["Lobby Name"] = lobby_names["Lobby Name"].astype(str).str.strip()
+        lobby_names = lobby_names[(lobby_names["LobbyShort"] != "") & (lobby_names["Lobby Name"] != "")]
+        lobby_names = lobby_names.drop_duplicates()
+    else:
+        lobby_names = pd.DataFrame(columns=["LobbyShort", "Lobby Name", "FilerID"])
+
+    lobbyist_index = build_lobbyist_index(lobby_names)
+    lobby_index = lobbyist_index.copy()
+    name_to_short: dict[str, str] = {}
+    short_to_names: dict[str, list[str]] = {}
+    known_shorts: frozenset[str] = frozenset()
+    initial_to_short: dict[str, str] = {}
+
+    if not lobbyist_index.empty:
+        known_shorts = frozenset(
+            lobbyist_index["LobbyShort"]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .unique()
+            .tolist()
+        )
+
+        tmp = lobbyist_index[["LobbyShort", "Lobby Name"]].dropna().copy()
+        tmp["LobbyShort"] = tmp["LobbyShort"].astype(str)
+        short_to_names = (
+            tmp.groupby("LobbyShort")["Lobby Name"]
+            .agg(lambda values: sorted(set(map(str, values)))[:6])
+            .to_dict()
+        )
+
+        key_frames = []
+        for col in ["LobbyNameNorm", "LobbyNameCleanNorm", "LastFirstNorm", "FirstLastNorm", "LastFirstInitialNorm"]:
+            if col in lobbyist_index.columns:
+                key_frames.append(lobbyist_index[[col, "LobbyShort"]].rename(columns={col: "Key"}))
+        if key_frames:
+            all_keys = pd.concat(key_frames, ignore_index=True)
+            all_keys["Key"] = all_keys["Key"].fillna("").astype(str).str.strip()
+            all_keys = all_keys[all_keys["Key"] != ""]
+            counts = (
+                all_keys.groupby(["Key", "LobbyShort"])
+                .size()
+                .reset_index(name="n")
+                .sort_values(["Key", "n"], ascending=[True, False])
+                .drop_duplicates("Key")
+            )
+            name_to_short = dict(zip(counts["Key"], counts["LobbyShort"]))
+
+        tmp_short = lobbyist_index[["LobbyShort"]].dropna().copy()
+        tmp_short["InitialKey"] = tmp_short["LobbyShort"].map(_last_first_initial_key)
+        tmp_short = tmp_short[tmp_short["InitialKey"].astype(str).str.strip() != ""]
+        if not tmp_short.empty:
+            init_counts = (
+                tmp_short.groupby(["InitialKey", "LobbyShort"])
+                .size()
+                .reset_index(name="n")
+                .sort_values(["InitialKey", "n"], ascending=[True, False])
+                .drop_duplicates("InitialKey")
+            )
+            initial_to_short = dict(zip(init_counts["InitialKey"], init_counts["LobbyShort"]))
+
+    filerid_to_short = _build_filerid_map(
+        [
+            (_dataframe_or_empty(data.get("Lobby_TFL_Client_All")), "FilerID", "LobbyShort"),
+            (_dataframe_or_empty(data.get("Lobby_Sub_All")), "FilerID", "LobbyShort"),
+            (_dataframe_or_empty(data.get("Lobbyist_Pol_Funds")), "FilerID", "LobbyShort"),
+        ]
+    )
+
+    wit = _dataframe_or_empty(data.get("Wit_All"))
+    if not wit.empty:
+        wit = wit.copy()
+        if "LobbyShort" not in wit.columns:
+            wit["LobbyShort"] = ""
+        name_series = wit.get("name", pd.Series([""] * len(wit))).fillna("").astype(str)
+        if "name" in wit.columns:
+            wit["NameNorm"] = norm_name_series(name_series)
+            wit["NameLastNorm"] = last_name_norm_series(name_series)
+            wit["NameFirstNorm"] = first_name_norm_series(name_series)
+            wit["NameFirstInitialNorm"] = wit["NameFirstNorm"].str.slice(0, 1)
+        if name_to_short:
+            name_norm = wit.get("NameNorm", name_series.map(norm_name))
+            mapped = name_norm.map(name_to_short)
+            if initial_to_short:
+                init_key = name_series.map(_last_first_initial_key)
+                mapped_init = init_key.map(initial_to_short)
+                mapped = mapped.where(mapped.notna() & mapped.astype(str).str.strip().ne(""), mapped_init)
+            if "org" in wit.columns:
+                org_series = wit.get("org", pd.Series([""] * len(wit))).fillna("").astype(str)
+                org_norm = norm_name_series(org_series)
+                mapped = mapped.where(mapped.notna() & mapped.astype(str).str.strip().ne(""), org_norm.map(name_to_short))
+            blank = wit["LobbyShort"].isna() | (wit["LobbyShort"].astype(str).str.strip() == "")
+            wit.loc[blank, "LobbyShort"] = mapped[blank].fillna("")
+        data["Wit_All"] = wit
+
+    for key in ["Wit_All", "Lobby_TFL_Client_All", "Lobby_Sub_All"]:
+        df = _dataframe_or_empty(data.get(key))
+        if not df.empty and "LobbyShort" in df.columns:
+            df = df.copy()
+            df["LobbyShortNorm"] = norm_name_series(df["LobbyShort"])
+            data[key] = df
+
+    ls = _dataframe_or_empty(data.get("Lobby_Sub_All"))
+    if not ls.empty and filerid_to_short and "FilerID" in ls.columns and "LobbyShort" in ls.columns:
+        ls = ls.copy()
+        fid = pd.to_numeric(ls["FilerID"], errors="coerce").fillna(-1).astype(int)
+        missing = ls["LobbyShort"].isna() | ls["LobbyShort"].astype(str).str.strip().eq("")
+        ls.loc[missing, "LobbyShort"] = fid.map(filerid_to_short)
+        data["Lobby_Sub_All"] = ls
+
+    data["name_to_short"] = name_to_short
+    data["short_to_names"] = short_to_names
+    data["lobby_index"] = lobby_index
+    data["lobbyist_index"] = lobbyist_index
+    data["known_shorts"] = known_shorts
+    data["filerid_to_short"] = filerid_to_short
+    return lobby_index, lobbyist_index, name_to_short, short_to_names, known_shorts, filerid_to_short
+
+
 def resolve_lobbyshort(
     user_text: str,
     lobby_index: pd.DataFrame,
@@ -893,6 +1063,57 @@ def _dataframe_or_empty(value) -> pd.DataFrame:
     return pd.DataFrame()
 
 
+def _ensure_session_key_column(df: pd.DataFrame, *, source_column: str | None = None) -> pd.DataFrame:
+    if df.empty:
+        return df
+    if "SessionKey" in df.columns:
+        return df
+    candidates = [source_column] if source_column else ["Session", "session"]
+    for column in candidates:
+        if column and column in df.columns:
+            data = df.copy()
+            data["SessionKey"] = data[column].fillna("").astype(str).str.strip()
+            return data
+    return df
+
+
+def _ensure_lobby_client_lookup_columns(lobby_tfl_client_all: pd.DataFrame) -> pd.DataFrame:
+    if lobby_tfl_client_all.empty:
+        return lobby_tfl_client_all
+
+    required = {"SessionKey", "ClientNorm", "LobbyShortNorm", "Low_num", "High_num"}
+    if required.issubset(set(lobby_tfl_client_all.columns)):
+        return lobby_tfl_client_all
+
+    data = lobby_tfl_client_all.copy()
+    if "Session" in data.columns:
+        data["Session"] = data["Session"].fillna("").astype(str).str.strip()
+        data["SessionKey"] = data["Session"]
+    elif "session" in data.columns:
+        data["SessionKey"] = data["session"].fillna("").astype(str).str.strip()
+
+    if "Client" in data.columns:
+        data["Client"] = data["Client"].fillna("").astype(str).str.strip()
+        data["ClientNorm"] = norm_name_series(data["Client"])
+    if "LobbyShort" in data.columns:
+        data["LobbyShort"] = data["LobbyShort"].fillna("").astype(str).str.strip()
+        data["LobbyShortNorm"] = norm_name_series(data["LobbyShort"])
+    if "Lobby Name" in data.columns:
+        data["Lobby Name"] = data["Lobby Name"].fillna("").astype(str).str.strip()
+    if "IsTFL" in data.columns:
+        data["IsTFL"] = pd.to_numeric(data["IsTFL"], errors="coerce").fillna(0).astype(int)
+
+    if "Low_num" in data.columns:
+        data["Low_num"] = pd.to_numeric(data["Low_num"], errors="coerce").fillna(0.0)
+    elif "Low" in data.columns:
+        data["Low_num"] = pd.to_numeric(data["Low"], errors="coerce").fillna(0.0)
+    if "High_num" in data.columns:
+        data["High_num"] = pd.to_numeric(data["High_num"], errors="coerce").fillna(0.0)
+    elif "High" in data.columns:
+        data["High_num"] = pd.to_numeric(data["High"], errors="coerce").fillna(0.0)
+    return data
+
+
 def _clean_sessions(*series_list: pd.Series) -> tuple[str, ...]:
     if not series_list:
         return ()
@@ -944,28 +1165,40 @@ def _ensure_staff_search_columns(staff_all: pd.DataFrame) -> pd.DataFrame:
 
 def build_app_state(path: str, workbook: dict[str, object]) -> AppState:
     data = dict(workbook or {})
-    data["Wit_All"] = _ensure_witness_search_columns(_dataframe_or_empty(data.get("Wit_All")))
-    data["Bill_Status_All"] = _dataframe_or_empty(data.get("Bill_Status_All"))
-    data["Lobby_TFL_Client_All"] = _dataframe_or_empty(data.get("Lobby_TFL_Client_All"))
-    data["Staff_All"] = _ensure_staff_search_columns(_dataframe_or_empty(data.get("Staff_All")))
+    raw_manifest = data.pop("table_manifest", data.pop("__table_manifest__", {}))
+    table_manifest = {
+        str(key): dict(value)
+        for key, value in dict(raw_manifest or {}).items()
+        if isinstance(value, dict)
+    }
 
+    data["Wit_All"] = _ensure_session_key_column(_ensure_witness_search_columns(_dataframe_or_empty(data.get("Wit_All"))))
+    data["Bill_Status_All"] = _ensure_session_key_column(_dataframe_or_empty(data.get("Bill_Status_All")))
+    data["Lobby_TFL_Client_All"] = _ensure_lobby_client_lookup_columns(_dataframe_or_empty(data.get("Lobby_TFL_Client_All")))
+    data["Lobby_Sub_All"] = _ensure_session_key_column(_dataframe_or_empty(data.get("Lobby_Sub_All")))
+    data["Lobbyist_Pol_Funds"] = _ensure_session_key_column(_dataframe_or_empty(data.get("Lobbyist_Pol_Funds")))
+    data["Staff_All"] = _ensure_session_key_column(_ensure_staff_search_columns(_dataframe_or_empty(data.get("Staff_All"))))
+    for key in (
+        "Fiscal_Impact",
+        "Bill_Sub_All",
+        "LaFood",
+        "LaEnt",
+        "LaTran",
+        "LaGift",
+        "LaEvnt",
+        "LaAwrd",
+        "LaCvr",
+        "LaDock",
+        "LaI4E",
+        "LaSub",
+    ):
+        if key in data:
+            data[key] = _ensure_session_key_column(_dataframe_or_empty(data.get(key)))
+
+    lobby_index, lobbyist_index, name_to_short, short_to_names, known_shorts, filerid_to_short = _derive_lobby_lookup_state(data)
     client_index = build_client_index(data["Lobby_TFL_Client_All"])
     author_bills_all = build_author_bill_index(data["Bill_Status_All"])
     member_index = build_member_index(author_bills_all)
-    lobby_index = _dataframe_or_empty(data.get("lobby_index"))
-    lobbyist_index = _dataframe_or_empty(data.get("lobbyist_index"))
-
-    name_to_short = {str(key): str(value) for key, value in dict(data.get("name_to_short", {}) or {}).items() if str(key).strip() and str(value).strip()}
-    short_to_names = {
-        str(key): [str(value).strip() for value in values if str(value).strip()]
-        for key, values in dict(data.get("short_to_names", {}) or {}).items()
-    }
-    known_shorts = frozenset(str(value).strip() for value in (data.get("known_shorts", set()) or set()) if str(value).strip())
-    filerid_to_short = {
-        int(key): str(value).strip()
-        for key, value in dict(data.get("filerid_to_short", {}) or {}).items()
-        if str(value).strip() and pd.notna(key)
-    }
 
     shared_sessions = _clean_sessions(
         data["Wit_All"].get("Session", pd.Series(dtype=object)),
@@ -993,6 +1226,7 @@ def build_app_state(path: str, workbook: dict[str, object]) -> AppState:
         path=path,
         data=data,
         tables=tables,
+        table_manifest=table_manifest,
         client_index=client_index,
         author_bills_all=author_bills_all,
         member_index=member_index,
