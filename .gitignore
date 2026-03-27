@@ -5,6 +5,7 @@ __pycache__/
 
 # Virtual environments
 .venv/
+.venv-reorg/
 venv/
 env/
 ENV/
@@ -25,3 +26,11 @@ Thumbs.db
 # Project
 *.log
 .env
+.run/
+.pytest_cache/
+pytest-temp/
+.pytest_tmp/
+pytest-run-*/
+python_project/.run/
+python_project/.pytest_cache/
+pytest-cache-files-*/

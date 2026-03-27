@@ -14,6 +14,7 @@ level = "warning"
 
 [server]
 headless = true
+runOnSave = false
 maxUploadSize = 200
 
 [browser]

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;height:0;overflow:hidden;">
+<script>
+(function() {
+    /* ── Streamlit Component Protocol (raw, no external JS) ── */
+    function send(type, extra) {
+        var msg = {isStreamlitMessage: true, type: type};
+        if (extra) { for (var k in extra) { msg[k] = extra[k]; } }
+        window.parent.postMessage(msg, "*");
+    }
+
+    /* 1. Signal component ready */
+    send("streamlit:componentReady", {apiVersion: 1});
+    send("streamlit:setFrameHeight",  {height: 0});
+
+    /* 2. Listen on OWN window for messages broadcast by sibling frames.
+          The map iframe broadcasts to window.parent.frames[*] so the
+          message arrives here on our own window, and event.source for
+          our reply to the parent will correctly be this iframe. */
+    window.addEventListener("message", function(event) {
+        var d = event.data;
+        if (!d) return;
+
+        /* Forward map address payloads to Python */
+        if (d.type === "tfl-send-address") {
+            send("streamlit:setComponentValue", {
+                dataType: "json",
+                value: {
+                    action:    d.action    || "",
+                    address:   d.address   || "",
+                    addresses: d.addresses || [],
+                    nonce:     d.nonce     || 0
+                }
+            });
+        }
+
+        /* Re-acknowledge on Streamlit render events */
+        if (d.type === "streamlit:render") {
+            send("streamlit:setFrameHeight", {height: 0});
+        }
+    });
+})();
+</script>
+</body>
+</html>
