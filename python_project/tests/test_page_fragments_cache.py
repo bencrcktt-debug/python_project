@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pandas as pd
+
 import src.page_fragments as page_fragments
 
 
 def test_run_fragment_reuses_prepared_context_when_selectors_do_not_change(monkeypatch) -> None:
     old_session_state = dict(page_fragments.st.session_state)
+    old_cache = dict(page_fragments._PREPARED_CONTEXT_CACHE)
     rehydrate_calls: list[dict[str, object]] = []
     render_calls: list[dict[str, object]] = []
 
@@ -41,6 +44,10 @@ def test_run_fragment_reuses_prepared_context_when_selectors_do_not_change(monke
         assert len(render_calls) == 2
         assert render_calls[0]["prepared_value"] == 1
         assert render_calls[1]["prepared_value"] == 1
+        persisted = page_fragments.st.session_state["_client_workspace_ctx"]
+        assert persisted["client_name"] == "City of Austin"
+        assert persisted["_prepared_signature"]
+        assert "prepared_value" not in persisted
 
         page_fragments.st.session_state["_client_workspace_ctx"]["client_name"] = "County of Travis"
         page_fragments._run_fragment("_client_workspace_ctx")
@@ -48,12 +55,15 @@ def test_run_fragment_reuses_prepared_context_when_selectors_do_not_change(monke
         assert len(rehydrate_calls) == 2
         assert render_calls[-1]["prepared_value"] == 2
     finally:
+        page_fragments._PREPARED_CONTEXT_CACHE.clear()
+        page_fragments._PREPARED_CONTEXT_CACHE.update(old_cache)
         page_fragments.st.session_state.clear()
         page_fragments.st.session_state.update(old_session_state)
 
 
-def test_merge_fragment_session_context_preserves_prepared_payload() -> None:
+def test_merge_fragment_session_context_keeps_only_selector_payload() -> None:
     old_session_state = dict(page_fragments.st.session_state)
+    old_cache = dict(page_fragments._PREPARED_CONTEXT_CACHE)
     try:
         page_fragments.st.session_state.clear()
         page_fragments.st.session_state["_client_workspace_ctx"] = {
@@ -70,9 +80,35 @@ def test_merge_fragment_session_context_preserves_prepared_payload() -> None:
         )
 
         assert merged["_prepared_signature"] == "prepared"
-        assert merged["_prepared_client_workspace"] is True
-        assert merged["prepared_value"] == 7
         assert merged["client_name"] == "City of Austin"
+        assert "_prepared_client_workspace" not in merged
+        assert "prepared_value" not in merged
     finally:
+        page_fragments._PREPARED_CONTEXT_CACHE.clear()
+        page_fragments._PREPARED_CONTEXT_CACHE.update(old_cache)
         page_fragments.st.session_state.clear()
         page_fragments.st.session_state.update(old_session_state)
+
+
+def test_app_state_context_keeps_only_small_lookup_maps(monkeypatch) -> None:
+    app_state = SimpleNamespace(
+        data={
+            "Wit_All": pd.DataFrame([{"Session": "89R", "LobbyShort": "SMITHJ"}]),
+            "Lobby_TFL_Client_All": pd.DataFrame([{"Session": "89R", "Client": "City of Austin"}]),
+        },
+        name_to_short={"SMITHJOHN": "SMITHJ"},
+        short_to_names={"SMITHJ": ["Smith, John"]},
+        filerid_to_short={101: "SMITHJ"},
+        author_bills_all=pd.DataFrame([{"Session": "89R", "Bill": "HB 1"}]),
+        lobbyist_index=pd.DataFrame([{"LobbyShort": "SMITHJ"}]),
+    )
+
+    monkeypatch.setattr(page_fragments, "_helper", lambda name: (lambda path: app_state) if name == "get_app_state" else None)
+
+    ctx = page_fragments._app_state_context("demo.parquet")
+
+    assert ctx == {
+        "name_to_short": {"SMITHJOHN": "SMITHJ"},
+        "short_to_names": {"SMITHJ": ["Smith, John"]},
+        "filerid_to_short": {101: "SMITHJ"},
+    }

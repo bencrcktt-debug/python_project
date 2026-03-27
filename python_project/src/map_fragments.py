@@ -29,10 +29,46 @@ except ModuleNotFoundError:  # pragma: no cover - import smoke fallback
 
 
 _HELPERS: dict[str, Any] = {}
+_TRANSIENT_CONTEXTS: dict[str, dict[str, Any]] = {}
+_PREPARED_MAP_CONTEXT_CACHE: dict[str, dict[str, Any]] = {}
 
 
 def configure_map_fragment_helpers(**helpers: Any) -> None:
     _HELPERS.update(helpers)
+
+
+def remember_map_workspace_transient_context(storage_key: str, ctx: dict[str, Any]) -> None:
+    _TRANSIENT_CONTEXTS[storage_key] = dict(ctx or {})
+
+
+def _clone_cache_value(value: Any) -> Any:
+    if isinstance(value, pd.DataFrame):
+        return value.copy()
+    if isinstance(value, pd.Series):
+        return value.copy()
+    if isinstance(value, dict):
+        return {key: _clone_cache_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_clone_cache_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_clone_cache_value(item) for item in value)
+    if isinstance(value, set):
+        return {_clone_cache_value(item) for item in value}
+    return value
+
+
+def _remember_prepared_context(runtime_signature: str, ctx: dict[str, Any]) -> None:
+    stale_keys = [key for key in _PREPARED_MAP_CONTEXT_CACHE.keys() if key != runtime_signature]
+    for key in stale_keys:
+        _PREPARED_MAP_CONTEXT_CACHE.pop(key, None)
+    _PREPARED_MAP_CONTEXT_CACHE[runtime_signature] = _clone_cache_value(ctx)
+
+
+def _prepared_context(runtime_signature: str) -> dict[str, Any] | None:
+    cached = _PREPARED_MAP_CONTEXT_CACHE.get(runtime_signature)
+    if cached is None:
+        return None
+    return _clone_cache_value(cached)
 
 
 def _build_forensics_source_signature(atlas_bundle: Any) -> str:
@@ -93,13 +129,9 @@ def _refresh_map_runtime_context(ctx: dict[str, Any]) -> dict[str, Any]:
             st.session_state.get("map_selected_subdivision_context", {}),
         )
         runtime_signature = _build_runtime_signature(path, selected_subdivision_signature)
-        if (
-            str(ctx.get("_map_runtime_signature", "")).strip() == runtime_signature
-            and ctx.get("atlas_bundle") is not None
-            and ctx.get("map_forensics_bundle") is not None
-            and isinstance(ctx.get("subdivision_matches"), pd.DataFrame)
-        ):
-            refreshed = dict(ctx)
+        cached = _prepared_context(runtime_signature)
+        if cached is not None:
+            refreshed = cached
             docket = st.session_state.get("map_watchlist", [])
             docket_count = len(docket) if isinstance(docket, list) else 0
             subdivision_matches = refreshed.get("subdivision_matches")
@@ -178,17 +210,26 @@ def _refresh_map_runtime_context(ctx: dict[str, Any]) -> dict[str, Any]:
             ),
         }
     )
+    _remember_prepared_context(runtime_signature, refreshed)
     return refreshed
 
 
 def _run_fragment(storage_key: str) -> None:
-    ctx = {}
+    persisted_ctx: dict[str, Any] = {}
     if hasattr(st, "session_state"):
         raw = st.session_state.get(storage_key, {})
         if isinstance(raw, dict):
-            ctx = raw
-        ctx = _refresh_map_runtime_context(ctx)
-        st.session_state[storage_key] = ctx
+            persisted_ctx = dict(raw)
+    ctx = dict(persisted_ctx)
+    ctx.update(_TRANSIENT_CONTEXTS.get(storage_key, {}))
+    ctx = _refresh_map_runtime_context(ctx)
+    ctx.update(_TRANSIENT_CONTEXTS.get(storage_key, {}))
+    if hasattr(st, "session_state"):
+        st.session_state[storage_key] = {
+            "PATH": persisted_ctx.get("PATH", ctx.get("PATH", "")),
+            "_map_runtime_signature": ctx.get("_map_runtime_signature", ""),
+            "_map_forensics_source_signature": ctx.get("_map_forensics_source_signature", ""),
+        }
     module = importlib.import_module("src.map_workspace_renderer")
     module.configure_helpers(**_HELPERS)
     module.render_map_workspace(ctx)

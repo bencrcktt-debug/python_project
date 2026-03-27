@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import html
 from typing import Any
+
+import pandas as pd
+import plotly.express as px
 
 try:
     import streamlit as st
@@ -17,53 +21,21 @@ from ._runtime import push_context as _push_context
 HELPER_KEYS = (
     'MAP_BASEMAP_OPTIONS',
     'PATH',
-    '_MAP_WORKSPACE_CTX_KEYS',
     '_map_fragments',
     'get_map_atlas_bundle',
     'require_map_state',
-    'ThreadPoolExecutor',
-    '_atlas_bridge',
-    '_attach_subdivision_spend_totals',
     '_build_mp5_css',
     '_client_page',
     '_default_session_from_list',
-    '_is_url',
     '_lobby_page',
-    '_map_coverage_metrics',
-    '_map_scoped_totals',
-    '_map_tfl_spend_and_names',
     '_member_page',
-    '_mp5_confidence_weight',
-    '_mp5_geocode_badge',
-    '_mp5_method_weight',
-    '_mp5_miles',
-    '_mp5_priority_from_score',
     '_render_page_intro',
     '_render_workspace_guide',
     '_render_workspace_links',
     '_session_label',
-    '_session_sort_key',
     '_tfl_session_for_filter',
-    'as_completed',
-    'build_address_overlap_spending_rows',
-    'build_overlap_map_points',
-    'build_tfl_political_subdivision_matches',
-    'classify_requested_entity_type',
-    'datetime',
     'export_dataframe',
     'fmt_usd',
-    'geocode_address_arcgis',
-    'html',
-    'load_workbook',
-    'math',
-    'os',
-    'pd',
-    'px',
-    'query_texas_subdivisions_for_point',
-    'render_address_overlap_arcgis_map',
-    'render_draw_area_search_map',
-    'render_subdivision_map_legend',
-    'render_tfl_subdivision_arcgis_map',
 )
 
 
@@ -566,9 +538,16 @@ def render_page(ctx: dict[str, Any] | None = None) -> None:
             _forensics_label = "\U0001f50d Address Forensics"
             _docket_label = f"\U0001f4cb Case Docket ({_docket_count:,})" if _docket_count else "\U0001f4cb Case Docket"
 
+            _map_fragments.remember_map_workspace_transient_context(
+                "_map_workspace_ctx",
+                {
+                    "_open_client": _open_client,
+                    "_render_cross_context_banner": _render_cross_context_banner,
+                },
+            )
             _map_fragments.merge_fragment_session_context(
                 "_map_workspace_ctx",
-                {key: value for key, value in locals().items() if key in _MAP_WORKSPACE_CTX_KEYS},
+                {"PATH": str(PATH)},
             )
             _map_fragments.render_map_workspace_fragment("_map_workspace_ctx")
             return

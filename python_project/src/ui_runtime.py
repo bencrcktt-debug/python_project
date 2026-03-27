@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import importlib
 import re
 from datetime import datetime
 from io import BytesIO
@@ -10,7 +11,6 @@ from typing import Any
 
 import pandas as pd
 import plotly.express as px
-import plotly.io as pio
 try:
     import streamlit as st
 except ModuleNotFoundError:  # pragma: no cover - import smoke fallback
@@ -29,6 +29,10 @@ from fpdf import FPDF, XPos, YPos
 
 def configure_helpers(**helpers: Any) -> None:
     globals().update(helpers)
+
+
+def _plotly_io():
+    return importlib.import_module("plotly.io")
 
 
 def _hash_dataframe_for_csv(df: pd.DataFrame) -> str:
@@ -379,7 +383,7 @@ def _clear_pdf_chart_error() -> None:
 
 def _configure_kaleido_scope() -> bool:
     try:
-        scope = pio.kaleido.scope
+        scope = _plotly_io().kaleido.scope
     except Exception as exc:
         _record_pdf_chart_error(f"Kaleido unavailable: {exc}")
         return False
@@ -477,7 +481,7 @@ def _fig_to_png_bytes(fig, width: int = 900, height: int = 500, scale: int = 2) 
     scales = [scale] if scale == 1 else [scale, 1]
     for attempt_scale in scales:
         try:
-            return pio.to_image(
+            return _plotly_io().to_image(
                 fig,
                 format="png",
                 width=width,

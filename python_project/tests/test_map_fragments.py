@@ -163,3 +163,53 @@ def test_refresh_map_runtime_context_invalidates_stale_forensics_session_cache()
         map_fragments._HELPERS.update(old_helpers)
         map_fragments.st.session_state.clear()
         map_fragments.st.session_state.update(old_session_state)
+
+
+def test_run_fragment_persists_only_runtime_markers(monkeypatch) -> None:
+    old_session_state = dict(map_fragments.st.session_state)
+    old_transient = dict(map_fragments._TRANSIENT_CONTEXTS)
+    render_calls: list[dict[str, object]] = []
+
+    fake_renderer = SimpleNamespace(
+        configure_helpers=lambda **helpers: None,
+        render_map_workspace=lambda ctx: render_calls.append(dict(ctx)),
+    )
+
+    def fake_refresh(ctx: dict[str, object]) -> dict[str, object]:
+        updated = dict(ctx)
+        updated.update(
+            {
+                "_map_runtime_signature": "runtime-sig",
+                "_map_forensics_source_signature": "source-sig",
+                "subdivision_matches": pd.DataFrame([{"subdivision_name": "Fresh County"}]),
+                "total_high": 500.0,
+            }
+        )
+        return updated
+
+    try:
+        monkeypatch.setattr(map_fragments, "_refresh_map_runtime_context", fake_refresh)
+        monkeypatch.setattr(map_fragments.importlib, "import_module", lambda name: fake_renderer)
+
+        map_fragments.st.session_state.clear()
+        map_fragments.st.session_state["_map_workspace_ctx"] = {"PATH": "memory://map"}
+        map_fragments.remember_map_workspace_transient_context(
+            "_map_workspace_ctx",
+            {"_open_client": lambda value: value},
+        )
+
+        map_fragments._run_fragment("_map_workspace_ctx")
+
+        persisted = map_fragments.st.session_state["_map_workspace_ctx"]
+        assert persisted == {
+            "PATH": "memory://map",
+            "_map_runtime_signature": "runtime-sig",
+            "_map_forensics_source_signature": "source-sig",
+        }
+        assert callable(render_calls[0]["_open_client"])
+        assert list(render_calls[0]["subdivision_matches"]["subdivision_name"]) == ["Fresh County"]
+    finally:
+        map_fragments._TRANSIENT_CONTEXTS.clear()
+        map_fragments._TRANSIENT_CONTEXTS.update(old_transient)
+        map_fragments.st.session_state.clear()
+        map_fragments.st.session_state.update(old_session_state)

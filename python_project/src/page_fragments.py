@@ -47,6 +47,7 @@ _SELECTOR_KEYS = {
         "selected_filer_ids",
     ),
 }
+_PREPARED_CONTEXT_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
 
 
 def configure_page_fragment_helpers(**helpers: Any) -> None:
@@ -65,6 +66,54 @@ def _merge_bundle_context(ctx: dict[str, Any], bundle: Any) -> dict[str, Any]:
     return merged
 
 
+def _clone_cache_value(value: Any) -> Any:
+    if isinstance(value, pd.DataFrame):
+        return value.copy()
+    if isinstance(value, pd.Series):
+        return value.copy()
+    if isinstance(value, dict):
+        return {key: _clone_cache_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_clone_cache_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_clone_cache_value(item) for item in value)
+    if isinstance(value, set):
+        return {_clone_cache_value(item) for item in value}
+    return value
+
+
+def _session_selector_context(
+    storage_key: str,
+    ctx: dict[str, Any],
+    *,
+    selector_signature: str | None = None,
+) -> dict[str, Any]:
+    keys = _SELECTOR_KEYS.get(storage_key, ())
+    if not keys:
+        payload = dict(ctx)
+    else:
+        payload = {key: ctx.get(key) for key in keys if key in ctx}
+    if selector_signature:
+        payload["_prepared_signature"] = selector_signature
+    elif "_prepared_signature" in ctx:
+        payload["_prepared_signature"] = ctx["_prepared_signature"]
+    return payload
+
+
+def _remember_prepared_context(storage_key: str, selector_signature: str, ctx: dict[str, Any]) -> None:
+    stale_keys = [key for key in _PREPARED_CONTEXT_CACHE.keys() if key[0] == storage_key and key[1] != selector_signature]
+    for key in stale_keys:
+        _PREPARED_CONTEXT_CACHE.pop(key, None)
+    _PREPARED_CONTEXT_CACHE[(storage_key, selector_signature)] = _clone_cache_value(ctx)
+
+
+def _prepared_context(storage_key: str, selector_signature: str) -> dict[str, Any] | None:
+    cached = _PREPARED_CONTEXT_CACHE.get((storage_key, selector_signature))
+    if cached is None:
+        return None
+    return _clone_cache_value(cached)
+
+
 def merge_fragment_session_context(storage_key: str, selector_updates: dict[str, Any]) -> dict[str, Any]:
     current = {}
     if hasattr(st, "session_state"):
@@ -73,8 +122,9 @@ def merge_fragment_session_context(storage_key: str, selector_updates: dict[str,
             current = dict(raw)
     current.update(dict(selector_updates or {}))
     if hasattr(st, "session_state"):
+        current = _session_selector_context(storage_key, current)
         st.session_state[storage_key] = current
-    return current
+    return dict(current)
 
 
 def _app_state_context(path: str) -> dict[str, Any]:
@@ -83,20 +133,10 @@ def _app_state_context(path: str) -> dict[str, Any]:
         return {}
 
     app_state = get_app_state(path)
-    data = getattr(app_state, "data", {}) or {}
-    empty_df = pd.DataFrame()
     return {
-        "data": data,
         "name_to_short": getattr(app_state, "name_to_short", {}) or {},
         "short_to_names": getattr(app_state, "short_to_names", {}) or {},
         "filerid_to_short": getattr(app_state, "filerid_to_short", {}) or {},
-        "author_bills_all": getattr(app_state, "author_bills_all", empty_df),
-        "Lobby_TFL_Client_All": data.get("Lobby_TFL_Client_All", empty_df),
-        "Wit_All": data.get("Wit_All", empty_df),
-        "Bill_Status_All": data.get("Bill_Status_All", empty_df),
-        "Lobby_Sub_All": data.get("Lobby_Sub_All", empty_df),
-        "Staff_All": data.get("Staff_All", empty_df),
-        "lobbyist_index": data.get("lobbyist_index", empty_df),
     }
 
 
@@ -207,16 +247,25 @@ def _selector_signature(storage_key: str, ctx: dict[str, Any]) -> str:
 
 
 def _run_fragment(storage_key: str) -> None:
-    ctx = {}
+    selector_ctx: dict[str, Any] = {}
     if hasattr(st, "session_state"):
         raw = st.session_state.get(storage_key, {})
         if isinstance(raw, dict):
-            ctx = raw
-        selector_signature = _selector_signature(storage_key, ctx)
-        if ctx.get("_prepared_signature") != selector_signature:
-            ctx = _rehydrate_fragment_ctx(storage_key, ctx)
-            ctx["_prepared_signature"] = selector_signature
-            st.session_state[storage_key] = ctx
+            selector_ctx = dict(raw)
+    selector_signature = _selector_signature(storage_key, selector_ctx)
+    ctx = _prepared_context(storage_key, selector_signature)
+    if ctx is None:
+        ctx = _rehydrate_fragment_ctx(storage_key, selector_ctx)
+        ctx["_prepared_signature"] = selector_signature
+        _remember_prepared_context(storage_key, selector_signature, ctx)
+    else:
+        ctx["_prepared_signature"] = selector_signature
+    if hasattr(st, "session_state"):
+        st.session_state[storage_key] = _session_selector_context(
+            storage_key,
+            selector_ctx,
+            selector_signature=selector_signature,
+        )
     renderer_name = _RENDERERS.get(storage_key)
     if not renderer_name:
         return

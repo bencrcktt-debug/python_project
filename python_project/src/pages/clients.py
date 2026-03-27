@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import html
 from typing import Any
+
+import pandas as pd
 
 try:
     import streamlit as st
@@ -16,7 +19,6 @@ from ._runtime import push_context as _push_context
 
 HELPER_KEYS = (
     'PATH',
-    '_CLIENT_WORKSPACE_CTX_KEYS',
     '_default_session_from_list',
     '_lobby_page',
     '_map_page',
@@ -35,8 +37,6 @@ HELPER_KEYS = (
     'data_health_table',
     'get_app_tables',
     'get_client_scope_bundle',
-    'html',
-    'pd',
     'require_app_state',
     'reset_client_filters',
     'resolve_client_name',

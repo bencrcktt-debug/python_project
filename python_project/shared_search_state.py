@@ -600,6 +600,42 @@ def _build_filerid_map(frames: list[tuple[pd.DataFrame, str, str]]) -> dict[int,
     return dict(zip(counts["FilerID"], counts["LobbyShort"]))
 
 
+def _fill_missing_witness_lobbyshorts(
+    wit_all: pd.DataFrame,
+    *,
+    name_to_short: dict[str, str],
+) -> pd.DataFrame:
+    if wit_all.empty:
+        return wit_all
+
+    data = wit_all.copy()
+    if "LobbyShort" not in data.columns:
+        data["LobbyShort"] = ""
+
+    lobby_short = data["LobbyShort"].fillna("").astype(str).str.strip()
+    blank_mask = lobby_short.eq("")
+    if blank_mask.any() and name_to_short:
+        blank_index = data.index[blank_mask]
+        mapped = pd.Series("", index=blank_index, dtype="object")
+
+        if "name" in data.columns:
+            name_norm = norm_name_series(data.loc[blank_index, "name"].fillna("").astype(str))
+            mapped = name_norm.map(name_to_short).fillna("")
+
+        if "org" in data.columns:
+            needs_org = mapped.astype(str).str.strip().eq("")
+            if needs_org.any():
+                org_index = mapped.index[needs_org]
+                org_norm = norm_name_series(data.loc[org_index, "org"].fillna("").astype(str))
+                mapped.loc[org_index] = org_norm.map(name_to_short).fillna("")
+
+        data.loc[blank_index, "LobbyShort"] = mapped.fillna("")
+
+    if "LobbyShortNorm" not in data.columns:
+        data["LobbyShortNorm"] = norm_name_series(data["LobbyShort"])
+    return data
+
+
 def _derive_lobby_lookup_state(data: dict[str, object]) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, str], dict[str, list[str]], frozenset[str], dict[int, str]]:
     lobby_name_rows: list[pd.DataFrame] = []
 
@@ -691,31 +727,12 @@ def _derive_lobby_lookup_state(data: dict[str, object]) -> tuple[pd.DataFrame, p
 
     wit = _dataframe_or_empty(data.get("Wit_All"))
     if not wit.empty:
-        wit = wit.copy()
-        if "LobbyShort" not in wit.columns:
-            wit["LobbyShort"] = ""
-        name_series = wit.get("name", pd.Series([""] * len(wit))).fillna("").astype(str)
-        if "name" in wit.columns:
-            wit["NameNorm"] = norm_name_series(name_series)
-            wit["NameLastNorm"] = last_name_norm_series(name_series)
-            wit["NameFirstNorm"] = first_name_norm_series(name_series)
-            wit["NameFirstInitialNorm"] = wit["NameFirstNorm"].str.slice(0, 1)
-        if name_to_short:
-            name_norm = wit.get("NameNorm", name_series.map(norm_name))
-            mapped = name_norm.map(name_to_short)
-            if initial_to_short:
-                init_key = name_series.map(_last_first_initial_key)
-                mapped_init = init_key.map(initial_to_short)
-                mapped = mapped.where(mapped.notna() & mapped.astype(str).str.strip().ne(""), mapped_init)
-            if "org" in wit.columns:
-                org_series = wit.get("org", pd.Series([""] * len(wit))).fillna("").astype(str)
-                org_norm = norm_name_series(org_series)
-                mapped = mapped.where(mapped.notna() & mapped.astype(str).str.strip().ne(""), org_norm.map(name_to_short))
-            blank = wit["LobbyShort"].isna() | (wit["LobbyShort"].astype(str).str.strip() == "")
-            wit.loc[blank, "LobbyShort"] = mapped[blank].fillna("")
-        data["Wit_All"] = wit
+        data["Wit_All"] = _fill_missing_witness_lobbyshorts(
+            wit,
+            name_to_short=name_to_short,
+        )
 
-    for key in ["Wit_All", "Lobby_TFL_Client_All", "Lobby_Sub_All"]:
+    for key in ["Lobby_TFL_Client_All", "Lobby_Sub_All"]:
         df = _dataframe_or_empty(data.get(key))
         if not df.empty and "LobbyShort" in df.columns:
             df = df.copy()
@@ -1172,7 +1189,7 @@ def build_app_state(path: str, workbook: dict[str, object]) -> AppState:
         if isinstance(value, dict)
     }
 
-    data["Wit_All"] = _ensure_session_key_column(_ensure_witness_search_columns(_dataframe_or_empty(data.get("Wit_All"))))
+    data["Wit_All"] = _ensure_session_key_column(_dataframe_or_empty(data.get("Wit_All")))
     data["Bill_Status_All"] = _ensure_session_key_column(_dataframe_or_empty(data.get("Bill_Status_All")))
     data["Lobby_TFL_Client_All"] = _ensure_lobby_client_lookup_columns(_dataframe_or_empty(data.get("Lobby_TFL_Client_All")))
     data["Lobby_Sub_All"] = _ensure_session_key_column(_dataframe_or_empty(data.get("Lobby_Sub_All")))

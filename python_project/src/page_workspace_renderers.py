@@ -5,6 +5,10 @@ import html
 import re
 from datetime import datetime
 
+import pandas as pd
+import plotly.express as px
+import src.chart_runtime as _chart_runtime
+
 try:
     import streamlit as st
 except ModuleNotFoundError:  # pragma: no cover - import smoke fallback
@@ -48,6 +52,16 @@ def _resolve_workspace_table(ctx: dict[str, Any], key: str) -> pd.DataFrame:
     if isinstance(global_value, pd.DataFrame):
         return global_value
 
+    single_loader = globals().get("get_app_table")
+    path = str(ctx.get("PATH", "")).strip()
+    if path and callable(single_loader):
+        try:
+            loaded = single_loader(path, key)
+        except Exception:
+            loaded = None
+        if isinstance(loaded, pd.DataFrame):
+            return loaded
+
     loader = globals().get("get_app_tables")
     path = str(ctx.get("PATH", "")).strip()
     if path and callable(loader):
@@ -64,6 +78,8 @@ def _resolve_workspace_table(ctx: dict[str, Any], key: str) -> pd.DataFrame:
 
 def _workspace_data_with_lazy_tables(ctx: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
     data = dict(ctx.get("data", {}) or {})
+    if "filerid_to_short" in ctx and "filerid_to_short" not in data:
+        data["filerid_to_short"] = ctx.get("filerid_to_short", {}) or {}
     for key in keys:
         table = _resolve_workspace_table(ctx, key)
         if isinstance(table, pd.DataFrame):
@@ -218,17 +234,21 @@ def render_client_workspace(ctx: dict[str, Any]) -> None:
                     st.switch_page(_map_page)
                 st.caption(f"Source web app: [TEA School District Locator]({TEA_ARCGIS_WEBAPP_URL}).")
 
+                client_chart_payload = _chart_runtime.build_client_overview_chart_payload(
+                    _chart_runtime.stable_json_signature(
+                        {
+                            "scope": st.session_state.get("client_scope", ""),
+                            "session": st.session_state.get("client_session", ""),
+                            "category_rows": int(len(client_scope_bundle.category_chart_data)),
+                        }
+                    ),
+                    client_scope_bundle.category_chart_data,
+                    all_stats,
+                )
                 mix_left, mix_right = st.columns([1, 2])
                 with mix_left:
                     st.markdown('<div class="section-sub">Funding Mix (Midpoint)</div>', unsafe_allow_html=True)
-                    tfl_mid = (all_stats.get("tfl_low_total", 0.0) + all_stats.get("tfl_high_total", 0.0)) / 2
-                    pri_mid = (all_stats.get("pri_low_total", 0.0) + all_stats.get("pri_high_total", 0.0)) / 2
-                    mix_df = pd.DataFrame(
-                        {
-                            "Funding": ["Taxpayer Funded", "Private"],
-                            "Total": [tfl_mid, pri_mid],
-                        }
-                    )
+                    mix_df = client_chart_payload["mix_df"]
                     if mix_df["Total"].sum() > 0:
                         fig_mix = px.pie(
                             mix_df,
@@ -253,16 +273,10 @@ def render_client_workspace(ctx: dict[str, Any]) -> None:
 
                 with mix_right:
                     st.markdown('<div class="section-sub">Expenditure by Category (85th-89th, Taxpayer Funded)</div>', unsafe_allow_html=True)
-                    cat_group = client_scope_bundle.category_chart_data
+                    cat_group = client_chart_payload["cat_group"]
                     if not cat_group.empty:
-                        session_order = sorted(cat_group["SessionBase"].dropna().unique().tolist())
-                        session_labels = [_session_base_label(s) for s in session_order]
-                        cat_order = (
-                            cat_group.groupby("Category")["Total"]
-                            .sum()
-                            .sort_values(ascending=False)
-                            .index.tolist()
-                        )
+                        session_labels = client_chart_payload["session_labels"]
+                        cat_order = client_chart_payload["category_order"]
                         fig_cat = px.bar(
                             cat_group,
                             x="SessionLabel",
@@ -423,6 +437,7 @@ def render_client_workspace(ctx: dict[str, Any]) -> None:
             return
 
         session = str(st.session_state.client_session).strip()
+        client_norm = str(ctx.get("client_norm", "")).strip() or norm_name(st.session_state.client_name)
         if ctx.get("_prepared_client_workspace"):
             client_rows_all = ctx.get("client_rows_all", pd.DataFrame())
             client_lt = ctx.get("client_lt", pd.DataFrame())
@@ -494,8 +509,6 @@ def render_client_workspace(ctx: dict[str, Any]) -> None:
             LaDock = data["LaDock"]
             LaI4E = data["LaI4E"]
             LaSub = data["LaSub"]
-
-            client_norm = norm_name(st.session_state.client_name)
 
             _client_norms = norm_name_series(Lobby_TFL_Client_All["Client"])
             client_rows_all = Lobby_TFL_Client_All[_client_norms == client_norm]
@@ -2304,7 +2317,62 @@ def render_member_workspace(ctx: dict[str, Any]) -> None:
 def render_lobby_workspace(ctx: dict[str, Any]) -> None:
     _previous = _push_context(ctx)
     try:
+        path = str(ctx.get("PATH", "")).strip()
+        get_app_state = globals().get("get_app_state")
+        app_state = None
+        if path and callable(get_app_state):
+            try:
+                app_state = get_app_state(path)
+            except Exception:
+                app_state = None
+
+        Lobby_TFL_Client_All = _resolve_workspace_table(ctx, "Lobby_TFL_Client_All")
+        Bill_Status_All = _resolve_workspace_table(ctx, "Bill_Status_All")
+        Wit_All = _resolve_workspace_table(ctx, "Wit_All")
+        Staff_All = _resolve_workspace_table(ctx, "Staff_All")
         Bill_Sub_All = _resolve_workspace_table(ctx, "Bill_Sub_All")
+        name_to_short = dict(ctx.get("name_to_short", {}) or getattr(app_state, "name_to_short", {}) or {})
+        lobbyist_index = ctx.get("lobbyist_index")
+        if not isinstance(lobbyist_index, pd.DataFrame):
+            lobbyist_index = getattr(app_state, "lobbyist_index", pd.DataFrame())
+        tfl_session_val = ctx.get("tfl_session_val")
+
+        lobby_scope_bundle = ctx.get("lobby_scope_bundle")
+        all_pivot = ctx.get("all_pivot", pd.DataFrame())
+        all_stats = ctx.get("all_stats", {})
+        if (
+            lobby_scope_bundle is None
+            or not isinstance(all_pivot, pd.DataFrame)
+            or not isinstance(all_stats, dict)
+        ):
+            get_lobby_scope_bundle = globals().get("get_lobby_scope_bundle")
+            scope = ctx.get("scope", st.session_state.get("scope"))
+            if path and scope is not None and callable(get_lobby_scope_bundle):
+                try:
+                    lobby_scope_bundle = get_lobby_scope_bundle(path, scope, tfl_session_val)
+                except Exception:
+                    lobby_scope_bundle = None
+        if lobby_scope_bundle is not None:
+            if not isinstance(all_pivot, pd.DataFrame):
+                all_pivot = getattr(lobby_scope_bundle, "all_pivot", pd.DataFrame())
+            if not isinstance(all_stats, dict):
+                all_stats = getattr(lobby_scope_bundle, "all_stats", {}) or {}
+        if lobby_scope_bundle is None:
+            lobby_scope_bundle = type(
+                "_LobbyScopeBundleFallback",
+                (),
+                {
+                    "all_pivot": pd.DataFrame(),
+                    "all_stats": {},
+                    "trend_group": pd.DataFrame(),
+                    "lobby_display": pd.DataFrame(),
+                    "top_clients": pd.DataFrame(),
+                },
+            )()
+        if not isinstance(all_pivot, pd.DataFrame):
+            all_pivot = pd.DataFrame()
+        if not isinstance(all_stats, dict):
+            all_stats = {}
 
         tab_all, tab_overview, tab_bills, tab_policy, tab_activities, tab_disclosures, tab_staff = st.tabs(
             [
@@ -2451,13 +2519,19 @@ def render_lobby_workspace(ctx: dict[str, Any]) -> None:
                         help_text="Lobbyists with only taxpayer-funded clients; mixed count shown below.",
                     )
 
-                st.markdown('<div class="section-sub">Funding Mix (Midpoint)</div>', unsafe_allow_html=True)
-                mix_df = pd.DataFrame(
-                    {
-                        "Funding": ["Taxpayer Funded", "Private"],
-                        "Total": [tfl_mid, pri_mid],
-                    }
+                lobby_chart_payload = _chart_runtime.build_lobby_scope_chart_payload(
+                    _chart_runtime.stable_json_signature(
+                        {
+                            "scope": st.session_state.get("scope", ""),
+                            "session": st.session_state.get("session", ""),
+                            "trend_rows": int(len(lobby_scope_bundle.trend_group)),
+                        }
+                    ),
+                    lobby_scope_bundle.trend_group,
+                    all_stats,
                 )
+                st.markdown('<div class="section-sub">Funding Mix (Midpoint)</div>', unsafe_allow_html=True)
+                mix_df = lobby_chart_payload["mix_df"]
                 if mix_df["Total"].sum() > 0:
                     fig_mix = px.pie(
                         mix_df,
@@ -2485,17 +2559,9 @@ def render_lobby_workspace(ctx: dict[str, Any]) -> None:
                     st.info("No totals available for funding mix in this scope.")
 
                 st.markdown('<div class="section-sub">Taxpayer Funded Compensation Trend (85th-89th)</div>', unsafe_allow_html=True)
-                trend_group = lobby_scope_bundle.trend_group
-                if not trend_group.empty:
-                    trend_long = trend_group.melt(
-                        id_vars=["SessionBase", "SessionLabel"],
-                        value_vars=["Low", "High"],
-                        var_name="Estimate",
-                        value_name="Total",
-                    )
-                    trend_long["Estimate"] = trend_long["Estimate"].map({"Low": "Low estimate", "High": "High estimate"})
-                    session_order = sorted(trend_group["SessionBase"].dropna().unique().tolist())
-                    session_labels = [_session_base_label(s) for s in session_order]
+                trend_long = lobby_chart_payload["trend_long"]
+                if not trend_long.empty:
+                    session_labels = lobby_chart_payload["session_labels"]
                     fig_trend = px.line(
                         trend_long,
                         x="SessionLabel",

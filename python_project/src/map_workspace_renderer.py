@@ -5,6 +5,10 @@ import html
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
+import pandas as pd
+import plotly.express as px
+import src.chart_runtime as _chart_runtime
+
 try:
     import streamlit as st
 except ModuleNotFoundError:  # pragma: no cover - import smoke fallback
@@ -13,6 +17,8 @@ except ModuleNotFoundError:  # pragma: no cover - import smoke fallback
     st = _StreamlitStub()
 
 _MISSING = object()
+_FORENSICS_BUNDLE_CACHE: dict[tuple[Any, ...], dict[str, pd.DataFrame]] = {}
+_FORENSICS_ROWS_CACHE: dict[tuple[Any, ...], pd.DataFrame] = {}
 
 def configure_helpers(**helpers: Any) -> None:
     globals().update(helpers)
@@ -31,6 +37,10 @@ def _pop_context(previous: dict[str, Any], ctx: dict[str, Any]) -> None:
             globals().pop(key, None)
         else:
             globals()[key] = old_value
+
+
+def _clone_frame(value: pd.DataFrame) -> pd.DataFrame:
+    return value.copy() if isinstance(value, pd.DataFrame) else pd.DataFrame()
 
 def render_map_workspace(ctx: dict[str, Any]) -> None:
     _previous = _push_context(ctx)
@@ -137,7 +147,7 @@ def render_map_workspace(ctx: dict[str, Any]) -> None:
                 selected_types = st.session_state.get("map_subdivision_types_filter", [])
                 query = str(st.session_state.get("map_subdivision_name_filter", "")).strip().lower()
                 sort_mode = st.session_state.get("map_subdivision_sort_v4", "Highest Signal")
-                atlas_filter_signature = _stable_json_signature(
+                atlas_filter_signature = _chart_runtime.stable_json_signature(
                     {
                         "atlas_signature": atlas_bundle.map_payload_signature,
                         "selected_types": sorted(str(v) for v in selected_types),
@@ -146,16 +156,13 @@ def render_map_workspace(ctx: dict[str, Any]) -> None:
                         "sort_mode": sort_mode,
                     }
                 )
-                atlas_filter_bundle = _session_cached_value(
-                    "_mp5_filtered_atlas_bundle_v1",
+                atlas_filter_bundle = _chart_runtime.build_filtered_atlas_bundle(
                     atlas_filter_signature,
-                    lambda: _build_filtered_atlas_bundle(
-                        subdivision_matches,
-                        selected_types=[str(v) for v in selected_types],
-                        min_match_count=int(st.session_state.get("map_min_match_count", 1)),
-                        query=query,
-                        sort_mode=sort_mode,
-                    ),
+                    subdivision_matches,
+                    selected_types=[str(v) for v in selected_types],
+                    min_match_count=int(st.session_state.get("map_min_match_count", 1)),
+                    query=query,
+                    sort_mode=sort_mode,
                 )
                 filtered_cov = atlas_filter_bundle["filtered_cov"]
                 cov_total_high_filtered = float(atlas_filter_bundle["cov_total_high_filtered"] or 0.0)
@@ -381,15 +388,15 @@ def render_map_workspace(ctx: dict[str, Any]) -> None:
                 # -- atlas charts -----------------------------------------
                 st.markdown('<hr class="mp5-divider">', unsafe_allow_html=True)
                 _atlas_chart_left, _atlas_chart_right = st.columns(2, gap="medium")
+                atlas_chart_payload = _chart_runtime.build_map_atlas_chart_payload(
+                    atlas_filter_signature,
+                    filtered_cov,
+                )
 
                 with _atlas_chart_left:
                     # Treemap — spend concentration by subdivision type → subdivision
-                    if not filtered_cov.empty and len(filtered_cov) > 1:
-                        tree_df = filtered_cov.copy()
-                        tree_df["_type"] = tree_df["subdivision_type"].astype(str).str.strip()
-                        tree_df["_name"] = tree_df["subdivision_name"].astype(str).str.strip()
-                        tree_df["high_total"] = pd.to_numeric(tree_df["high_total"], errors="coerce").fillna(0.0)
-                        tree_df = tree_df[tree_df["high_total"] > 0].head(200)
+                    tree_df = atlas_chart_payload["tree_df"]
+                    if not tree_df.empty and len(filtered_cov) > 1:
                         if not tree_df.empty:
                             fig_tree = px.treemap(
                                 tree_df,
@@ -413,8 +420,8 @@ def render_map_workspace(ctx: dict[str, Any]) -> None:
 
                 with _atlas_chart_right:
                     # Histogram — distribution of matched-entity counts
-                    if not filtered_cov.empty and len(filtered_cov) > 2:
-                        hist_vals = pd.to_numeric(filtered_cov["match_count"], errors="coerce").dropna()
+                    hist_vals = atlas_chart_payload["hist_vals"]
+                    if not hist_vals.empty and len(filtered_cov) > 2:
                         if len(hist_vals) > 2:
                             fig_hist = px.histogram(
                                 hist_vals,
@@ -698,16 +705,10 @@ def render_map_workspace(ctx: dict[str, Any]) -> None:
                         geocode_message = "Coordinate mode — no geocode confidence score"
 
                 if analysis_point is not None:
-                    _cached_forensics = st.session_state.get("_mp5_forensics_bundle_v1", {})
-                    _cache_hit = (
-                        isinstance(_cached_forensics, dict)
-                        and _cached_forensics.get("key") == forensics_cache_key
-                        and isinstance(_cached_forensics.get("overlap_points"), pd.DataFrame)
-                        and isinstance(_cached_forensics.get("overlap_spend"), pd.DataFrame)
-                    )
-                    if _cache_hit:
-                        overlap_points = _cached_forensics.get("overlap_points", pd.DataFrame()).copy()
-                        overlap_spend = _cached_forensics.get("overlap_spend", pd.DataFrame()).copy()
+                    _cached_forensics = _FORENSICS_BUNDLE_CACHE.get(forensics_cache_key)
+                    if isinstance(_cached_forensics, dict):
+                        overlap_points = _clone_frame(_cached_forensics.get("overlap_points", pd.DataFrame()))
+                        overlap_spend = _clone_frame(_cached_forensics.get("overlap_spend", pd.DataFrame()))
                     else:
                         overlap_sub = query_texas_subdivisions_for_point(
                             round(float(analysis_point["lon"]), 6),
@@ -725,8 +726,8 @@ def render_map_workspace(ctx: dict[str, Any]) -> None:
                             prepared_overlap_pools=atlas_bundle.prepared_overlap_pools,
                             spend_lookup=atlas_bundle.spend_lookup,
                         )
-                        st.session_state["_mp5_forensics_bundle_v1"] = {
-                            "key": forensics_cache_key,
+                        _FORENSICS_BUNDLE_CACHE.clear()
+                        _FORENSICS_BUNDLE_CACHE[forensics_cache_key] = {
                             "overlap_points": overlap_points.copy(),
                             "overlap_spend": overlap_spend.copy(),
                         }
@@ -763,19 +764,14 @@ def render_map_workspace(ctx: dict[str, Any]) -> None:
                     if overlap_spend.empty:
                         st.info("No matched entities at this location.")
                     else:
-                        _rows_cache = st.session_state.get("_mp5_forensics_rows_v1", {})
                         _rows_cache_key = (
                             forensics_cache_key,
                             round(float(analysis_point.get("lat", 0.0)), 6),
                             round(float(analysis_point.get("lon", 0.0)), 6),
                         )
-                        _rows_cache_hit = (
-                            isinstance(_rows_cache, dict)
-                            and _rows_cache.get("key") == _rows_cache_key
-                            and isinstance(_rows_cache.get("rows"), pd.DataFrame)
-                        )
-                        if _rows_cache_hit:
-                            rows = _rows_cache.get("rows", pd.DataFrame()).copy()
+                        _cached_rows = _FORENSICS_ROWS_CACHE.get(_rows_cache_key)
+                        if isinstance(_cached_rows, pd.DataFrame):
+                            rows = _cached_rows.copy()
                         else:
                             rows = overlap_spend.copy()
                             rows["Low"] = pd.to_numeric(rows["Low"], errors="coerce").fillna(0.0)
@@ -821,10 +817,8 @@ def render_map_workspace(ctx: dict[str, Any]) -> None:
                                 * rows["Confidence Weight"]
                                 * _dist_factor
                             )
-                            st.session_state["_mp5_forensics_rows_v1"] = {
-                                "key": _rows_cache_key,
-                                "rows": rows.copy(),
-                            }
+                            _FORENSICS_ROWS_CACHE.clear()
+                            _FORENSICS_ROWS_CACHE[_rows_cache_key] = rows.copy()
 
                         # -- evidence filters (in left column) ------------
                         conf_opts = [
@@ -882,7 +876,7 @@ def render_map_workspace(ctx: dict[str, Any]) -> None:
                         min_high = float(st.session_state.get("map_probe_min_high", 0.0) or 0.0)
                         dist_cap = float(st.session_state.get("map_distance_cap_miles", 160) or 160)
                         sort_mode = st.session_state.get("map_overlap_sort_v4", "Signal Score")
-                        forensics_filter_signature = _stable_json_signature(
+                        forensics_filter_signature = _chart_runtime.stable_json_signature(
                             {
                                 "rows_key": _rows_cache_key,
                                 "confidence_filters": list(st.session_state.get("map_overlap_confidence_filter", [])),
@@ -898,23 +892,20 @@ def render_map_workspace(ctx: dict[str, Any]) -> None:
                                 "sort_mode": sort_mode,
                             }
                         )
-                        forensics_filter_bundle = _session_cached_value(
-                            "_mp5_filtered_forensics_bundle_v1",
+                        forensics_filter_bundle = _chart_runtime.build_filtered_forensics_bundle(
                             forensics_filter_signature,
-                            lambda: _build_filtered_forensics_bundle(
-                                rows,
-                                confidence_filters=list(st.session_state.get("map_overlap_confidence_filter", [])),
-                                method_filters=list(st.session_state.get("map_overlap_method_filter", [])),
-                                entity_query=q_entity,
-                                min_high=min_high,
-                                dist_cap=dist_cap,
-                                focus_selected_subdivision=bool(st.session_state.get("map_overlap_focus_selected_subdivision", False)),
-                                selected_type=selected_type,
-                                selected_name=selected_name,
-                                focus_selected_clients=bool(st.session_state.get("map_overlap_focus_selected_clients", False)),
-                                selected_clients=selected_clients,
-                                sort_mode=sort_mode,
-                            ),
+                            rows,
+                            confidence_filters=list(st.session_state.get("map_overlap_confidence_filter", [])),
+                            method_filters=list(st.session_state.get("map_overlap_method_filter", [])),
+                            entity_query=q_entity,
+                            min_high=min_high,
+                            dist_cap=dist_cap,
+                            focus_selected_subdivision=bool(st.session_state.get("map_overlap_focus_selected_subdivision", False)),
+                            selected_type=selected_type,
+                            selected_name=selected_name,
+                            focus_selected_clients=bool(st.session_state.get("map_overlap_focus_selected_clients", False)),
+                            selected_clients=selected_clients,
+                            sort_mode=sort_mode,
                         )
                         filtered = forensics_filter_bundle["filtered"]
                         leads = forensics_filter_bundle["leads"]
@@ -1010,11 +1001,19 @@ def render_map_workspace(ctx: dict[str, Any]) -> None:
                         show_charts = bool(st.session_state.get("map_forensics_show_charts", False))
                         if not show_charts:
                             st.caption("Advanced charts are disabled for faster reruns. Enable **Show advanced charts** in Evidence Filters.")
+                        forensics_chart_payload = (
+                            _chart_runtime.build_map_forensics_chart_payload(
+                                forensics_filter_signature,
+                                filtered,
+                                leads,
+                            )
+                            if show_charts and not filtered.empty
+                            else {}
+                        )
 
                         # -- signal scatter chart -------------------------
                         if show_charts and not filtered.empty and len(filtered) > 1:
-                            chart_df = filtered
-                            chart_df["Confidence"] = chart_df["Match Confidence"].astype(str)
+                            chart_df = forensics_chart_payload["chart_df"]
                             fig_scatter = px.scatter(
                                 chart_df,
                                 x="Distance Miles",
@@ -1057,18 +1056,8 @@ def render_map_workspace(ctx: dict[str, Any]) -> None:
                             _fc_left, _fc_right = st.columns(2, gap="medium")
                             with _fc_left:
                                 # Heatmap — confidence vs method row counts
-                                heat_df = (
-                                    filtered.groupby(
-                                        [filtered["Match Confidence"].astype(str), filtered["Match Method"].astype(str)],
-                                    )
-                                    .size()
-                                    .reset_index(name="Count")
-                                )
-                                heat_df = heat_df.set_axis(["Confidence", "Method", "Count"], axis=1)
-                                if len(heat_df) > 1:
-                                    heat_pivot = heat_df.pivot_table(
-                                        index="Confidence", columns="Method", values="Count", fill_value=0,
-                                    )
+                                heat_pivot = forensics_chart_payload["heat_pivot"]
+                                if len(heat_pivot) > 1:
                                     fig_heat = px.imshow(
                                         heat_pivot,
                                         color_continuous_scale="tealgrn",
@@ -1090,18 +1079,8 @@ def render_map_workspace(ctx: dict[str, Any]) -> None:
 
                             with _fc_right:
                                 # Grouped bar — spend by entity type
-                                etype_df = (
-                                    filtered.groupby(filtered["Entity Type"].astype(str).str.strip())
-                                    .agg(Low=("Low", "sum"), High=("High", "sum"))
-                                    .reset_index()
-                                )
-                                etype_df = etype_df.set_axis(["Entity Type", "Low", "High"], axis=1)
-                                etype_df = etype_df[etype_df["Entity Type"] != ""].sort_values("High", ascending=False).head(15)
-                                if not etype_df.empty and len(etype_df) > 1:
-                                    etype_melt = etype_df.melt(
-                                        id_vars="Entity Type", value_vars=["Low", "High"],
-                                        var_name="Estimate", value_name="Amount",
-                                    )
+                                etype_melt = forensics_chart_payload["etype_melt"]
+                                if not etype_melt.empty and len(etype_melt) > 1:
                                     fig_etype = px.bar(
                                         etype_melt,
                                         x="Entity Type",
@@ -1187,8 +1166,7 @@ def render_map_workspace(ctx: dict[str, Any]) -> None:
 
                             # -- lead score bar chart ---------------------
                             if show_charts and len(leads) > 1:
-                                chart_leads = leads.head(20)
-                                chart_leads["Entity"] = chart_leads["TFL Entity"].astype(str).str[:40]
+                                chart_leads = forensics_chart_payload["chart_leads"]
                                 fig_leads = px.bar(
                                     chart_leads,
                                     x="LeadScore",

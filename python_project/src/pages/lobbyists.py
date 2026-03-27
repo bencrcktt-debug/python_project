@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import html
+import re
 from typing import Any
+
+import pandas as pd
 
 try:
     import streamlit as st
@@ -38,7 +42,6 @@ HELPER_KEYS = (
     'format_lobbyist_label',
     'get_app_tables',
     'get_lobby_scope_bundle',
-    'html',
     'is_bill_query',
     'lobby_candidate_key',
     'lobbyist_autocomplete_candidates',
@@ -46,8 +49,6 @@ HELPER_KEYS = (
     'norm_person_variants_with_nicknames',
     'normalize_bill',
     'parse_person_name',
-    'pd',
-    're',
     'render_bill_search_results',
     'require_app_state',
     'reset_filters',
