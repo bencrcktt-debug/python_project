@@ -34,18 +34,11 @@ from tfl_app.shared.names import last_name_norm_from_text
 from tfl_app.shared.sessions import ordinal as _ordinal
 from tfl_app.shared.sessions import session_base_label as _session_base_label
 from tfl_app.shared.sessions import session_base_number_series as _session_base_number_series
-
-
-def _session_series(df: pd.DataFrame) -> pd.Series:
-    if not isinstance(df, pd.DataFrame):
-        return pd.Series(dtype="string")
-    if "SessionKey" in df.columns:
-        return df["SessionKey"].fillna("").astype(str)
-    if "Session" in df.columns:
-        return df["Session"].fillna("").astype(str).str.strip()
-    if "session" in df.columns:
-        return df["session"].fillna("").astype(str).str.strip()
-    return pd.Series("", index=df.index, dtype="string")
+from tfl_app.shared.sessions import session_series as _session_series
+from tfl_app.shared.series import (
+    vectorized_amount_display as _vectorized_amount_display,
+    vectorized_person_display as _vectorized_person_display,
+)
 
 
 def build_data_health_table(data: dict, source_labels: Mapping[str, str]) -> pd.DataFrame:
@@ -114,50 +107,6 @@ def build_data_health_table(data: dict, source_labels: Mapping[str, str]) -> pd.
                 }
             )
     return pd.DataFrame(rows)
-
-def _vectorized_person_display(org: pd.Series, last: pd.Series, first: pd.Series) -> pd.Series:
-    """Vectorized version of person_display â€” avoids row-by-row .apply()."""
-    org_s = org.fillna("").astype(str).str.strip()
-    last_s = last.fillna("").astype(str).str.strip()
-    first_s = first.fillna("").astype(str).str.strip()
-    # Priority: org if non-empty, then "last, first", then whichever exists
-    result = org_s.where(org_s != "", last_s + ", " + first_s)
-    # Fix cases where only last or only first
-    both = (last_s != "") & (first_s != "")
-    only_last = (last_s != "") & (first_s == "")
-    only_first = (last_s == "") & (first_s != "")
-    neither = (last_s == "") & (first_s == "")
-    result = result.where(~(~(org_s != "")) | True, result)  # keep org priority
-    # Rebuild for non-org cases
-    no_org = org_s == ""
-    result = result.where(~no_org, pd.Series("", index=org.index))
-    result[no_org & both] = last_s[no_org & both] + ", " + first_s[no_org & both]
-    result[no_org & only_last] = last_s[no_org & only_last]
-    result[no_org & only_first] = first_s[no_org & only_first]
-    result[no_org & neither] = ""
-    result[~no_org] = org_s[~no_org]
-    return result.str.strip()
-
-def _vectorized_amount_display(exact: pd.Series, low: pd.Series, high: pd.Series, code: pd.Series | None = None) -> pd.Series:
-    """Vectorized version of amount_display â€” avoids row-by-row .apply()."""
-    exact_s = exact.fillna("").astype(str).str.strip()
-    low_s = low.fillna("").astype(str).str.strip()
-    high_s = high.fillna("").astype(str).str.strip()
-    code_s = code.fillna("").astype(str).str.strip() if code is not None else pd.Series("", index=exact.index)
-    # Priority: exact -> low--high or low -> code -> ""
-    result = pd.Series("", index=exact.index)
-    has_exact = exact_s != ""
-    has_low = low_s != ""
-    has_high = high_s != ""
-    has_code = code_s != ""
-    result = result.where(~has_exact, exact_s)
-    need_range = ~has_exact & has_low & has_high
-    result[need_range] = low_s[need_range] + "--" + high_s[need_range]
-    need_low_only = ~has_exact & has_low & ~has_high
-    result[need_low_only] = low_s[need_low_only]
-    need_code = ~has_exact & ~has_low & has_code
-    result[need_code] = code_s[need_code]
-    return result
 
 def filter_filer_rows(
     df: pd.DataFrame,

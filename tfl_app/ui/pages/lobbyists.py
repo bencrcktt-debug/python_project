@@ -6,6 +6,7 @@ from typing import Any
 
 import pandas as pd
 from tfl_app.services import AppServices
+from tfl_app.ui.page_state import ensure_lobby_state
 
 try:
     import streamlit as st
@@ -150,44 +151,7 @@ def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> 
             lobby_tfl_client_all_cache = get_app_table_readonly(str(PATH), "Lobby_TFL_Client_All")
         return lobby_tfl_client_all_cache
 
-    if "scope" not in st.session_state:
-        st.session_state.scope = "This Session"
-    if "session" not in st.session_state:
-        st.session_state.session = None
-    if "lobbyshort" not in st.session_state:
-        st.session_state.lobbyshort = ""
-    if "lobby_filerid" not in st.session_state:
-        st.session_state.lobby_filerid = None
-    if "lobby_selected_key" not in st.session_state:
-        st.session_state.lobby_selected_key = ""
-    if "lobby_all_matches" not in st.session_state:
-        st.session_state.lobby_all_matches = False
-    if "lobby_merge_keys" not in st.session_state:
-        st.session_state.lobby_merge_keys = []
-    if "lobby_candidate_map" not in st.session_state:
-        st.session_state.lobby_candidate_map = {}
-    if "lobby_override_same" not in st.session_state:
-        st.session_state.lobby_override_same = {}
-    if "lobby_override_diff" not in st.session_state:
-        st.session_state.lobby_override_diff = {}
-    if "lobby_match_query" not in st.session_state:
-        st.session_state.lobby_match_query = ""
-    if "lobby_match_select" not in st.session_state:
-        st.session_state.lobby_match_select = "No match"
-    if "search_query" not in st.session_state:
-        st.session_state.search_query = ""
-    if "bill_search" not in st.session_state:
-        st.session_state.bill_search = ""
-    if "activity_search" not in st.session_state:
-        st.session_state.activity_search = ""
-    if "disclosure_search" not in st.session_state:
-        st.session_state.disclosure_search = ""
-    if "filter_lobbyshort" not in st.session_state:
-        st.session_state.filter_lobbyshort = ""
-    if "recent_lobby_searches" not in st.session_state:
-        st.session_state.recent_lobby_searches = []
-    if "lobby_policy_focus" not in st.session_state:
-        st.session_state.lobby_policy_focus = {}
+    ensure_lobby_state()
 
     st.sidebar.header("Data")
 

@@ -5,6 +5,7 @@ from typing import Any
 
 import pandas as pd
 from tfl_app.services import AppServices
+from tfl_app.ui.page_state import ensure_client_state
 
 try:
     import streamlit as st
@@ -110,28 +111,7 @@ def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> 
     filerid_to_short = app_state.filerid_to_short
     tfl_sessions = set(app_state.tfl_sessions)
 
-    if "client_scope" not in st.session_state:
-        st.session_state.client_scope = "This Session"
-    if "client_session" not in st.session_state:
-        st.session_state.client_session = None
-    if "client_query" not in st.session_state:
-        st.session_state.client_query = ""
-    if "client_name" not in st.session_state:
-        st.session_state.client_name = ""
-    if "client_bill_search" not in st.session_state:
-        st.session_state.client_bill_search = ""
-    if "client_activity_search" not in st.session_state:
-        st.session_state.client_activity_search = ""
-    if "client_disclosure_search" not in st.session_state:
-        st.session_state.client_disclosure_search = ""
-    if "client_filter" not in st.session_state:
-        st.session_state.client_filter = ""
-    if "recent_client_searches" not in st.session_state:
-        st.session_state.recent_client_searches = []
-    if "client_policy_focus" not in st.session_state:
-        st.session_state.client_policy_focus = {}
-    if "client_bill_search_seed" not in st.session_state:
-        st.session_state.client_bill_search_seed = ""
+    ensure_client_state()
 
     if "client_query_input" not in st.session_state:
         st.session_state.client_query_input = st.session_state.client_query

@@ -47,6 +47,22 @@ _SELECTOR_KEYS = {
     ),
 }
 _PREPARED_CONTEXT_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
+_LEGACY_HELPER_SERVICES: WorkspaceServices | None = None
+
+
+def configure_page_fragment_helpers(**helpers: Any) -> None:
+    global _LEGACY_HELPER_SERVICES
+    _LEGACY_HELPER_SERVICES = WorkspaceServices.build(**helpers)
+
+
+def _resolve_legacy_services() -> WorkspaceServices:
+    services = _LEGACY_HELPER_SERVICES
+    if services is None:
+        services = WorkspaceServices.build()
+        configure_page_fragment_helpers(**dict(services.values))
+    return services
+
+
 def _merge_bundle_context(ctx: dict[str, Any], bundle: Any) -> dict[str, Any]:
     merged = dict(ctx)
     bundle_ctx = getattr(bundle, "context", None)
@@ -222,7 +238,18 @@ def _rehydrate_lobby_workspace_ctx(services: WorkspaceServices, ctx: dict[str, A
     return merged
 
 
-def _rehydrate_fragment_ctx(services: WorkspaceServices, storage_key: str, ctx: dict[str, Any]) -> dict[str, Any]:
+def _rehydrate_fragment_ctx(*args: Any) -> dict[str, Any]:
+    if len(args) == 3 and isinstance(args[0], WorkspaceServices):
+        services = args[0]
+        storage_key = str(args[1])
+        ctx = dict(args[2] or {})
+    elif len(args) == 2:
+        services = _resolve_legacy_services()
+        storage_key = str(args[0])
+        ctx = dict(args[1] or {})
+    else:
+        raise TypeError("_rehydrate_fragment_ctx expects (services, storage_key, ctx) or (storage_key, ctx)")
+
     if storage_key == "_client_workspace_ctx":
         return _rehydrate_client_workspace_ctx(services, ctx)
     if storage_key == "_member_workspace_ctx":

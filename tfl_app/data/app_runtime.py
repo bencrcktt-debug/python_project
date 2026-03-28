@@ -44,6 +44,8 @@ import tfl_app.search.state as _shared_search_state
 import tfl_app.map.runtime as _map_runtime
 import tfl_app.bundles.page_bundles as _page_bundles
 import tfl_app.bundles.page_detail_bundles as _page_detail_bundles
+import tfl_app.data.catalog as _catalog
+import tfl_app.data.loaders as _loaders
 from tfl_app.shared.sessions import add_session_from_year as _add_session_from_year
 from tfl_app.shared.sessions import session_from_year as _session_from_year
 from tfl_app.shared.sessions import tfl_session_for_filter as _tfl_session_for_filter
@@ -293,6 +295,19 @@ FILER_NORMALIZED_TABLE_KEYS = (
     "LaSub",
 )
 ALL_WORKBOOK_TABLE_KEYS = tuple(WORKBOOK_TABLE_COLUMNS.keys())
+
+# Public constants stay on this facade module, but their definitions now live
+# in the split catalog module.
+WORKBOOK_TABLE_COLUMNS = _catalog.WORKBOOK_TABLE_COLUMNS
+PARQUET_FILE_MAP = _catalog.PARQUET_FILE_MAP
+BASE_APP_STATE_TABLE_KEYS = _catalog.BASE_APP_STATE_TABLE_KEYS
+APP_STATE_BOOTSTRAP_COLUMNS = _catalog.APP_STATE_BOOTSTRAP_COLUMNS
+CLIENT_DETAIL_TABLE_KEYS = _catalog.CLIENT_DETAIL_TABLE_KEYS
+MEMBER_DETAIL_TABLE_KEYS = _catalog.MEMBER_DETAIL_TABLE_KEYS
+LOBBY_DETAIL_TABLE_KEYS = _catalog.LOBBY_DETAIL_TABLE_KEYS
+SESSION_SCOPED_TABLE_KEYS = _catalog.SESSION_SCOPED_TABLE_KEYS
+FILER_NORMALIZED_TABLE_KEYS = _catalog.FILER_NORMALIZED_TABLE_KEYS
+ALL_WORKBOOK_TABLE_KEYS = _catalog.ALL_WORKBOOK_TABLE_KEYS
 
 
 @dataclass(frozen=True)
@@ -910,6 +925,28 @@ def load_workbook(path: str) -> dict[str, object]:
 
 
 load_workbook.clear = getattr(_load_workbook_cached, "clear", lambda: None)
+
+# Rebind the facade to the split loader implementations after the legacy local
+# definitions above so subsequent runtime calls resolve through the new module.
+_is_url = _loaders._is_url
+add_low_high_numeric = _loaders.add_low_high_numeric
+safe_read_excel_xf = _loaders.safe_read_excel_xf
+_empty_df = _loaders._empty_df
+read_parquet_cols = _loaders.read_parquet_cols
+_fingerprint_paths = _loaders._fingerprint_paths
+_normalize_loaded_table = _loaders._normalize_loaded_table
+_postprocess_table_for_state = _loaders._postprocess_table_for_state
+_resolve_table_source = _loaders._resolve_table_source
+get_dataset_version = _loaders.get_dataset_version
+_read_table_source = _loaders._read_table_source
+_table_keys_tuple = _loaders._table_keys_tuple
+_dedupe_columns = _loaders._dedupe_columns
+_normalized_manifest_column_count = _loaders._normalized_manifest_column_count
+_read_manifest_probe = _loaders._read_manifest_probe
+_empty_manifest_entry = _loaders._empty_manifest_entry
+_get_table_manifest_entry = _loaders._get_table_manifest_entry
+_get_table_manifest_cached = _loaders._get_table_manifest_cached
+get_table_manifest = _loaders.get_table_manifest
 
 
 @st.cache_resource(show_spinner=False, max_entries=2)

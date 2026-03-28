@@ -1,0 +1,164 @@
+from __future__ import annotations
+
+
+WORKBOOK_TABLE_COLUMNS = {
+    "Wit_All": ["session", "bill", "position", "LobbyShort", "name", "org"],
+    "Bill_Status_All": ["Session", "Bill", "Authors", "Author", "Caption", "Status", "Link"],
+    "Fiscal_Impact": ["Session", "Bill", "Version", "EstimatedTwoYearNetImpactGR"],
+    "Bill_Sub_All": ["Session", "Bill", "Subject"],
+    "Lobby_Sub_All": [
+        "Session",
+        "session",
+        "legislative_session",
+        "Subject Matter",
+        "Other Subject Matter Description",
+        "Primary Business",
+        "FilerID",
+        "LobbyShort",
+        "lobbyshort",
+        "Lobby Name",
+        "Unnamed: 0",
+    ],
+    "Lobbyist_Pol_Funds": [],
+    "Lobby_TFL_Client_All": ["Session", "Client", "Lobby Name", "LobbyShort", "IsTFL", "Low", "High", "Amount", "Mid", "FilerID"],
+    "Staff_All": [
+        "Session",
+        "session",
+        "Legislator",
+        "member_or_committee",
+        "legislator_name",
+        "Title",
+        "role",
+        "Staffer",
+        "name",
+        "staff_name_last_initial",
+        "lobby name",
+        "source",
+    ],
+    "LaFood": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst", "restaurantName", "activityDate", "periodStartDt", "activityExactAmount", "activityAmountRangeLow", "activityAmountRangeHigh", "activityAmountCd"],
+    "LaEnt": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst", "entertainmentName", "activityDate", "periodStartDt", "activityExactAmount", "activityAmountRangeLow", "activityAmountRangeHigh", "activityAmountCd"],
+    "LaTran": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst", "travelPurpose", "transportationTypeDescr", "departureCity", "arrivalCity", "checkInDt", "checkOutDt", "departureDt", "periodStartDt"],
+    "LaGift": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst", "activityDescription", "periodStartDt", "activityExactAmount", "activityAmountRangeLow", "activityAmountRangeHigh", "activityAmountCd"],
+    "LaEvnt": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst", "activityDescription", "activityDate", "periodStartDt"],
+    "LaAwrd": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst", "activityDescription", "periodStartDt", "activityExactAmount", "activityAmountRangeLow", "activityAmountRangeHigh", "activityAmountCd"],
+    "LaCvr": ["Session", "filerIdent", "filerName", "filerSort", "filedDt", "periodStartDt", "sourceCategoryCd", "subjectMatterMemo", "docketsMemo", "filerNameOrganization"],
+    "LaDock": ["Session", "filerIdent", "filerName", "filerSort", "receivedDt", "periodStartDt", "designationText", "agencyName"],
+    "LaI4E": ["Session", "filerIdent", "filerName", "filerSort", "periodStartDt", "onbehalfName", "onbehalfMailingCity", "onbehalfPrimaryPhoneNumber"],
+    "LaSub": ["Session", "filerIdent", "filerName", "filerSort", "periodStartDt", "subjectMatterCodeValue", "subjectMatterDescr"],
+}
+
+PARQUET_FILE_MAP = {
+    "Wit_All": ["Witness_Lists.parquet", "Witness List.parquet", "Witness_List.parquet", "witnesslist.parquet"],
+    "Bill_Status_All": "Bill_Status.parquet",
+    "Fiscal_Impact": "Fiscal_Notes.parquet",
+    "Bill_Sub_All": "Bill_Sub_All.parquet",
+    "Lobby_Sub_All": "Lobby.Sub.parquet",
+    "Lobbyist_Pol_Funds": "Lobbyist.Pol.Funds.parquet",
+    "Lobby_TFL_Client_All": "Lobby_TFL_Client_All.parquet",
+    "Staff_All": ["Staff.parquet", "staff.parquet"],
+    "LaFood": "LaFood.parquet",
+    "LaEnt": "LaEnt.parquet",
+    "LaTran": "LaTran.parquet",
+    "LaGift": "LaGift.parquet",
+    "LaEvnt": "LaEvnt.parquet",
+    "LaAwrd": "LaAwrd.parquet",
+    "LaCvr": "LaCvr.parquet",
+    "LaDock": "LaDock.parquet",
+    "LaI4E": "LaI4E.parquet",
+    "LaSub": "LaSub.parquet",
+}
+
+BASE_APP_STATE_TABLE_KEYS = (
+    "Wit_All",
+    "Bill_Status_All",
+    "Lobby_TFL_Client_All",
+    "Lobby_Sub_All",
+    "Lobbyist_Pol_Funds",
+)
+
+APP_STATE_BOOTSTRAP_COLUMNS = {
+    "Wit_All": ["Session", "session"],
+    "Bill_Status_All": ["Session", "Bill", "Authors", "Author", "Caption", "Status", "Link", "Chamber"],
+    "Lobby_TFL_Client_All": ["Session", "Client", "Lobby Name", "LobbyShort", "IsTFL", "FilerID"],
+    "Lobby_Sub_All": ["Session", "session", "legislative_session", "Lobby Name", "LobbyShort", "lobbyshort", "FilerID"],
+    "Lobbyist_Pol_Funds": ["Session", "legislative_session", "Lobbyist", "LobbyShort", "lobbyshort", "FilerID"],
+}
+
+CLIENT_DETAIL_TABLE_KEYS = (
+    "Wit_All",
+    "Bill_Status_All",
+    "Lobby_Sub_All",
+    "Fiscal_Impact",
+    "Bill_Sub_All",
+    "LaFood",
+    "LaEnt",
+    "LaTran",
+    "LaGift",
+    "LaEvnt",
+    "LaAwrd",
+    "LaCvr",
+    "LaDock",
+    "LaI4E",
+    "LaSub",
+)
+
+MEMBER_DETAIL_TABLE_KEYS = (
+    "Wit_All",
+    "LaFood",
+    "LaEnt",
+    "LaTran",
+    "LaGift",
+    "LaEvnt",
+    "LaAwrd",
+)
+
+LOBBY_DETAIL_TABLE_KEYS = (
+    "Wit_All",
+    "Bill_Status_All",
+    "Lobby_Sub_All",
+    "Fiscal_Impact",
+    "Bill_Sub_All",
+    "LaFood",
+    "LaEnt",
+    "LaTran",
+    "LaGift",
+    "LaEvnt",
+    "LaAwrd",
+    "LaCvr",
+    "LaDock",
+    "LaI4E",
+    "LaSub",
+)
+
+SESSION_SCOPED_TABLE_KEYS = (
+    "Wit_All",
+    "Bill_Status_All",
+    "Bill_Sub_All",
+    "Lobby_Sub_All",
+    "Fiscal_Impact",
+    "LaFood",
+    "LaEnt",
+    "LaTran",
+    "LaGift",
+    "LaEvnt",
+    "LaAwrd",
+    "LaCvr",
+    "LaDock",
+    "LaI4E",
+    "LaSub",
+)
+
+FILER_NORMALIZED_TABLE_KEYS = (
+    "LaFood",
+    "LaEnt",
+    "LaTran",
+    "LaGift",
+    "LaEvnt",
+    "LaAwrd",
+    "LaCvr",
+    "LaDock",
+    "LaI4E",
+    "LaSub",
+)
+
+ALL_WORKBOOK_TABLE_KEYS = tuple(WORKBOOK_TABLE_COLUMNS.keys())

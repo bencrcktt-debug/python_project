@@ -8,6 +8,8 @@ from datetime import datetime
 import pandas as pd
 import plotly.express as px
 import tfl_app.charts.runtime as _chart_runtime
+from tfl_app.shared.series import first_nonempty as _first_nonempty
+from tfl_app.shared.workspace import staff_metrics as _staff_metrics
 
 try:
     import streamlit as st
@@ -91,62 +93,6 @@ def _fmt_usd_series(series: pd.Series) -> pd.Series:
     cleaned = cleaned.where(~cleaned.str.lower().isin({"", "nan", "none"}), "")
     numeric = pd.to_numeric(cleaned, errors="coerce").fillna(0.0)
     return numeric.map(fmt_usd)
-
-
-def _staff_metrics(
-    staff_rows: pd.DataFrame,
-    bills_df: pd.DataFrame,
-    session_val: str,
-    bill_status_all: pd.DataFrame,
-) -> pd.DataFrame:
-    if staff_rows.empty or bills_df.empty:
-        return pd.DataFrame(columns=["Legislator", "% Against that Failed", "% For that Passed"])
-
-    legs = sorted(staff_rows["Legislator"].dropna().astype(str).unique().tolist())
-    out = []
-    bs = bill_status_all[bill_status_all["Session"].astype(str).str.strip() == str(session_val)]
-
-    for leg in legs:
-        authored = bs[bs["Author"].fillna("").astype(str).str.contains(leg, case=False, na=False)][
-            ["Session", "Bill", "Status"]
-        ]
-        if authored.empty:
-            out.append({"Legislator": leg, "% Against that Failed": None, "% For that Passed": None})
-            continue
-
-        joined = authored.merge(
-            bills_df[["Session", "Bill", "Position", "Status"]],
-            on=["Session", "Bill"],
-            how="inner",
-            suffixes=("_authored", "_witness"),
-        )
-        if joined.empty:
-            out.append({"Legislator": leg, "% Against that Failed": None, "% For that Passed": None})
-            continue
-        status_col = "Status"
-        if status_col not in joined.columns:
-            if "Status_authored" in joined.columns:
-                status_col = "Status_authored"
-            elif "Status_witness" in joined.columns:
-                status_col = "Status_witness"
-
-        against = joined[joined["Position"].astype(str).str.contains("Against", na=False)]
-        denom_a = len(against)
-        pct_against_failed = (against[status_col].eq("Failed").sum() / denom_a) if denom_a else None
-
-        for_ = joined[joined["Position"].astype(str).str.contains(r"\bFor\b", regex=True, na=False)]
-        denom_f = len(for_)
-        pct_for_passed = (for_[status_col].eq("Passed").sum() / denom_f) if denom_f else None
-
-        out.append(
-            {
-                "Legislator": leg,
-                "% Against that Failed": pct_against_failed,
-                "% For that Passed": pct_for_passed,
-            }
-        )
-
-    return pd.DataFrame(out)
 
 
 def render_client_workspace(ctx: dict[str, Any]) -> None:
@@ -536,13 +482,6 @@ def render_client_workspace(ctx: dict[str, Any]) -> None:
                 with tab_disclosures:
                     _no_client_msg()
                 return
-
-            def _first_nonempty(series: pd.Series) -> str:
-                if series is None or len(series) == 0:
-                    return ""
-                s = series.dropna().astype(str).str.strip()
-                s = s[s != ""]
-                return s.iloc[0] if not s.empty else ""
 
             lobbyist_totals = (
                 client_lt.groupby("LobbyShort", as_index=False)

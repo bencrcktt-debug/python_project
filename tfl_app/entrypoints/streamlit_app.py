@@ -50,8 +50,12 @@ import tfl_app.bundles.page_bundles as _page_bundles
 import tfl_app.bundles.page_detail_bundles as _page_detail_bundles
 import tfl_app.ui.fragments.page_fragments as _page_fragments
 import tfl_app.ui.runtime as _ui_runtime
+import tfl_app.entrypoints.chrome as _entry_chrome
+import tfl_app.entrypoints.navigation as _entry_navigation
+import tfl_app.entrypoints.service_registry as _entry_service_registry
 from tfl_app.services import AppServices, MapServices, WorkspaceServices
 from tfl_app.ui.fragments.bound import BoundMapFragments, BoundPageFragments
+from tfl_app.ui.page_state import ensure_nav_state
 
 # =========================================================
 # PERFORMANCE: Pre-compiled regex patterns
@@ -2523,151 +2527,50 @@ _pages = [
 
 
 def _same_page(left: object, right: object) -> bool:
-    return getattr(left, "url_path", None) == getattr(right, "url_path", None)
+    return _entry_navigation.same_page(left, right)
 
 
 def _render_navigation_shell() -> tuple[object, str, bool, object]:
-    active_page = st.navigation(_pages, position="hidden")
-    nav_items = [
-        (_about_page, "Start Here", "./"),
-        (_lobby_page, "Lobbyists", "./lobbyists"),
-        (_client_page, "Clients", "./clients"),
-        (_map_page, "Map & Address", "./map-address"),
-        (_member_page, "Legislators", "./legislators"),
-        (_solutions_page, "Policy", "./solutions"),
-        (_tap_page, "Media", "./multimedia"),
-    ]
-    nav_links = []
-    for page, label, href in nav_items:
-        active = " active" if _same_page(page, active_page) else ""
-        nav_links.append(
-            f'<a class="nav-link{active}" href="{href}" target="_self">{label}</a>'
-        )
-
-    st.markdown(
-        f"""
-<div class="custom-nav">
-  <div class="nav-inner">
-    <div class="brand">
-      <div class="brand-top">Texas Taxpayer Protection</div>
-      <div class="brand-bottom">Lobbying Transparency Center</div>
-    </div>
-    <div class="nav-links">
-      {''.join(nav_links)}
-    </div>
-  </div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-    if "nav_search_query" not in st.session_state:
-        st.session_state.nav_search_query = ""
-    if "nav_search_last" not in st.session_state:
-        st.session_state.nav_search_last = ""
-    if "nav_search_trigger" not in st.session_state:
-        st.session_state.nav_search_trigger = False
-
-    def _nav_submit() -> None:
-        st.session_state.nav_search_trigger = True
-
-    nav_query_raw = st.text_input(
-        "Nav search",
-        key="nav_search_query",
-        placeholder="Global search: lobbyist, client, legislator, or bill (example: HB 4)",
-        label_visibility="collapsed",
-        on_change=_nav_submit,
-        help="Routes to the best workspace and carries your query forward.",
-    )
-    nav_query = nav_query_raw.strip()
-    nav_search_submitted = False
-    if nav_query and st.session_state.nav_search_trigger:
-        nav_search_submitted = True
-        st.session_state.nav_search_last = nav_query
-        st.session_state.nav_search_trigger = False
-    elif not nav_query:
-        st.session_state.nav_search_trigger = False
-    nav_suggest_slot = st.empty()
-    return active_page, nav_query, nav_search_submitted, nav_suggest_slot
+    return _entry_navigation.render_navigation_shell(_pages)
 
 def _journey_steps() -> list[tuple[str, str, str, object]]:
-    return []
+    return _entry_chrome.journey_steps()
 
 def _render_page_intro(kicker: str, title: str, subtitle: str, pills: list[str] | None = None) -> None:
-    kicker_safe = html.escape(kicker or "", quote=True)
-    title_safe = html.escape(title or "", quote=True)
-    subtitle_safe = html.escape(subtitle or "", quote=True)
-    pill_html = ""
-    if pills:
-        tokens = [f'<span class="policy-pill">{html.escape(str(p), quote=True)}</span>' for p in pills if str(p).strip()]
-        if tokens:
-            pill_html = f'<div class="policy-pill-list">{"".join(tokens)}</div>'
-    st.markdown(
-        f"""
-<div class="card policy-hero">
-  <div class="policy-kicker">{kicker_safe}</div>
-  <div class="policy-title">{title_safe}</div>
-  <p class="policy-subtitle">{subtitle_safe}</p>
-  {pill_html}
-</div>
-""",
-        unsafe_allow_html=True,
-    )
+    _entry_chrome.render_page_intro(kicker, title, subtitle, pills)
 
 def _is_guided_mode() -> bool:
-    return False
+    return _entry_chrome.is_guided_mode()
 
 def _render_journey(current_key: str) -> None:
-    return
+    return _entry_chrome.render_journey(current_key)
 
 def _render_workspace_guide(
     question: str,
     steps: list[str] | None = None,
     method_note: str | None = None,
 ) -> None:
-    return
+    return _entry_chrome.render_workspace_guide(question, steps, method_note)
 
 def _render_quickstart(
     page_key: str,
     steps: list[str],
     note: str | None = None,
 ) -> None:
-    return
+    return _entry_chrome.render_quickstart(page_key, steps, note)
 
 def _render_evidence_guardrails(
     can_answer: list[str] | None = None,
     cannot_answer: list[str] | None = None,
     next_checks: list[str] | None = None,
 ) -> None:
-    return
+    return _entry_chrome.render_evidence_guardrails(can_answer, cannot_answer, next_checks)
 
 def _render_workspace_links(
     key_prefix: str,
     actions: list[tuple[str, object, str]],
 ) -> None:
-    valid_actions = [
-        (label, page, help_text)
-        for label, page, help_text in actions
-        if str(label).strip()
-    ]
-    if not valid_actions:
-        return
-    st.markdown('<div class="workspace-links-heading">Continue The Investigation</div>', unsafe_allow_html=True)
-    cols = st.columns(len(valid_actions))
-    for idx, (label, page, help_text) in enumerate(valid_actions):
-        with cols[idx]:
-            if st.button(
-                label,
-                key=f"{key_prefix}_nav_{idx}",
-                width="stretch",
-                help=help_text,
-            ):
-                st.switch_page(page)
-            if help_text:
-                st.markdown(
-                    f'<div class="workspace-link-help">{html.escape(help_text, quote=True)}</div>',
-                    unsafe_allow_html=True,
-                )
+    return _entry_chrome.render_workspace_links(key_prefix, actions)
 
 # =========================================================
 # HELPERS
@@ -4041,16 +3944,7 @@ def _map_fragment_helpers() -> dict[str, object]:
     return _select_helpers(_PAGE_RUNTIME_HELPERS, _MAP_FRAGMENT_HELPER_KEYS)
 
 
-_WORKSPACE_SERVICES = WorkspaceServices.build(**_page_fragment_helpers())
-_MAP_SERVICES = MapServices.build(**_map_fragment_helpers())
-_APP_SERVICE_VALUES = dict(_PAGE_RUNTIME_HELPERS)
-_APP_SERVICE_VALUES.update(
-    {
-        "_page_fragments": BoundPageFragments(_WORKSPACE_SERVICES),
-        "_map_fragments": BoundMapFragments(_MAP_SERVICES),
-    }
-)
-_APP_SERVICES = AppServices.build(**_APP_SERVICE_VALUES)
+_WORKSPACE_SERVICES, _MAP_SERVICES, _APP_SERVICES = _entry_service_registry.build_services(_PAGE_RUNTIME_HELPERS)
 
 
 _NAV_SEARCH_BUNDLE_KEY = "_nav_search_bundle_v1"

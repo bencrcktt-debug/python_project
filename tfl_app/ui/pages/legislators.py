@@ -5,6 +5,7 @@ from typing import Any
 
 import pandas as pd
 from tfl_app.services import AppServices
+from tfl_app.ui.page_state import ensure_member_state
 
 try:
     import streamlit as st
@@ -109,22 +110,7 @@ def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> 
     filerid_to_short = app_state.filerid_to_short
     tfl_sessions = set(app_state.tfl_sessions)
 
-    if "member_session" not in st.session_state:
-        st.session_state.member_session = None
-    if "member_query" not in st.session_state:
-        st.session_state.member_query = ""
-    if "member_name" not in st.session_state:
-        st.session_state.member_name = ""
-    if "member_bill_search" not in st.session_state:
-        st.session_state.member_bill_search = ""
-    if "member_witness_search" not in st.session_state:
-        st.session_state.member_witness_search = ""
-    if "member_activity_search" not in st.session_state:
-        st.session_state.member_activity_search = ""
-    if "member_filter" not in st.session_state:
-        st.session_state.member_filter = ""
-    if "recent_member_searches" not in st.session_state:
-        st.session_state.recent_member_searches = []
+    ensure_member_state()
 
     if "member_query_input" not in st.session_state:
         st.session_state.member_query_input = st.session_state.member_query

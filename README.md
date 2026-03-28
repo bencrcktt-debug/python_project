@@ -33,9 +33,20 @@ streamlit run main.py
 ## Repository Layout
 
 - `main.py`: thin Streamlit bootstrap.
+- `python_project/main.py`: compatibility bootstrap that delegates to `main.py`.
 - `tfl_app/`: application package.
+  - `tfl_app/entrypoints/`: bootstrap shell, navigation helpers, page chrome, and service-registry assembly.
+  - `tfl_app/data/`: public `app_runtime` facade plus split catalog, loader, cached-state, and bundle-access modules.
+  - `tfl_app/search/`: public `state` facade plus shared models, index builders, and resolution helpers.
+  - `tfl_app/shared/`: cross-cutting normalization, session, series, workspace, and session-state utilities.
+  - `tfl_app/ui/`: pages, fragments, renderers, page-state defaults, and grouped runtime helper facades.
 - `assets/components/`: custom Streamlit component assets.
 - `data/`: primary parquet dataset plus reference snapshots.
-- `tests/`: grouped unit and smoke tests.
-- `scripts/`: benchmarks, data maintenance, and refactor helpers.
+- `tests/unit/` and `tests/smoke/`: canonical test locations.
+- `scripts/benchmarks/`, `scripts/data/`, `scripts/maintenance/`: canonical utility script locations.
 - `docs/`: architecture and layout notes.
+
+## Verification
+
+- Test suite: `.venv-reorg\Scripts\python.exe -m pytest -q`
+- Import and bundle benchmarks: `scripts/benchmarks/`

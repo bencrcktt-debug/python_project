@@ -6,6 +6,7 @@ from typing import Any
 import pandas as pd
 import plotly.express as px
 from tfl_app.services import AppServices
+from tfl_app.ui.page_state import ensure_map_state
 
 try:
     import streamlit as st
@@ -77,54 +78,7 @@ def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> 
         tfl_sessions = set(map_state.map_sessions)
 
         # -- session-state defaults ---------------------------------------
-        defaults = {
-            "map_scope": "This Session",
-            "map_session": None,
-            "map_basemap_label": next(iter(MAP_BASEMAP_OPTIONS.keys())),
-            "map_geocode_floor": 82,
-            "map_probe_min_high": 0.0,
-            "map_distance_cap_miles": 160,
-            "map_subdivision_types_filter": [],
-            "map_min_match_count": 1,
-            "map_subdivision_map_cap": 550,
-            "map_subdivision_name_filter": "",
-            "map_subdivision_sort_v4": "Highest Signal",
-            "map_subdivision_pick_v4": "",
-            "map_selected_subdivision_context": {},
-            "map_overlap_input_mode": "Street Address",
-            "map_overlap_address_input": "",
-            "map_overlap_address_query": "",
-            "map_overlap_query_lat": None,
-            "map_overlap_query_lon": None,
-            "map_overlap_coord_lat": 31.0,
-            "map_overlap_coord_lon": -99.0,
-            "map_recent_addresses": [],
-            "map_overlap_confidence_filter": [],
-            "map_overlap_method_filter": [],
-            "map_overlap_entity_filter": "",
-            "map_overlap_focus_selected_subdivision": False,
-            "map_overlap_focus_selected_clients": False,
-            "map_overlap_sort_v4": "Signal Score",
-            "map_forensics_show_charts": False,
-            "map_watchlist": [],
-            "map_batch_input_v4": "",
-            "map_batch_max_v4": 8,
-            "map_batch_results_v4": [],
-            "map_queue_priority_filter_v4": [],
-            "map_queue_search_v4": "",
-            "map_queue_sort_v4": "Lead Score",
-            "map_draw_addresses": [],
-            "map_draw_last_click_lat": None,
-            "map_draw_last_click_lon": None,
-        }
-        for key, default in defaults.items():
-            if key not in st.session_state:
-                if isinstance(default, list):
-                    st.session_state[key] = []
-                elif isinstance(default, dict):
-                    st.session_state[key] = {}
-                else:
-                    st.session_state[key] = default
+        defaults = ensure_map_state(next(iter(MAP_BASEMAP_OPTIONS.keys())))
         if st.session_state.get("map_basemap_label") not in MAP_BASEMAP_OPTIONS:
             st.session_state.map_basemap_label = next(iter(MAP_BASEMAP_OPTIONS.keys()))
 

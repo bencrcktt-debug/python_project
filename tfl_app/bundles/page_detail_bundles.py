@@ -7,93 +7,19 @@ import pandas as pd
 
 import tfl_app.search.state as search_state
 import tfl_app.bundles.page_bundles as page_bundles
+from tfl_app.shared.sessions import session_series as _session_series
+from tfl_app.shared.series import first_nonempty as _first_nonempty
+from tfl_app.shared.workspace import staff_metrics as _staff_metrics
 
 
 def _empty_df(columns: list[str]) -> pd.DataFrame:
     return pd.DataFrame(columns=columns)
 
 
-def _first_nonempty(series: pd.Series) -> str:
-    if series is None or len(series) == 0:
-        return ""
-    values = series.dropna().astype(str).str.strip()
-    values = values[values != ""]
-    return values.iloc[0] if not values.empty else ""
-
-
-def _session_series(df: pd.DataFrame) -> pd.Series:
-    if not isinstance(df, pd.DataFrame):
-        return pd.Series(dtype="string")
-    if "SessionKey" in df.columns:
-        return df["SessionKey"].fillna("").astype(str)
-    if "Session" in df.columns:
-        return df["Session"].fillna("").astype(str).str.strip()
-    if "session" in df.columns:
-        return df["session"].fillna("").astype(str).str.strip()
-    return pd.Series("", index=df.index, dtype="string")
-
-
 def _client_norm_series(df: pd.DataFrame) -> pd.Series:
     if "ClientNorm" in df.columns:
         return df["ClientNorm"].fillna("").astype(str)
     return search_state.norm_name_series(df.get("Client", pd.Series("", index=df.index)))
-
-
-def _staff_metrics(
-    staff_rows: pd.DataFrame,
-    bills_df: pd.DataFrame,
-    session_val: str,
-    bill_status_all: pd.DataFrame,
-) -> pd.DataFrame:
-    if staff_rows.empty or bills_df.empty:
-        return _empty_df(["Legislator", "% Against that Failed", "% For that Passed"])
-
-    legs = sorted(staff_rows["Legislator"].dropna().astype(str).unique().tolist())
-    out = []
-    session_key = str(session_val or "").strip()
-    bs = bill_status_all[_session_series(bill_status_all) == session_key]
-
-    for leg in legs:
-        authored = bs[bs["Author"].fillna("").astype(str).str.contains(leg, case=False, na=False)][
-            ["Session", "Bill", "Status"]
-        ]
-        if authored.empty:
-            out.append({"Legislator": leg, "% Against that Failed": None, "% For that Passed": None})
-            continue
-
-        joined = authored.merge(
-            bills_df[["Session", "Bill", "Position", "Status"]],
-            on=["Session", "Bill"],
-            how="inner",
-            suffixes=("_authored", "_witness"),
-        )
-        if joined.empty:
-            out.append({"Legislator": leg, "% Against that Failed": None, "% For that Passed": None})
-            continue
-        status_col = "Status"
-        if status_col not in joined.columns:
-            if "Status_authored" in joined.columns:
-                status_col = "Status_authored"
-            elif "Status_witness" in joined.columns:
-                status_col = "Status_witness"
-
-        against = joined[joined["Position"].astype(str).str.contains("Against", na=False)]
-        denom_a = len(against)
-        pct_against_failed = (against[status_col].eq("Failed").sum() / denom_a) if denom_a else None
-
-        for_ = joined[joined["Position"].astype(str).str.contains(r"\bFor\b", regex=True, na=False)]
-        denom_f = len(for_)
-        pct_for_passed = (for_[status_col].eq("Passed").sum() / denom_f) if denom_f else None
-
-        out.append(
-            {
-                "Legislator": leg,
-                "% Against that Failed": pct_against_failed,
-                "% For that Passed": pct_for_passed,
-            }
-        )
-
-    return pd.DataFrame(out)
 
 
 @dataclass(frozen=True)

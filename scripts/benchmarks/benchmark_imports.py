@@ -31,6 +31,7 @@ def benchmark_import(module_name: str, runs: int = 5, *, preload_streamlit: bool
 
 if __name__ == "__main__":
     targets = [
+        "tfl_app.entrypoints.streamlit_app",
         "tfl_app.ui.fragments.page_fragments",
         "tfl_app.ui.fragments.map_fragments",
         "tfl_app.ui.renderers",
