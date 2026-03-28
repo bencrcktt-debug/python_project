@@ -10,11 +10,9 @@ The app resolves data in this order:
 1. `DATA_PATH`
 2. repo root dataset
 3. `data/` dataset
-4. legacy `python_project/` fallbacks retained for migration safety
 
 Data/runtime responsibilities are split under `tfl_app/data/`:
 
-- `app_runtime.py`: compatibility facade for existing imports.
 - `catalog.py`: table specs, parquet filename map, and grouped table-key constants.
 - `loaders.py`: parquet/excel reads, normalization, dataset versioning, and manifest probes.
 - `state_store.py`: cached table and app/map state accessors.

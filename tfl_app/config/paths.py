@@ -24,8 +24,6 @@ def resolve_data_path() -> str:
     candidates = (
         REPO_ROOT / DEFAULT_DATA_FILENAME,
         DATA_DIR / DEFAULT_DATA_FILENAME,
-        REPO_ROOT / "python_project" / DEFAULT_DATA_FILENAME,
-        REPO_ROOT / "python_project" / "data" / DEFAULT_DATA_FILENAME,
     )
     for candidate in candidates:
         if candidate.exists():

@@ -40,15 +40,24 @@ except ModuleNotFoundError:  # pragma: no cover - import smoke fallback
     st = _StreamlitStub()
 
 import tfl_app.map.state as _map_page_state
-import tfl_app.search.state as _shared_search_state
 import tfl_app.map.runtime as _map_runtime
 import tfl_app.bundles.page_bundles as _page_bundles
 import tfl_app.bundles.page_detail_bundles as _page_detail_bundles
 import tfl_app.data.catalog as _catalog
 import tfl_app.data.loaders as _loaders
+import tfl_app.shared.names as _shared_names
 from tfl_app.shared.sessions import add_session_from_year as _add_session_from_year
 from tfl_app.shared.sessions import session_from_year as _session_from_year
 from tfl_app.shared.sessions import tfl_session_for_filter as _tfl_session_for_filter
+from tfl_app.search.indexes import (
+    AppState,
+    _ensure_lobby_client_lookup_columns,
+    _ensure_session_key_column,
+    _ensure_staff_search_columns,
+    _ensure_witness_search_columns,
+    _fill_missing_witness_lobbyshorts,
+    build_app_state,
+)
 from tfl_app.map.geo_runtime import (
     build_tfl_political_subdivision_matches,
     classify_requested_entity_type,
@@ -379,11 +388,11 @@ def _normalize_loaded_table(table_key: str, df: pd.DataFrame) -> pd.DataFrame:
             data["Staffer"] = data.get("name", data.get("staff_name_last_initial", ""))
         if "lobby name" not in data.columns:
             data["lobby name"] = data.get("staff_name_last_initial", data.get("name", ""))
-        data["StaffNameNorm"] = _shared_search_state.norm_name_series(data.get("name", pd.Series(dtype=object)))
-        data["StaffLastInitialNorm"] = _shared_search_state.norm_name_series(
+        data["StaffNameNorm"] = _shared_names.norm_name_series(data.get("name", pd.Series(dtype=object)))
+        data["StaffLastInitialNorm"] = _shared_names.norm_name_series(
             data.get("staff_name_last_initial", data.get("name", pd.Series(dtype=object)))
         )
-        data["StaffLastNorm"] = _shared_search_state.last_name_norm_series(
+        data["StaffLastNorm"] = _shared_names.last_name_norm_series(
             data.get("name", data.get("staff_name_last_initial", pd.Series(dtype=object)))
         )
         if "Session" in data.columns:
@@ -437,34 +446,34 @@ def _ensure_filer_base_columns(df: pd.DataFrame) -> pd.DataFrame:
     if isinstance(filer_sort, pd.DataFrame):
         filer_sort = filer_sort.iloc[:, 0]
     if "FilerNormRaw" not in data.columns:
-        data["FilerNormRaw"] = _shared_search_state.norm_name_series(filer_name)
+        data["FilerNormRaw"] = _shared_names.norm_name_series(filer_name)
     if "FilerNormClean" not in data.columns:
-        filer_clean = _shared_search_state.clean_filer_name_series(filer_name)
-        data["FilerNormClean"] = _shared_search_state.norm_name_series(filer_clean)
+        filer_clean = _shared_names.clean_filer_name_series(filer_name)
+        data["FilerNormClean"] = _shared_names.norm_name_series(filer_clean)
     if "FilerSortNorm" not in data.columns:
-        data["FilerSortNorm"] = _shared_search_state.norm_name_series(filer_sort)
+        data["FilerSortNorm"] = _shared_names.norm_name_series(filer_sort)
     return data
 
 
 def _postprocess_table_for_state(table_key: str, df: pd.DataFrame) -> pd.DataFrame:
     data = _normalize_loaded_table(table_key, df)
     if table_key == "Wit_All":
-        return _shared_search_state._ensure_session_key_column(_shared_search_state._ensure_witness_search_columns(data))
+        return _ensure_session_key_column(_ensure_witness_search_columns(data))
     if table_key == "Bill_Status_All":
-        return _shared_search_state._ensure_session_key_column(data)
+        return _ensure_session_key_column(data)
     if table_key == "Lobby_TFL_Client_All":
-        return _shared_search_state._ensure_lobby_client_lookup_columns(data)
+        return _ensure_lobby_client_lookup_columns(data)
     if table_key == "Staff_All":
-        return _shared_search_state._ensure_session_key_column(_shared_search_state._ensure_staff_search_columns(data))
+        return _ensure_session_key_column(_ensure_staff_search_columns(data))
     if table_key == "Lobby_Sub_All":
-        data = _shared_search_state._ensure_session_key_column(data)
+        data = _ensure_session_key_column(data)
         if "LobbyShort" in data.columns:
             data["LobbyShort"] = data["LobbyShort"].fillna("").astype(str).str.strip()
-            data["LobbyShortNorm"] = _shared_search_state.norm_name_series(data["LobbyShort"])
+            data["LobbyShortNorm"] = _shared_names.norm_name_series(data["LobbyShort"])
         return data
     if table_key in FILER_NORMALIZED_TABLE_KEYS:
-        return _shared_search_state._ensure_session_key_column(_ensure_filer_base_columns(data))
-    return _shared_search_state._ensure_session_key_column(data)
+        return _ensure_session_key_column(_ensure_filer_base_columns(data))
+    return _ensure_session_key_column(data)
 
 
 def _resolve_table_source(path: str, table_key: str):
@@ -650,12 +659,12 @@ def _ensure_filer_lookup_columns(
         filer_sort = filer_sort.iloc[:, 0]
 
     if "FilerNormRaw" not in data.columns:
-        data["FilerNormRaw"] = _shared_search_state.norm_name_series(filer_name)
+        data["FilerNormRaw"] = _shared_names.norm_name_series(filer_name)
     if "FilerNormClean" not in data.columns:
-        filer_clean = _shared_search_state.clean_filer_name_series(filer_name)
-        data["FilerNormClean"] = _shared_search_state.norm_name_series(filer_clean)
+        filer_clean = _shared_names.clean_filer_name_series(filer_name)
+        data["FilerNormClean"] = _shared_names.norm_name_series(filer_clean)
     if "FilerSortNorm" not in data.columns:
-        data["FilerSortNorm"] = _shared_search_state.norm_name_series(filer_sort)
+        data["FilerSortNorm"] = _shared_names.norm_name_series(filer_sort)
     if "FilerShortMapped" not in data.columns:
         mapped = data["FilerNormRaw"].map(name_to_short)
         mapped = mapped.where(mapped.notna(), data["FilerNormClean"].map(name_to_short))
@@ -668,7 +677,7 @@ def _ensure_filer_lookup_columns(
 def _get_witness_table_resource(path: str, data_version: str) -> pd.DataFrame:
     app_state = _get_app_state_cached(path, data_version)
     witness = get_app_table_readonly(path, "Wit_All")
-    return _shared_search_state._fill_missing_witness_lobbyshorts(
+    return _fill_missing_witness_lobbyshorts(
         witness,
         name_to_short=app_state.name_to_short,
     )
@@ -676,7 +685,7 @@ def _get_witness_table_resource(path: str, data_version: str) -> pd.DataFrame:
 
 @st.cache_resource(show_spinner=False, max_entries=16)
 def _get_witness_search_table_resource(path: str, data_version: str) -> pd.DataFrame:
-    return _shared_search_state._ensure_witness_search_columns(
+    return _ensure_witness_search_columns(
         _get_witness_table_resource(path, data_version)
     )
 
@@ -699,7 +708,7 @@ def _get_lobby_sub_lookup_table_resource(path: str, data_version: str) -> pd.Dat
         if missing.any():
             data.loc[missing, "LobbyShort"] = fid.loc[missing].map(app_state.filerid_to_short).fillna("")
     if "LobbyShortNorm" not in data.columns:
-        data["LobbyShortNorm"] = _shared_search_state.norm_name_series(data["LobbyShort"])
+        data["LobbyShortNorm"] = _shared_names.norm_name_series(data["LobbyShort"])
     return data
 
 
@@ -950,15 +959,15 @@ get_table_manifest = _loaders.get_table_manifest
 
 
 @st.cache_resource(show_spinner=False, max_entries=2)
-def _get_app_state_cached(path: str, data_version: str) -> _shared_search_state.AppState:
-    return _shared_search_state.build_app_state(
+def _get_app_state_cached(path: str, data_version: str) -> AppState:
+    return build_app_state(
         path,
         _get_app_state_bootstrap_tables(path, data_version, copy=False),
         data_version=data_version,
     )
 
 
-def get_app_state(path: str) -> _shared_search_state.AppState:
+def get_app_state(path: str) -> AppState:
     return _get_app_state_cached(path, get_dataset_version(path))
 
 
@@ -1020,7 +1029,7 @@ def require_app_state(
     *,
     missing_path_message: str,
     missing_file_message: str,
-) -> _shared_search_state.AppState:
+) -> AppState:
     if not path:
         st.error(missing_path_message)
         st.stop()
@@ -1195,7 +1204,7 @@ def get_member_session_bundle(path: str, session_val: str | None) -> _page_bundl
 get_member_session_bundle.clear = getattr(_get_member_session_bundle_cached, "clear", lambda: None)
 
 
-def _detail_base_data(app_state: _shared_search_state.AppState, path: str) -> dict[str, object]:
+def _detail_base_data(app_state: AppState, path: str) -> dict[str, object]:
     return {
         "Lobby_TFL_Client_All": get_app_table_readonly(path, "Lobby_TFL_Client_All"),
         "Staff_All": get_app_table_readonly(path, "Staff_All"),
@@ -1204,7 +1213,7 @@ def _detail_base_data(app_state: _shared_search_state.AppState, path: str) -> di
 
 
 def _client_workspace_data(
-    app_state: _shared_search_state.AppState,
+    app_state: AppState,
     path: str,
     session_val: str | None,
 ) -> dict[str, object]:
@@ -1214,7 +1223,7 @@ def _client_workspace_data(
 
 
 def _member_workspace_data(
-    app_state: _shared_search_state.AppState,
+    app_state: AppState,
     path: str,
     session_val: str | None,
 ) -> dict[str, object]:
@@ -1234,7 +1243,7 @@ if hasattr(_get_session_overlay_bundle, "clear"):
 
 
 def _lobby_workspace_data(
-    app_state: _shared_search_state.AppState,
+    app_state: AppState,
     path: str,
     session_val: str | None,
     *,

@@ -11,7 +11,7 @@ import pandas as pd
 ROOT = next(parent for parent in Path(__file__).resolve().parents if (parent / "tfl_app").exists())
 sys.path.insert(0, str(ROOT))
 
-import tfl_app.ui.runtime as ui_runtime
+import tfl_app.ui.runtime_exports as ui_runtime_exports
 
 
 def _fixture(rows: int = 6000) -> pd.DataFrame:
@@ -41,14 +41,14 @@ if __name__ == "__main__":
     raw_mean, raw_min, raw_max = _time_call(lambda: frame.to_csv(index=False).encode("utf-8"))
 
     def _cold_cached() -> bytes:
-        ui_runtime._dataframe_csv_bytes.clear()
-        return ui_runtime._dataframe_csv_bytes(frame)
+        ui_runtime_exports._dataframe_csv_bytes.clear()
+        return ui_runtime_exports._dataframe_csv_bytes(frame)
 
     cold_mean, cold_min, cold_max = _time_call(_cold_cached, runs=5)
 
-    ui_runtime._dataframe_csv_bytes.clear()
-    ui_runtime._dataframe_csv_bytes(frame)
-    warm_mean, warm_min, warm_max = _time_call(lambda: ui_runtime._dataframe_csv_bytes(frame))
+    ui_runtime_exports._dataframe_csv_bytes.clear()
+    ui_runtime_exports._dataframe_csv_bytes(frame)
+    warm_mean, warm_min, warm_max = _time_call(lambda: ui_runtime_exports._dataframe_csv_bytes(frame))
 
     print(f"raw_csv_bytes: runs=10 mean={raw_mean:.6f} min={raw_min:.6f} max={raw_max:.6f}")
     print(f"cached_csv_cold: runs=5 mean={cold_mean:.6f} min={cold_min:.6f} max={cold_max:.6f}")

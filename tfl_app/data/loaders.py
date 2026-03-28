@@ -27,10 +27,16 @@ except ModuleNotFoundError:  # pragma: no cover - import smoke fallback
 
     st = _StreamlitStub()
 
-import tfl_app.search.state as _shared_search_state
 import tfl_app.bundles.page_bundles as _page_bundles
+import tfl_app.shared.names as _shared_names
 from tfl_app.shared.sessions import add_session_from_year as _add_session_from_year
 from tfl_app.data.catalog import ALL_WORKBOOK_TABLE_KEYS, FILER_NORMALIZED_TABLE_KEYS, PARQUET_FILE_MAP, WORKBOOK_TABLE_COLUMNS
+from tfl_app.search.indexes import (
+    _ensure_lobby_client_lookup_columns,
+    _ensure_session_key_column,
+    _ensure_staff_search_columns,
+    _ensure_witness_search_columns,
+)
 
 
 def _is_url(path: str) -> bool:
@@ -186,9 +192,9 @@ def _normalize_loaded_table(table_key: str, df: pd.DataFrame) -> pd.DataFrame:
         data["LobbyShort"] = data["LobbyShort"].fillna("").astype(str).str.strip()
         data["Session"] = data["Session"].fillna("").astype(str).str.strip()
         data["IsTFL"] = pd.to_numeric(data["IsTFL"], errors="coerce").fillna(0).astype(int)
-        data["ClientNorm"] = _shared_search_state.norm_name_series(data["Client"])
-        data["LobbyNameNorm"] = _shared_search_state.norm_name_series(data["Lobby Name"])
-        data["LobbyShortNorm"] = _shared_search_state.norm_name_series(data["LobbyShort"])
+        data["ClientNorm"] = _shared_names.norm_name_series(data["Client"])
+        data["LobbyNameNorm"] = _shared_names.norm_name_series(data["Lobby Name"])
+        data["LobbyShortNorm"] = _shared_names.norm_name_series(data["LobbyShort"])
         return data
     if table_key == "Lobby_Sub_All":
         if "Session" not in data.columns:
@@ -268,22 +274,22 @@ def _ensure_filer_base_columns(df: pd.DataFrame) -> pd.DataFrame:
 def _postprocess_table_for_state(table_key: str, df: pd.DataFrame) -> pd.DataFrame:
     data = _normalize_loaded_table(table_key, df)
     if table_key == "Wit_All":
-        return _shared_search_state._ensure_session_key_column(_shared_search_state._ensure_witness_search_columns(data))
+        return _ensure_session_key_column(_ensure_witness_search_columns(data))
     if table_key == "Bill_Status_All":
-        return _shared_search_state._ensure_session_key_column(data)
+        return _ensure_session_key_column(data)
     if table_key == "Lobby_TFL_Client_All":
-        return _shared_search_state._ensure_lobby_client_lookup_columns(data)
+        return _ensure_lobby_client_lookup_columns(data)
     if table_key == "Staff_All":
-        return _shared_search_state._ensure_session_key_column(_shared_search_state._ensure_staff_search_columns(data))
+        return _ensure_session_key_column(_ensure_staff_search_columns(data))
     if table_key == "Lobby_Sub_All":
-        data = _shared_search_state._ensure_session_key_column(data)
+        data = _ensure_session_key_column(data)
         if "LobbyShort" in data.columns:
             data["LobbyShort"] = data["LobbyShort"].fillna("").astype(str).str.strip()
-            data["LobbyShortNorm"] = _shared_search_state.norm_name_series(data["LobbyShort"])
+            data["LobbyShortNorm"] = _shared_names.norm_name_series(data["LobbyShort"])
         return data
     if table_key in FILER_NORMALIZED_TABLE_KEYS:
-        return _shared_search_state._ensure_session_key_column(_ensure_filer_base_columns(data))
-    return _shared_search_state._ensure_session_key_column(data)
+        return _ensure_session_key_column(_ensure_filer_base_columns(data))
+    return _ensure_session_key_column(data)
 
 
 def _resolve_table_source(path: str, table_key: str):
@@ -464,7 +470,7 @@ def _get_table_manifest_entry(path: str, table_key: str, data_version: str) -> d
     )
     session_count = 0
     if not probe.empty:
-        session_probe = _shared_search_state._ensure_session_key_column(_normalize_loaded_table(table_key, probe.copy()))
+        session_probe = _ensure_session_key_column(_normalize_loaded_table(table_key, probe.copy()))
         if "SessionKey" in session_probe.columns:
             session_count = int(session_probe["SessionKey"].dropna().astype(str).str.strip().replace("", pd.NA).dropna().nunique())
     lobby_count = 0

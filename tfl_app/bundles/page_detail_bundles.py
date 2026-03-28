@@ -5,8 +5,8 @@ from typing import Any
 
 import pandas as pd
 
-import tfl_app.search.state as search_state
 import tfl_app.bundles.page_bundles as page_bundles
+import tfl_app.shared.names as search_state
 from tfl_app.shared.sessions import session_series as _session_series
 from tfl_app.shared.series import first_nonempty as _first_nonempty
 from tfl_app.shared.workspace import staff_metrics as _staff_metrics

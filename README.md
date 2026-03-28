@@ -33,13 +33,12 @@ streamlit run main.py
 ## Repository Layout
 
 - `main.py`: thin Streamlit bootstrap.
-- `python_project/main.py`: compatibility bootstrap that delegates to `main.py`.
 - `tfl_app/`: application package.
   - `tfl_app/entrypoints/`: bootstrap shell, navigation helpers, page chrome, and service-registry assembly.
-  - `tfl_app/data/`: public `app_runtime` facade plus split catalog, loader, cached-state, and bundle-access modules.
-  - `tfl_app/search/`: public `state` facade plus shared models, index builders, and resolution helpers.
+  - `tfl_app/data/`: catalog, loader, cached-state, and workspace-bundle modules.
+  - `tfl_app/search/`: shared models plus canonical index and resolution helpers.
   - `tfl_app/shared/`: cross-cutting normalization, session, series, workspace, and session-state utilities.
-  - `tfl_app/ui/`: pages, fragments, renderers, page-state defaults, and grouped runtime helper facades.
+  - `tfl_app/ui/`: pages, fragments, renderers, page-state defaults, and grouped runtime helper modules.
 - `assets/components/`: custom Streamlit component assets.
 - `data/`: primary parquet dataset plus reference snapshots.
 - `tests/unit/` and `tests/smoke/`: canonical test locations.

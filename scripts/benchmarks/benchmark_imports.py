@@ -31,15 +31,19 @@ def benchmark_import(module_name: str, runs: int = 5, *, preload_streamlit: bool
 
 if __name__ == "__main__":
     targets = [
+        "main",
         "tfl_app.entrypoints.streamlit_app",
-        "tfl_app.ui.fragments.page_fragments",
-        "tfl_app.ui.fragments.map_fragments",
-        "tfl_app.ui.renderers",
-        "tfl_app.ui.renderers.map_workspace",
-        "tfl_app.ui.pages.clients",
-        "tfl_app.ui.pages.legislators",
-        "tfl_app.ui.pages.lobbyists",
-        "tfl_app.ui.pages.map_address",
+        "tfl_app.data.catalog",
+        "tfl_app.data.loaders",
+        "tfl_app.data.state_store",
+        "tfl_app.data.workspace_bundles",
+        "tfl_app.search.indexes",
+        "tfl_app.search.resolve",
+        "tfl_app.ui.runtime_labels",
+        "tfl_app.ui.runtime_filters",
+        "tfl_app.ui.runtime_exports",
+        "tfl_app.ui.runtime_plotly",
+        "tfl_app.ui.runtime_pdf",
     ]
     for target in targets:
         result = benchmark_import(target)

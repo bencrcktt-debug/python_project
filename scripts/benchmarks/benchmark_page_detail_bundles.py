@@ -11,7 +11,7 @@ import pandas as pd
 ROOT = next(parent for parent in Path(__file__).resolve().parents if (parent / "tfl_app").exists())
 sys.path.insert(0, str(ROOT))
 
-import tfl_app.search.state as search_state
+import tfl_app.shared.names as search_state
 import tfl_app.bundles.page_detail_bundles as detail_bundles
 
 

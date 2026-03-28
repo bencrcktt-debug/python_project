@@ -20,9 +20,10 @@ except ModuleNotFoundError:  # pragma: no cover - test fallback when Streamlit i
 
     st = _StreamlitStub()
 
-from tfl_app.search.state import (
-    _last_first_initial_key,
+from tfl_app.shared.names import (
     clean_filer_name_series,
+    last_first_initial_key as _last_first_initial_key,
+    last_name_norm_from_text,
     last_name_norm_series,
     norm_name,
     norm_name_series,
@@ -30,7 +31,6 @@ from tfl_app.search.state import (
 )
 from tfl_app.shared.dataframes import ensure_cols
 from tfl_app.shared.formatting import fmt_usd
-from tfl_app.shared.names import last_name_norm_from_text
 from tfl_app.shared.sessions import ordinal as _ordinal
 from tfl_app.shared.sessions import session_base_label as _session_base_label
 from tfl_app.shared.sessions import session_base_number_series as _session_base_number_series

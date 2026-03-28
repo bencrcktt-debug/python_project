@@ -5,7 +5,7 @@ from typing import Any
 
 import pandas as pd
 
-import tfl_app.search.state as search_state
+import tfl_app.shared.names as search_state
 import tfl_app.bundles.page_detail_bundles as detail_bundles
 import tfl_app.ui.fragments.page_fragments as page_fragments
 

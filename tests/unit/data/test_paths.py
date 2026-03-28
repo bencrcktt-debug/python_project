@@ -19,3 +19,15 @@ def test_resolve_data_path_prefers_repo_data_folder(monkeypatch, tmp_path) -> No
     dataset_dir.mkdir()
 
     assert paths.resolve_data_path() == str(dataset_dir)
+
+
+def test_resolve_data_path_ignores_python_project_fallbacks(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(paths, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(paths, "DATA_DIR", tmp_path / "data")
+    monkeypatch.delenv("DATA_PATH", raising=False)
+
+    legacy_dir = tmp_path / "python_project" / "data"
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    (legacy_dir / paths.DEFAULT_DATA_FILENAME).mkdir()
+
+    assert paths.resolve_data_path() == ""

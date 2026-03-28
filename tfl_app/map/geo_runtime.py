@@ -36,7 +36,7 @@ except ModuleNotFoundError:  # pragma: no cover - import smoke fallback
 
     st = _StreamlitStub()
 
-from tfl_app.search.state import norm_name
+from tfl_app.shared.names import norm_name
 from tfl_app.bundles.page_bundles import ensure_cols
 from tfl_app.map.reference_runtime import (
     ARCGIS_GEOCODER_URL,

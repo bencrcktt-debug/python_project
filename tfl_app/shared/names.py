@@ -274,3 +274,6 @@ def parse_member_name(member_name: str) -> dict[str, str]:
 
 def parse_person_name(person_name: str) -> dict[str, str]:
     return parse_member_name(person_name)
+
+
+_last_first_initial_key = last_first_initial_key

@@ -37,8 +37,9 @@ from tfl_app.config.map_sources import (
 )
 from tfl_app.config.paths import resolve_data_path
 import tfl_app.map.state as _map_page_state
-import tfl_app.search.state as _shared_search_state
 import tfl_app.data.app_runtime as _app_runtime
+import tfl_app.data.state_store as _state_store
+import tfl_app.data.workspace_bundles as _workspace_bundles
 import tfl_app.charts.runtime as _chart_runtime
 import tfl_app.ui.components.runtime as _map_component_runtime
 import tfl_app.map.geo_runtime as _map_geo_runtime
@@ -56,6 +57,23 @@ import tfl_app.entrypoints.service_registry as _entry_service_registry
 from tfl_app.services import AppServices, MapServices, WorkspaceServices
 from tfl_app.ui.fragments.bound import BoundMapFragments, BoundPageFragments
 from tfl_app.ui.page_state import ensure_nav_state
+from tfl_app.search.indexes import AppState, build_author_bill_index, build_client_index, build_lobbyist_index, build_member_index
+from tfl_app.search.models import NavQueryKey, NavSearchBundle
+from tfl_app.search.resolve import (
+    _candidate_label,
+    build_nav_search_bundle,
+    build_nav_search_bundle_cached,
+    can_reuse_nav_search_bundle,
+    format_lobbyist_label,
+    is_bill_query,
+    lobby_candidate_key,
+    lobbyist_autocomplete_candidates,
+    normalize_bill,
+    resolve_client_name,
+    resolve_lobbyshort,
+    resolve_lobbyshort_from_wit,
+    resolve_member_name,
+)
 
 # =========================================================
 # PERFORMANCE: Pre-compiled regex patterns
@@ -3509,26 +3527,6 @@ def map_filer_to_lobbyshort(df: pd.DataFrame, name_to_short: dict, filerid_to_sh
 
 
 
-AppState = _shared_search_state.AppState
-NavSearchBundle = _shared_search_state.NavSearchBundle
-NavQueryKey = _shared_search_state.NavQueryKey
-_candidate_label = _shared_search_state._candidate_label
-build_client_index = _shared_search_state.build_client_index
-resolve_client_name = _shared_search_state.resolve_client_name
-build_author_bill_index = _shared_search_state.build_author_bill_index
-build_member_index = _shared_search_state.build_member_index
-resolve_member_name = _shared_search_state.resolve_member_name
-build_lobbyist_index = _shared_search_state.build_lobbyist_index
-resolve_lobbyshort = _shared_search_state.resolve_lobbyshort
-resolve_lobbyshort_from_wit = _shared_search_state.resolve_lobbyshort_from_wit
-lobbyist_autocomplete_candidates = _shared_search_state.lobbyist_autocomplete_candidates
-format_lobbyist_label = _shared_search_state.format_lobbyist_label
-lobby_candidate_key = _shared_search_state.lobby_candidate_key
-normalize_bill = _shared_search_state.normalize_bill
-is_bill_query = _shared_search_state.is_bill_query
-build_nav_search_bundle = _shared_search_state.build_nav_search_bundle
-build_nav_search_bundle_cached = _shared_search_state.build_nav_search_bundle_cached
-can_reuse_nav_search_bundle = _shared_search_state.can_reuse_nav_search_bundle
 build_data_health_table = _page_bundles.build_data_health_table
 build_timeline_counts = _page_bundles.build_timeline_counts
 bill_position_from_flags = _page_bundles.bill_position_from_flags
@@ -3574,25 +3572,25 @@ render_draw_area_search_map = _map_component_runtime.render_draw_area_search_map
 render_tfl_school_district_arcgis_map = _map_component_runtime.render_tfl_school_district_arcgis_map
 render_tfl_subdivision_arcgis_map = _map_component_runtime.render_tfl_subdivision_arcgis_map
 
-get_app_table = _app_runtime.get_app_table
-get_app_tables = _app_runtime.get_app_tables
-get_app_table_readonly = _app_runtime.get_app_table_readonly
-get_app_tables_readonly = _app_runtime.get_app_tables_readonly
-get_workspace_table_overlays = _app_runtime.get_workspace_table_overlays
+get_app_table = _state_store.get_app_table
+get_app_tables = _state_store.get_app_tables
+get_app_table_readonly = _state_store.get_app_table_readonly
+get_app_tables_readonly = _state_store.get_app_tables_readonly
+get_workspace_table_overlays = _state_store.get_workspace_table_overlays
 get_table_manifest = _app_runtime.get_table_manifest
 load_workbook = _app_runtime.load_workbook
-get_app_state = _app_runtime.get_app_state
-get_map_state = _app_runtime.get_map_state
-require_app_state = _app_runtime.require_app_state
-require_map_state = _app_runtime.require_map_state
-get_map_atlas_bundle = _app_runtime.get_map_atlas_bundle
-get_client_scope_bundle = _app_runtime.get_client_scope_bundle
-get_lobby_scope_bundle = _app_runtime.get_lobby_scope_bundle
-get_member_session_bundle = _app_runtime.get_member_session_bundle
-get_client_workspace_detail_bundle = _app_runtime.get_client_workspace_detail_bundle
-get_member_workspace_detail_bundle = _app_runtime.get_member_workspace_detail_bundle
-get_lobby_workspace_detail_bundle = _app_runtime.get_lobby_workspace_detail_bundle
-get_map_forensics_bundle = _app_runtime.get_map_forensics_bundle
+get_app_state = _state_store.get_app_state
+get_map_state = _state_store.get_map_state
+require_app_state = _state_store.require_app_state
+require_map_state = _state_store.require_map_state
+get_map_atlas_bundle = _workspace_bundles.get_map_atlas_bundle
+get_client_scope_bundle = _workspace_bundles.get_client_scope_bundle
+get_lobby_scope_bundle = _workspace_bundles.get_lobby_scope_bundle
+get_member_session_bundle = _workspace_bundles.get_member_session_bundle
+get_client_workspace_detail_bundle = _workspace_bundles.get_client_workspace_detail_bundle
+get_member_workspace_detail_bundle = _workspace_bundles.get_member_workspace_detail_bundle
+get_lobby_workspace_detail_bundle = _workspace_bundles.get_lobby_workspace_detail_bundle
+get_map_forensics_bundle = _workspace_bundles.get_map_forensics_bundle
 
 def render_bill_search_results(bill_query: str, session_val: str | None, tfl_session_val: str | None,
                                wit_all: pd.DataFrame, bill_status_all: pd.DataFrame,
