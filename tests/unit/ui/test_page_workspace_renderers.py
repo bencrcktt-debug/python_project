@@ -1,8 +1,12 @@
 ﻿from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pandas as pd
 
-import tfl_app.ui.renderers._workspace_core as page_workspace_renderers
+from tfl_app.services import WorkspaceServices
+from tfl_app.ui.contexts import AppLookupMaps, LobbyWorkspacePreparedContext, LobbyWorkspaceSelector
+import tfl_app.ui.renderers.lobby_workspace as page_workspace_renderers
 
 
 class _Tab:
@@ -45,19 +49,52 @@ def test_render_lobby_workspace_resolves_scope_table_from_context(monkeypatch) -
         captured["df"] = df
         raise RuntimeError("validated")
 
-    monkeypatch.setattr(page_workspace_renderers, "require_columns", fake_require_columns, raising=False)
+    prepared = LobbyWorkspacePreparedContext(
+        selector=LobbyWorkspaceSelector(
+            path="test-path",
+            scope="This Session",
+            session="89R",
+            tfl_session_val="89R",
+            lobbyshort="SMITHJ",
+        ),
+        app_lookups=AppLookupMaps({}, {}, {}),
+        scope_bundle=SimpleNamespace(
+            all_pivot=pd.DataFrame(),
+            all_stats={},
+            trend_group=pd.DataFrame(),
+            top_clients=pd.DataFrame(),
+            lobby_display=pd.DataFrame(),
+        ),
+        detail_bundle=SimpleNamespace(context={}),
+        payload={
+            "Lobby_TFL_Client_All": pd.DataFrame([{"Session": "89R", "LobbyShort": "SMITHJ"}]),
+        },
+    )
 
     try:
         page_workspace_renderers.render_lobby_workspace(
-            {
-                "Lobby_TFL_Client_All": pd.DataFrame([{"Session": "89R", "LobbyShort": "SMITHJ"}]),
-                "all_pivot": pd.DataFrame(),
-                "all_stats": {},
-                "scope": "This Session",
-            }
+            prepared,
+            WorkspaceServices.build(PATH="test-path", require_columns=fake_require_columns),
         )
     except RuntimeError as exc:
         assert str(exc) == "validated"
 
     assert list(captured["df"].columns) == ["Session", "LobbyShort"]
+
+
+def test_normalize_policy_mentions_frame_coerces_object_share_dtype() -> None:
+    source = pd.DataFrame(
+        [
+            {"Subject": "Education", "Mentions": "2", "Share": "0.5"},
+            {"Subject": "Health", "Mentions": None, "Share": None},
+        ],
+        dtype=object,
+    )
+
+    normalized = page_workspace_renderers._normalize_policy_mentions_frame(source)
+
+    assert list(normalized["Subject"]) == ["Education", "Health"]
+    assert list(normalized["Mentions"]) == [2.0, 0.0]
+    assert list(normalized["Share"]) == [0.5, 0.0]
+    assert normalized["Share"].dtype.kind == "f"
 

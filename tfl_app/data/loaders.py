@@ -253,21 +253,30 @@ def _normalize_loaded_table(table_key: str, df: pd.DataFrame) -> pd.DataFrame:
 def _ensure_filer_base_columns(df: pd.DataFrame) -> pd.DataFrame:
     if not isinstance(df, pd.DataFrame) or df.empty:
         return df
-    data = df
+    required = {"FilerID", "FilerNormRaw", "FilerNormClean", "FilerSortNorm"}
+    if required.issubset(set(df.columns)):
+        return df
+    data = df.copy()
     if "FilerID" not in data.columns:
         if "filerIdent" in data.columns:
-            data = data.copy()
-            data["FilerID"] = pd.to_numeric(data["filerIdent"], errors="coerce")
+            data["FilerID"] = pd.to_numeric(data["filerIdent"], errors="coerce").fillna(-1).astype(int)
         else:
-            data = data.copy()
-            data["FilerID"] = pd.Series([-1] * len(data), index=data.index)
+            data["FilerID"] = -1
     else:
-        data = data.copy()
-        data["FilerID"] = pd.to_numeric(data["FilerID"], errors="coerce")
-    if "filerName" not in data.columns:
-        data["filerName"] = ""
-    if "filerSort" not in data.columns:
-        data["filerSort"] = ""
+        data["FilerID"] = pd.to_numeric(data["FilerID"], errors="coerce").fillna(-1).astype(int)
+    filer_name = data.get("filerName", pd.Series("", index=data.index))
+    filer_sort = data.get("filerSort", pd.Series("", index=data.index))
+    if isinstance(filer_name, pd.DataFrame):
+        filer_name = filer_name.iloc[:, 0]
+    if isinstance(filer_sort, pd.DataFrame):
+        filer_sort = filer_sort.iloc[:, 0]
+    if "FilerNormRaw" not in data.columns:
+        data["FilerNormRaw"] = _shared_names.norm_name_series(filer_name)
+    if "FilerNormClean" not in data.columns:
+        filer_clean = _shared_names.clean_filer_name_series(filer_name)
+        data["FilerNormClean"] = _shared_names.norm_name_series(filer_clean)
+    if "FilerSortNorm" not in data.columns:
+        data["FilerSortNorm"] = _shared_names.norm_name_series(filer_sort)
     return data
 
 
@@ -509,3 +518,24 @@ def get_table_manifest(path: str) -> dict[str, dict[str, object]]:
 
 
 get_table_manifest.clear = getattr(_get_table_manifest_cached, "clear", lambda: None)
+
+
+@st.cache_resource(show_spinner=False, max_entries=2)
+def _load_workbook_cached(path: str, data_version: str) -> dict[str, object]:
+    del data_version
+    data = {
+        table_key: _postprocess_table_for_state(
+            table_key,
+            _read_table_source(path, table_key, WORKBOOK_TABLE_COLUMNS.get(table_key, [])),
+        )
+        for table_key in ALL_WORKBOOK_TABLE_KEYS
+    }
+    data["table_manifest"] = get_table_manifest(path)
+    return data
+
+
+def load_workbook(path: str) -> dict[str, object]:
+    return _load_workbook_cached(path, get_dataset_version(path))
+
+
+load_workbook.clear = getattr(_load_workbook_cached, "clear", lambda: None)

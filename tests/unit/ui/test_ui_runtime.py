@@ -3,7 +3,7 @@
 import pandas as pd
 
 import tfl_app.bundles.page_bundles as page_bundles
-import tfl_app.ui.runtime as ui_runtime
+import tfl_app.ui.runtime_exports as ui_runtime_exports
 
 
 def test_dataframe_csv_bytes_matches_pandas_to_csv() -> None:
@@ -14,10 +14,10 @@ def test_dataframe_csv_bytes_matches_pandas_to_csv() -> None:
         ]
     )
 
-    ui_runtime._dataframe_csv_bytes.clear()
+    ui_runtime_exports._dataframe_csv_bytes.clear()
     expected = df.to_csv(index=False).encode("utf-8")
 
-    assert ui_runtime._dataframe_csv_bytes(df) == expected
+    assert ui_runtime_exports._dataframe_csv_bytes(df) == expected
 
 
 def test_build_data_health_table_supports_manifest_metadata() -> None:

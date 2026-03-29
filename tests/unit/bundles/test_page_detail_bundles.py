@@ -7,7 +7,8 @@ import pandas as pd
 
 import tfl_app.shared.names as search_state
 import tfl_app.bundles.page_detail_bundles as detail_bundles
-import tfl_app.ui.fragments.page_fragments as page_fragments
+import tfl_app.ui.fragments.workspace_fragments as page_fragments
+from tfl_app.ui.contexts import ClientWorkspacePreparedContext
 
 
 def _last_name_norm(text: str) -> str:
@@ -364,7 +365,8 @@ def test_fragment_rehydration_rebuilds_client_context_from_selectors() -> None:
         },
     )
 
-    assert ctx["_prepared_client_workspace"] is True
-    assert ctx["all_stats"]["total_clients"] == 1
-    assert ctx["lobbyist_totals"].iloc[0]["Lobbyist"] == "Smith, John"
+    assert isinstance(ctx, ClientWorkspacePreparedContext)
+    assert ctx.payload["_prepared_client_workspace"] is True
+    assert ctx.payload["all_stats"]["total_clients"] == 1
+    assert ctx.payload["lobbyist_totals"].iloc[0]["Lobbyist"] == "Smith, John"
 

@@ -116,6 +116,12 @@ def test_build_app_state_materializes_shared_indices(app_state: AppState) -> Non
     assert not app_state.lobby_scope_top_clients_all.empty
     assert not app_state.lobby_scope_top_clients_by_session.empty
     assert not app_state.lobby_display.empty
+    assert float(app_state.client_scope_overview_all["Low"].sum()) == 450.0
+    assert float(app_state.client_scope_overview_all["High"].sum()) == 775.0
+    assert float(app_state.lobby_scope_pivot_all["Total_Low"].sum()) == 450.0
+    assert float(app_state.lobby_scope_pivot_all["Total_High"].sum()) == 775.0
+    assert "Taxpayer Funded Total" in app_state.lobby_scope_top_clients_all.columns
+    assert any(value == "$100 - $200" for value in app_state.lobby_scope_top_clients_all["Taxpayer Funded Total"].tolist())
 
 
 def test_nav_search_bundle_routes_bill_queries(app_state: AppState) -> None:

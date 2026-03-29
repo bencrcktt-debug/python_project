@@ -17,3 +17,10 @@ Data/runtime responsibilities are split under `tfl_app/data/`:
 - `loaders.py`: parquet/excel reads, normalization, dataset versioning, and manifest probes.
 - `state_store.py`: cached table and app/map state accessors.
 - `workspace_bundles.py`: cached session overlay and workspace bundle accessors.
+
+UI/runtime handoff is split separately:
+
+- `tfl_app.ui.contexts`: typed prepared-context models shared by fragments and renderers.
+- `tfl_app.ui.fragments.workspace_fragments`: client, legislator, and lobbyist selector rehydration.
+- `tfl_app.ui.fragments.map_workspace_fragments`: map atlas/forensics prepared-context rehydration.
+- `tfl_app.ui.fragments.prepared_cache`: shared prepared-context cache cloning helpers.

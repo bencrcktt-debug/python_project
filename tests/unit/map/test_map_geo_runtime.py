@@ -5,6 +5,16 @@ import pandas as pd
 import tfl_app.map.geo_runtime as map_geo_runtime
 
 
+def test_classify_requested_entity_type_handles_core_political_subdivisions() -> None:
+    assert map_geo_runtime.classify_requested_entity_type("City of Austin") == "City"
+    assert map_geo_runtime.classify_requested_entity_type("Aransas County") == "County"
+    assert (
+        map_geo_runtime.classify_requested_entity_type("Austin Independent School District")
+        == "School District"
+    )
+    assert map_geo_runtime.classify_requested_entity_type("Port of Corpus Christi") == "Port Authority"
+
+
 def test_build_tfl_name_anchored_special_matches_prefers_local_anchor(monkeypatch) -> None:
     counties = pd.DataFrame(
         [

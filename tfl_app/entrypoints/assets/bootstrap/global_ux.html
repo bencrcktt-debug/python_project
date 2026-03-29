@@ -1,0 +1,142 @@
+﻿<style>
+/* -- Data-table improvements -- */
+[data-testid="stDataFrame"] table tbody tr:nth-child(even) td{
+    background: rgba(255,255,255,0.025);
+}
+[data-testid="stDataFrame"] table tbody tr:hover td{
+    background: rgba(30,144,255,0.08) !important;
+    transition: background 120ms ease;
+}
+[data-testid="stDataFrame"] table thead th{
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: rgba(15,27,42,0.97) !important;
+    backdrop-filter: blur(6px);
+    border-bottom: 2px solid rgba(160,185,210,0.22);
+}
+
+/* -- Smooth scroll behavior -- */
+html{ scroll-behavior: smooth; }
+
+/* -- Back-to-top floating button -- */
+#tfl-back-to-top{
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
+    z-index: 999;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: 1px solid rgba(160,185,210,0.35);
+    background: rgba(11,20,31,0.92);
+    color: rgba(220,235,250,0.90);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease, box-shadow 0.2s ease;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.28);
+    backdrop-filter: blur(6px);
+}
+#tfl-back-to-top.visible{
+    opacity: 1;
+    pointer-events: auto;
+}
+#tfl-back-to-top:hover{
+    border-color: rgba(134,167,198,0.65);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.35);
+    transform: translateY(-2px);
+}
+
+/* -- Focus / keyboard accessibility -- */
+button:focus-visible,
+[data-testid="stSelectbox"] div[role="combobox"]:focus-visible,
+[data-testid="stTextInput"] input:focus-visible{
+    outline: 2px solid rgba(134,167,198,0.7);
+    outline-offset: 2px;
+}
+
+/* -- Spinner quality of life -- */
+[data-testid="stSpinner"] > div{
+    animation: tfl-spinner-fade 0.35s ease both;
+}
+@keyframes tfl-spinner-fade{
+    from{ opacity:0; transform:translateY(4px); }
+    to{ opacity:1; transform:translateY(0); }
+}
+
+/* -- Toast notification -- */
+.tfl-toast{
+    position: fixed;
+    bottom: 80px;
+    right: 28px;
+    z-index: 998;
+    padding: 10px 18px;
+    border-radius: 12px;
+    border: 1px solid rgba(160,185,210,0.30);
+    background: rgba(11,20,31,0.94);
+    color: rgba(220,235,250,0.92);
+    font-size: 0.88rem;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.30);
+    backdrop-filter: blur(6px);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.tfl-toast.show{
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+/* -- Print-friendly -- */
+@media print{
+    .custom-nav,
+    #tfl-back-to-top,
+    .tfl-toast,
+    [data-testid="stSidebar"],
+    [data-testid="stToolbar"],
+    button[kind="primary"],
+    button[kind="secondary"],
+    [data-testid="stSpinner"]{ display: none !important; }
+
+    html, body, [data-testid="stAppViewContainer"]{
+        background: white !important;
+        color: #1a1a1a !important;
+    }
+    .block-container{ padding-top: 0 !important; max-width: 100% !important; }
+    h1, h2, h3{ color: #1a1a1a !important; }
+    p, li, span, div{ color: #1a1a1a !important; }
+    .card, div[data-testid="stPlotlyChart"]{
+        box-shadow: none !important;
+        border: 1px solid #ccc !important;
+        background: white !important;
+    }
+    [data-testid="stDataFrame"]{ border-color: #ccc !important; }
+    .kpi-title, .section-caption, .callout-title{ color: #555 !important; }
+}
+</style>
+
+<!-- Back-to-top button -->
+<button id="tfl-back-to-top" onclick="window.scrollTo({top:0, behavior:'smooth'})" title="Back to top">&#9650;</button>
+<script>
+(function(){
+  const btn = document.getElementById('tfl-back-to-top');
+  if (!btn) return;
+  const container = window.parent.document.querySelector('[data-testid="stAppViewContainer"]') || window;
+  const target = container.querySelector && container.querySelector('.main') || window;
+  const checkScroll = () => {
+    const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    btn.classList.toggle('visible', scrollY > 400);
+  };
+  window.addEventListener('scroll', checkScroll, {passive:true});
+  checkScroll();
+})();
+</script>
+

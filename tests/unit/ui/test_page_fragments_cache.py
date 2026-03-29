@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-import tfl_app.ui.fragments.page_fragments as page_fragments
+import tfl_app.ui.fragments.workspace_fragments as page_fragments
 from tfl_app.services import WorkspaceServices
 
 

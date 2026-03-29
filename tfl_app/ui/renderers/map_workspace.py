@@ -9,6 +9,10 @@ import pandas as pd
 import plotly.express as px
 import tfl_app.charts.runtime as _chart_runtime
 from tfl_app.services import MapServices
+from tfl_app.ui.renderers.context_adapters import (
+    merge_workspace_runtime_context,
+    normalize_map_workspace_context,
+)
 
 try:
     import streamlit as st
@@ -153,9 +157,8 @@ def _build_overlap_evidence_rows_cached(
     rows["Row Signal"] = rows["High"] * rows["Method Weight"] * rows["Confidence Weight"] * dist_factor
     return rows
 
-def render_map_workspace(ctx: dict[str, Any], services: MapServices | None = None) -> None:
-    runtime_ctx = dict(getattr(services, "values", {}))
-    runtime_ctx.update(dict(ctx or {}))
+def render_map_workspace(ctx: Any, services: MapServices | None = None) -> None:
+    runtime_ctx = merge_workspace_runtime_context(normalize_map_workspace_context(ctx), services)
     _previous = _push_context(runtime_ctx)
     try:
         tab_cov, tab_forensics, tab_docket = st.tabs([

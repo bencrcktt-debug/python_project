@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 from tfl_app.services import MapServices, WorkspaceServices
 
-from . import map_fragments as _map_fragments
-from . import page_fragments as _page_fragments
+from . import map_workspace_fragments as _map_fragments
+from . import workspace_fragments as _page_fragments
 
 
 @dataclass(frozen=True)

@@ -4,8 +4,9 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-import tfl_app.ui.fragments.map_fragments as map_fragments
+import tfl_app.ui.fragments.map_workspace_fragments as map_fragments
 from tfl_app.services import MapServices
+from tfl_app.ui.contexts import MapWorkspacePreparedContext, MapWorkspaceSelector
 
 
 def test_refresh_map_runtime_context_rebuilds_current_map_bundle() -> None:
@@ -94,15 +95,15 @@ def test_refresh_map_runtime_context_rebuilds_current_map_bundle() -> None:
             "fresh-signature",
         )
         assert calls["atlas_args"] == ("memory://map", "This Session", "89R")
-        assert refreshed["totals"] is bundle.totals
-        assert refreshed["tfl_spend"] is bundle.tfl_spend
-        assert refreshed["subdivision_matches"] is bundle.subdivision_matches
-        assert list(refreshed["subdivision_matches"]["subdivision_name"]) == ["Fresh County"]
-        assert refreshed["session_for_filter"] == "89R"
-        assert refreshed["_atlas_label"].endswith("(1)")
-        assert refreshed["_docket_label"].endswith("(1)")
-        assert refreshed["total_high"] == 500.0
-        assert "_map_forensics_source_signature" in refreshed
+        assert refreshed.payload["totals"] is bundle.totals
+        assert refreshed.payload["tfl_spend"] is bundle.tfl_spend
+        assert refreshed.payload["subdivision_matches"] is bundle.subdivision_matches
+        assert list(refreshed.payload["subdivision_matches"]["subdivision_name"]) == ["Fresh County"]
+        assert refreshed.payload["session_for_filter"] == "89R"
+        assert refreshed.payload["_atlas_label"].endswith("(1)")
+        assert refreshed.payload["_docket_label"].endswith("(1)")
+        assert refreshed.payload["total_high"] == 500.0
+        assert "_map_forensics_source_signature" in refreshed.payload
     finally:
         map_fragments.st.session_state.clear()
         map_fragments.st.session_state.update(old_session_state)
@@ -156,7 +157,7 @@ def test_refresh_map_runtime_context_invalidates_stale_forensics_session_cache()
             {"_map_forensics_source_signature": "old-signature"}
         )
 
-        assert refreshed["_map_forensics_source_signature"] != "old-signature"
+        assert refreshed.payload["_map_forensics_source_signature"] != "old-signature"
         assert "_mp5_forensics_bundle_v1" not in map_fragments.st.session_state
         assert "_mp5_forensics_rows_v1" not in map_fragments.st.session_state
         assert "_mp5_filtered_forensics_bundle_v1" not in map_fragments.st.session_state
@@ -173,11 +174,11 @@ def test_run_fragment_persists_only_runtime_markers(monkeypatch) -> None:
 
     fake_renderer = SimpleNamespace(
         render_map_workspace=lambda ctx, services_arg: render_calls.append(
-            {"ctx": dict(ctx), "services": services_arg}
+            {"ctx": dict(ctx.payload), "services": services_arg}
         ),
     )
 
-    def fake_refresh(services_arg: MapServices, ctx: dict[str, object]) -> dict[str, object]:
+    def fake_refresh(services_arg: MapServices, ctx: dict[str, object]) -> MapWorkspacePreparedContext:
         assert services_arg is services
         updated = dict(ctx)
         updated.update(
@@ -188,7 +189,14 @@ def test_run_fragment_persists_only_runtime_markers(monkeypatch) -> None:
                 "total_high": 500.0,
             }
         )
-        return updated
+        return MapWorkspacePreparedContext(
+            selector=MapWorkspaceSelector(
+                path=str(updated.get("PATH", "") or ""),
+                runtime_signature="runtime-sig",
+                forensics_source_signature="source-sig",
+            ),
+            payload=updated,
+        )
 
     try:
         monkeypatch.setattr(map_fragments, "_refresh_map_runtime_context", fake_refresh)

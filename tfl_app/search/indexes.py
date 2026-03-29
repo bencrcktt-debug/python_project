@@ -22,7 +22,20 @@ from tfl_app.shared.series import first_nonempty as _first_nonempty
 _APP_STATE_BOOTSTRAP_COLUMNS = {
     "Wit_All": ("Session", "session"),
     "Bill_Status_All": ("Session", "Bill", "Authors", "Author", "Caption", "Status", "Link", "Chamber"),
-    "Lobby_TFL_Client_All": ("Session", "Client", "Lobby Name", "LobbyShort", "IsTFL", "FilerID"),
+    "Lobby_TFL_Client_All": (
+        "Session",
+        "Client",
+        "Lobby Name",
+        "LobbyShort",
+        "IsTFL",
+        "FilerID",
+        "Low",
+        "High",
+        "Amount",
+        "Low_num",
+        "High_num",
+        "Mid",
+    ),
     "Lobby_Sub_All": ("Session", "session", "legislative_session", "Lobby Name", "LobbyShort", "lobbyshort", "FilerID"),
     "Lobbyist_Pol_Funds": ("Session", "legislative_session", "Lobbyist", "LobbyShort", "lobbyshort", "FilerID"),
 }

@@ -9,9 +9,13 @@ Streamlit app for exploring the TPPF lobby data.
    python -m venv .venv
    ```
 2. Activate the virtual environment.
-3. Install dependencies:
+3. Install runtime dependencies:
    ```bash
    pip install -r requirements.txt
+   ```
+4. Install dev/test dependencies when needed:
+   ```bash
+   pip install -r requirements-dev.txt
    ```
 
 ## Data Configuration
@@ -34,11 +38,15 @@ streamlit run main.py
 
 - `main.py`: thin Streamlit bootstrap.
 - `tfl_app/`: application package.
-  - `tfl_app/entrypoints/`: bootstrap shell, navigation helpers, page chrome, and service-registry assembly.
+  - `tfl_app/entrypoints/`: stable Streamlit composition root plus bootstrap/page-config assets, page-registry, nav-search, navigation, chrome, and service-registry helpers.
   - `tfl_app/data/`: catalog, loader, cached-state, and workspace-bundle modules.
   - `tfl_app/search/`: shared models plus canonical index and resolution helpers.
+  - `tfl_app/map/`: reference fetchers/snapshots, split geo-query helpers, geospatial matching, and atlas/forensics helpers.
   - `tfl_app/shared/`: cross-cutting normalization, session, series, workspace, and session-state utilities.
-  - `tfl_app/ui/`: pages, fragments, renderers, page-state defaults, and grouped runtime helper modules.
+  - `tfl_app/ui/chrome/`: shared page chrome and copy blocks.
+  - `tfl_app/ui/fragments/`: selector-only fragment state plus prepared-context caches and rehydrators.
+  - `tfl_app/ui/renderers/`: workspace renderers and shared renderer helpers.
+  - `tfl_app/ui/contexts.py`: typed prepared-context models used between fragments and renderers.
 - `assets/components/`: custom Streamlit component assets.
 - `data/`: primary parquet dataset plus reference snapshots.
 - `tests/unit/` and `tests/smoke/`: canonical test locations.
@@ -47,5 +55,5 @@ streamlit run main.py
 
 ## Verification
 
-- Test suite: `.venv-reorg\Scripts\python.exe -m pytest -q`
+- Test suite: `py -3.12 -m pytest -q`
 - Import and bundle benchmarks: `scripts/benchmarks/`
