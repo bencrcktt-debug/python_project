@@ -85,14 +85,38 @@ MAP_FRAGMENT_HELPER_KEYS = (
     "render_tfl_subdivision_arcgis_map",
 )
 
+def _copy_if_present(registry: dict[str, object], values: dict[str, object], key: str) -> None:
+    if key in registry:
+        values[key] = registry[key]
 
-def select_helpers(registry: dict[str, object], keys: tuple[str, ...]) -> dict[str, object]:
-    return {key: registry[key] for key in keys if key in registry}
+
+def build_workspace_service_values(registry: dict[str, object]) -> dict[str, object]:
+    values: dict[str, object] = {}
+    for key in PAGE_FRAGMENT_HELPER_KEYS:
+        _copy_if_present(registry, values, key)
+    return values
 
 
-def build_services(registry: dict[str, object]) -> tuple[WorkspaceServices, MapServices, AppServices]:
-    workspace_services = WorkspaceServices.build(**select_helpers(registry, PAGE_FRAGMENT_HELPER_KEYS))
-    map_services = MapServices.build(**select_helpers(registry, MAP_FRAGMENT_HELPER_KEYS))
+def build_map_service_values(registry: dict[str, object]) -> dict[str, object]:
+    values: dict[str, object] = {}
+    for key in MAP_FRAGMENT_HELPER_KEYS:
+        _copy_if_present(registry, values, key)
+    return values
+
+
+def build_workspace_services(registry: dict[str, object]) -> WorkspaceServices:
+    return WorkspaceServices.build(**build_workspace_service_values(registry))
+
+
+def build_map_services(registry: dict[str, object]) -> MapServices:
+    return MapServices.build(**build_map_service_values(registry))
+
+
+def build_app_service_values(
+    registry: dict[str, object],
+    workspace_services: WorkspaceServices,
+    map_services: MapServices,
+) -> dict[str, object]:
     app_values = dict(registry)
     app_values.update(
         {
@@ -100,4 +124,18 @@ def build_services(registry: dict[str, object]) -> tuple[WorkspaceServices, MapS
             "_map_fragments": BoundMapFragments(map_services),
         }
     )
-    return workspace_services, map_services, AppServices.build(**app_values)
+    return app_values
+
+
+def build_app_services(
+    registry: dict[str, object],
+    workspace_services: WorkspaceServices,
+    map_services: MapServices,
+) -> AppServices:
+    return AppServices.build(**build_app_service_values(registry, workspace_services, map_services))
+
+
+def build_services(registry: dict[str, object]) -> tuple[WorkspaceServices, MapServices, AppServices]:
+    workspace_services = build_workspace_services(registry)
+    map_services = build_map_services(registry)
+    return workspace_services, map_services, build_app_services(registry, workspace_services, map_services)

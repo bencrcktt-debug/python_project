@@ -3,7 +3,6 @@ import os
 import re
 import difflib
 import functools
-import importlib
 import html
 import json
 import math
@@ -56,9 +55,11 @@ import tfl_app.ui.runtime_pdf as _ui_runtime_pdf
 import tfl_app.ui.runtime_plotly as _ui_runtime_plotly
 import tfl_app.entrypoints.bootstrap as _entry_bootstrap
 import tfl_app.entrypoints.chrome as _entry_chrome
+import tfl_app.entrypoints.data_health as _entry_data_health
 import tfl_app.entrypoints.nav_search as _entry_nav_search
 import tfl_app.entrypoints.navigation as _entry_navigation
 import tfl_app.entrypoints.page_registry as _entry_page_registry
+import tfl_app.entrypoints.page_runner as _entry_page_runner
 import tfl_app.entrypoints.service_registry as _entry_service_registry
 from tfl_app.services import AppServices, MapServices, WorkspaceServices
 from tfl_app.ui.fragments.bound import BoundMapFragments, BoundPageFragments
@@ -1356,97 +1357,12 @@ _apply_plotly_layout = _ui_runtime_plotly._apply_plotly_layout
 _render_pdf_report_section = _ui_runtime_pdf._render_pdf_report_section
 
 
-_PAGE_FRAGMENT_HELPER_KEYS = (
-    "CHART_COLORS",
-    "FUNDING_COLOR_MAP",
-    "OPPOSITION_COLOR_MAP",
-    "PLOTLY_CONFIG",
-    "TEA_ARCGIS_WEBAPP_URL",
-    "TREND_COLOR_MAP",
-    "_apply_plotly_layout",
-    "_clean_options",
-    "_client_page",
-    "_last_first_initial_key",
-    "_lobby_page",
-    "_map_page",
-    "_member_page",
-    "_session_base_label",
-    "_session_label",
-    "_shorten_text",
-    "_solutions_page",
-    "bill_position_from_flags",
-    "build_activities",
-    "build_activities_multi",
-    "build_bills_with_status",
-    "build_disclosures",
-    "build_disclosures_multi",
-    "build_lobby_subject_counts",
-    "build_lobbyist_trend",
-    "build_member_activities",
-    "build_policy_mentions",
-    "build_timeline_counts",
-    "build_top_clients",
-    "ensure_cols",
-    "export_dataframe",
-    "first_name_norm_series",
-    "fmt_usd",
-    "get_app_state",
-    "get_app_table",
-    "get_app_tables",
-    "get_client_scope_bundle",
-    "get_client_workspace_detail_bundle",
-    "get_lobby_scope_bundle",
-    "get_lobby_workspace_detail_bundle",
-    "get_member_session_bundle",
-    "get_member_workspace_detail_bundle",
-    "last_name_norm_from_text",
-    "last_name_norm_series",
-    "norm_name",
-    "norm_name_series",
-    "norm_person_variants",
-    "norm_person_variants_with_nicknames",
-    "parse_member_name",
-    "parse_person_name",
-    "render_pill_list",
-    "require_columns",
-)
-_MAP_FRAGMENT_HELPER_KEYS = (
-    "MAP_BASEMAP_OPTIONS",
-    "PATH",
-    "_atlas_bridge",
-    "_map_runtime",
-    "_mp5_confidence_weight",
-    "_mp5_geocode_badge",
-    "_mp5_method_weight",
-    "_mp5_miles",
-    "_tfl_session_for_filter",
-    "build_address_overlap_spending_rows",
-    "build_overlap_map_points",
-    "classify_requested_entity_type",
-    "export_dataframe",
-    "fmt_usd",
-    "geocode_address_arcgis",
-    "get_map_atlas_bundle",
-    "get_map_forensics_bundle",
-    "get_map_state",
-    "query_texas_subdivisions_for_point",
-    "render_address_overlap_arcgis_map",
-    "render_draw_area_search_map",
-    "render_subdivision_map_legend",
-    "render_tfl_subdivision_arcgis_map",
-)
+data_health_table = _entry_data_health.data_health_table
+DATA_SOURCE_LABELS = _entry_data_health.DATA_SOURCE_LABELS
+_source_label = _entry_data_health.source_label
 
-
-@functools.lru_cache(maxsize=None)
-def _page_renderer_module(module_name: str):
-    return importlib.import_module(module_name)
-
-
-def _run_page_renderer(module_name: str, ctx: dict[str, object] | None = None) -> None:
-    module = _page_renderer_module(module_name)
-    module.render_page(services=_APP_SERVICES, ctx=ctx or {})
-
-
+_APP_SERVICES = AppServices.build()
+_run_page_renderer = _entry_page_runner.build_page_renderer(lambda: _APP_SERVICES)
 _PAGE_REGISTRY = _entry_page_registry.build_page_registry(_run_page_renderer)
 _about_page = _PAGE_REGISTRY.about_page
 _lobby_page = _PAGE_REGISTRY.lobby_page
@@ -1568,49 +1484,7 @@ _PAGE_RUNTIME_HELPERS = {
     "resolve_lobbyshort_from_wit": resolve_lobbyshort_from_wit,
     "resolve_member_name": resolve_member_name,
 }
-
-
-def _select_helpers(registry: dict[str, object], keys: tuple[str, ...]) -> dict[str, object]:
-    return {key: registry[key] for key in keys if key in registry}
-
-def _page_fragment_helpers() -> dict[str, object]:
-    return _select_helpers(_PAGE_RUNTIME_HELPERS, _PAGE_FRAGMENT_HELPER_KEYS)
-
-
-def _map_fragment_helpers() -> dict[str, object]:
-    return _select_helpers(_PAGE_RUNTIME_HELPERS, _MAP_FRAGMENT_HELPER_KEYS)
-
-
 _WORKSPACE_SERVICES, _MAP_SERVICES, _APP_SERVICES = _entry_service_registry.build_services(_PAGE_RUNTIME_HELPERS)
-
-
-DATA_SOURCE_LABELS = {
-    "Wit_All": "Texas Legislature Online (Witness lists)",
-    "Bill_Status_All": "Texas Legislature Online (Bill status)",
-    "Fiscal_Impact": "Texas Legislature Online (Fiscal notes)",
-    "Bill_Sub_All": "Texas Legislature Online (Bill subjects)",
-    "Lobby_Sub_All": "Texas Ethics Commission (Subject matter filings)",
-    "Lobby_TFL_Client_All": "Texas Ethics Commission (Lobbyist filings and compensation)",
-    "Staff_All": "House Research Organization (Legislative staff lists)",
-    "LaFood": "Texas Ethics Commission (Activity: Food)",
-    "LaEnt": "Texas Ethics Commission (Activity: Entertainment)",
-    "LaTran": "Texas Ethics Commission (Activity: Travel)",
-    "LaGift": "Texas Ethics Commission (Activity: Gifts)",
-    "LaEvnt": "Texas Ethics Commission (Activity: Events)",
-    "LaAwrd": "Texas Ethics Commission (Activity: Awards)",
-    "LaCvr": "Texas Ethics Commission (Disclosure: Coverage)",
-    "LaDock": "Texas Ethics Commission (Disclosure: Docket)",
-    "LaI4E": "Texas Ethics Commission (Disclosure: On Behalf)",
-    "LaSub": "Texas Ethics Commission (Disclosure: Subject Matter)",
-}
-
-def _source_label(key: str) -> str:
-    return DATA_SOURCE_LABELS.get(key, key)
-
-@st.cache_data(show_spinner=False, ttl=3600, max_entries=16)
-def data_health_table(path: str) -> pd.DataFrame:
-    manifest = get_table_manifest(str(path or ""))
-    return _page_bundles.build_data_health_table(manifest or {}, DATA_SOURCE_LABELS)
 
 # =========================================================
 # ACTIVITIES (unchanged logic, still cached)

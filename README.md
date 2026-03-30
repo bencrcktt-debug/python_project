@@ -41,10 +41,11 @@ streamlit run main.py
   - `tfl_app/entrypoints/`: stable Streamlit composition root plus bootstrap/page-config assets, page-registry, nav-search, navigation, chrome, and service-registry helpers.
   - `tfl_app/data/`: catalog, loader, cached-state, and workspace-bundle modules.
   - `tfl_app/search/`: shared models plus canonical index and resolution helpers.
-  - `tfl_app/map/`: reference fetchers/snapshots, split geo-query helpers, geospatial matching, and atlas/forensics helpers.
+  - `tfl_app/map/`: reference fetchers/snapshots, split geo-query helpers, geospatial matching/overlap helpers, and atlas/forensics helpers.
   - `tfl_app/shared/`: cross-cutting normalization, session, series, workspace, and session-state utilities.
   - `tfl_app/ui/chrome/`: shared page chrome and copy blocks.
   - `tfl_app/ui/fragments/`: selector-only fragment state plus prepared-context caches and rehydrators.
+  - `tfl_app/ui/pdf/`: internal PDF/report builders, document shells, page helpers, section-signal helpers, chart helpers, layout primitives, and runtime/session helpers behind the stable `tfl_app.ui.pdf_runtime` facade.
   - `tfl_app/ui/renderers/`: workspace renderers and shared renderer helpers.
   - `tfl_app/ui/contexts.py`: typed prepared-context models used between fragments and renderers.
 - `assets/components/`: custom Streamlit component assets.

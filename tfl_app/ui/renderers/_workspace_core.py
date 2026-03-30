@@ -95,6 +95,20 @@ def _fmt_usd_series(series: pd.Series) -> pd.Series:
     return numeric.map(fmt_usd)
 
 
+def _normalize_policy_mentions_frame(policy_mentions: Any) -> pd.DataFrame:
+    out = policy_mentions.copy() if isinstance(policy_mentions, pd.DataFrame) else pd.DataFrame()
+    if "Subject" not in out.columns:
+        out["Subject"] = pd.Series(dtype="object")
+    if "Mentions" not in out.columns:
+        out["Mentions"] = pd.Series(dtype="float64")
+    if "Share" not in out.columns:
+        out["Share"] = pd.Series(dtype="float64")
+    out["Subject"] = out["Subject"].fillna("").astype(str)
+    out["Mentions"] = pd.to_numeric(out["Mentions"], errors="coerce").fillna(0)
+    out["Share"] = pd.to_numeric(out["Share"], errors="coerce").fillna(0.0)
+    return out
+
+
 def render_client_workspace(ctx: dict[str, Any]) -> None:
     _previous = _push_context(ctx)
     try:
@@ -1091,6 +1105,7 @@ def render_client_workspace(ctx: dict[str, Any]) -> None:
                 else:
                     policy_mentions = pd.DataFrame(columns=["Subject", "Mentions", "Share"])
 
+            policy_mentions = _normalize_policy_mentions_frame(policy_mentions)
             if policy_mentions.empty:
                 if focus_active:
                     st.info("No bill-subject rows matched the focused Bills-tab slice. Clear focus or broaden filters.")
@@ -3676,6 +3691,7 @@ def render_lobby_workspace(ctx: dict[str, Any]) -> None:
                             else:
                                 policy_mentions = pd.DataFrame(columns=["Subject", "Mentions", "Share"])
 
+                        policy_mentions = _normalize_policy_mentions_frame(policy_mentions)
                         if policy_mentions.empty:
                             if focus_active:
                                 st.info(
