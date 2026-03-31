@@ -28,6 +28,31 @@ def test_postprocess_witness_table_precomputes_search_columns_and_session_key() 
     assert processed.iloc[0]["NameLastNorm"] == "SMITH"
 
 
+def test_postprocess_staff_table_precomputes_staff_search_columns_and_session_key() -> None:
+    staff = pd.DataFrame(
+        [
+            {
+                "session": 84,
+                "legislator_name": "Bell, Keith",
+                "role": "Chief of Staff",
+                "name": "Smith, John",
+                "staff_name_last_initial": "Smith, J.",
+            }
+        ]
+    )
+
+    processed = loaders._postprocess_table_for_state("Staff_All", staff)
+
+    assert processed.iloc[0]["Session"] == "84R"
+    assert processed.iloc[0]["SessionKey"] == "84R"
+    assert processed.iloc[0]["Legislator"] == "Bell, Keith"
+    assert processed.iloc[0]["Title"] == "Chief of Staff"
+    assert processed.iloc[0]["Staffer"] == "Smith, John"
+    assert processed.iloc[0]["StaffNameNorm"] == "SMITHJOHN"
+    assert processed.iloc[0]["StaffLastNorm"] == "SMITH"
+    assert processed.iloc[0]["StaffLastInitialNorm"] == "SMITHJ"
+
+
 def test_get_app_table_supports_copy_and_no_copy(monkeypatch) -> None:
     frame = pd.DataFrame([{"Session": "89R", "Client": "City of Austin"}])
 

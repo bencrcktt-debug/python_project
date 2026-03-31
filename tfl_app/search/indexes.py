@@ -301,19 +301,38 @@ def _ensure_witness_search_columns(wit_all: pd.DataFrame) -> pd.DataFrame:
 
 
 def _ensure_staff_search_columns(staff_all: pd.DataFrame) -> pd.DataFrame:
-    if staff_all.empty or "Legislator" not in staff_all.columns:
+    if staff_all.empty:
         return staff_all
-    required = {"LegislatorNorm", "LegislatorLastNorm", "LegislatorInitKey"}
+    required = {
+        "LegislatorNorm",
+        "LegislatorLastNorm",
+        "LegislatorInitKey",
+        "StaffNameNorm",
+        "StaffLastNorm",
+        "StaffLastInitialNorm",
+    }
     if required.issubset(set(staff_all.columns)):
         return staff_all
 
     data = staff_all.copy()
+    legislator_series = data.get("Legislator", pd.Series("", index=data.index))
     if "LegislatorNorm" not in data.columns:
-        data["LegislatorNorm"] = norm_name_series(data["Legislator"])
+        data["LegislatorNorm"] = norm_name_series(legislator_series)
     if "LegislatorLastNorm" not in data.columns:
-        data["LegislatorLastNorm"] = last_name_norm_series(data["Legislator"])
+        data["LegislatorLastNorm"] = last_name_norm_series(legislator_series)
     if "LegislatorInitKey" not in data.columns:
-        data["LegislatorInitKey"] = data["Legislator"].fillna("").astype(str).map(_last_first_initial_key)
+        data["LegislatorInitKey"] = legislator_series.fillna("").astype(str).map(_last_first_initial_key)
+
+    staffer_series = data.get("Staffer")
+    if not isinstance(staffer_series, pd.Series):
+        staffer_series = data.get("name", data.get("staff_name_last_initial", pd.Series("", index=data.index)))
+    staffer_series = staffer_series.fillna("").astype(str)
+    if "StaffNameNorm" not in data.columns:
+        data["StaffNameNorm"] = norm_name_series(staffer_series)
+    if "StaffLastNorm" not in data.columns:
+        data["StaffLastNorm"] = last_name_norm_series(staffer_series)
+    if "StaffLastInitialNorm" not in data.columns:
+        data["StaffLastInitialNorm"] = staffer_series.map(_last_first_initial_key)
     return data
 
 

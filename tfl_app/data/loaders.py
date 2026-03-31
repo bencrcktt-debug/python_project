@@ -219,6 +219,9 @@ def _normalize_loaded_table(table_key: str, df: pd.DataFrame) -> pd.DataFrame:
         return data
     if table_key == "Staff_All":
         data = _add_session_from_year(data)
+        if "Session" not in df.columns and "session" in data.columns:
+            session = data["session"].fillna("").astype(str).str.strip()
+            data["Session"] = session.where(~session.str.fullmatch(r"\d+"), session + "R")
         defaults = {
             "Session": "",
             "Legislator": "",
@@ -227,6 +230,9 @@ def _normalize_loaded_table(table_key: str, df: pd.DataFrame) -> pd.DataFrame:
             "source": "",
         }
         data = _page_bundles.ensure_cols(data, defaults)
+        if "Title" not in df.columns:
+            title_source = data.get("role", pd.Series("", index=data.index))
+            data["Title"] = title_source.fillna("").astype(str).str.strip()
         if "Staffer" not in df.columns:
             staff_source = data.get("name", data.get("staff_name_last_initial", pd.Series("", index=data.index)))
             data["Staffer"] = staff_source.fillna("").astype(str).str.strip()

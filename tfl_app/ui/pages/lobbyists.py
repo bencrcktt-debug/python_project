@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import html
 import re
 from typing import Any
 
@@ -19,48 +18,34 @@ except ModuleNotFoundError:  # pragma: no cover - import smoke fallback
 def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> None:
     del ctx
     PATH = services.require("PATH")
-    _client_page = services.require("_client_page")
-    _current_filter_parts = services.require("_current_filter_parts")
     _default_session_from_list = services.require("_default_session_from_list")
     _last_first_initial_key = services.require("_last_first_initial_key")
-    _map_page = services.require("_map_page")
-    _member_page = services.require("_member_page")
     _page_fragments = services.require("_page_fragments")
     _remember_recent_search = services.require("_remember_recent_search")
     _render_evidence_guardrails = services.require("_render_evidence_guardrails")
     _render_journey = services.require("_render_journey")
     _render_page_intro = services.require("_render_page_intro")
-    _render_pdf_report_section = services.require("_render_pdf_report_section")
     _render_quickstart = services.require("_render_quickstart")
     _render_workspace_guide = services.require("_render_workspace_guide")
-    _render_workspace_links = services.require("_render_workspace_links")
     _session_label = services.require("_session_label")
-    _solutions_page = services.require("_solutions_page")
     _tfl_session_for_filter = services.require("_tfl_session_for_filter")
     data_health_table = services.require("data_health_table")
     format_lobbyist_label = services.require("format_lobbyist_label")
-    get_app_table = services.require("get_app_table")
     get_app_table_readonly = services.require("get_app_table_readonly")
-    get_app_tables = services.require("get_app_tables")
-    get_app_tables_readonly = services.require("get_app_tables_readonly")
-    get_table_manifest = services.require("get_table_manifest")
-    get_lobby_scope_bundle = services.require("get_lobby_scope_bundle")
     is_bill_query = services.require("is_bill_query")
     lobby_candidate_key = services.require("lobby_candidate_key")
     lobbyist_autocomplete_candidates = services.require("lobbyist_autocomplete_candidates")
     norm_name = services.require("norm_name")
     norm_person_variants_with_nicknames = services.require("norm_person_variants_with_nicknames")
-    normalize_bill = services.require("normalize_bill")
     parse_person_name = services.require("parse_person_name")
     render_bill_search_results = services.require("render_bill_search_results")
     require_app_state = services.require("require_app_state")
-    reset_filters = services.require("reset_filters")
     resolve_lobbyshort_from_wit = services.require("resolve_lobbyshort_from_wit")
 
     if True:
         _render_page_intro(
-        kicker="Lobbyist Workspace",
-        title="Lobbyist Evidence View",
+        kicker="",
+        title="Lobbyist Workspace",
         subtitle=(
             "Search by lobbyist or bill, establish statewide context, then drill into reported positions, subjects, activities, and disclosures."
         ),
@@ -105,15 +90,6 @@ def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> 
         next_checks=[
             "Confirm the selected lobbyist identity before profile-level exports.",
             "Pivot to Clients or Legislators to verify downstream claims.",
-        ],
-    )
-    _render_workspace_links(
-        "lobby_top",
-        [
-            ("Open Clients", _client_page, "Validate entity-level contracts, activity, and disclosures."),
-            ("Open Legislators", _member_page, "Connect results to authored bills and witness records."),
-            ("Open Map & Address", _map_page, "Check local overlap by jurisdiction and street address."),
-            ("Open Policy Context", _solutions_page, "Review policy framework against observed patterns."),
         ],
     )
 
@@ -509,154 +485,11 @@ def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> 
     elif st.session_state.search_query.strip():
         _remember_recent_search(st.session_state.search_query)
 
-    match_line = "No match selected"
-    if st.session_state.lobbyshort:
-        if st.session_state.lobby_filerid and not lobbyist_index.empty:
-            filer_series = pd.to_numeric(lobbyist_index.get("FilerID", pd.Series(dtype=float)), errors="coerce")
-            match_row = lobbyist_index[
-                (lobbyist_index["LobbyShort"].astype(str).str.strip() == str(st.session_state.lobbyshort)) &
-                (filer_series == int(st.session_state.lobby_filerid))
-            ]
-            if not match_row.empty:
-                match_name = match_row["Lobby Name"].iloc[0]
-                match_line = format_lobbyist_label(match_name, st.session_state.lobbyshort, st.session_state.lobby_filerid)
-            else:
-                match_line = st.session_state.lobbyshort
-        else:
-            match_line = st.session_state.lobbyshort
-
-    extra_parts = ["Mode: Bill search"] if bill_mode else []
-    active_parts = _current_filter_parts(extra_parts)
-    chips_html = "".join([f'<span class="chip">{html.escape(c)}</span>' for c in active_parts])
-
-    st.markdown('<div id="filter-summary-marker"></div>', unsafe_allow_html=True)
-    f1, f2 = st.columns([3, 1])
-    with f1:
-        st.markdown(
-            f'<div class="filter-summary"><span class="filter-summary-label">Active filters</span>{chips_html}</div>',
-            unsafe_allow_html=True,
-        )
-        st.caption(f"Selected match: {match_line}")
-        merge_names = []
-        if st.session_state.lobby_merge_keys:
-            cand_map = st.session_state.lobby_candidate_map or {}
-            for key in st.session_state.lobby_merge_keys:
-                cand = cand_map.get(key, {})
-                name = cand.get("name", "")
-                short = cand.get("lobbyshort", "")
-                fid = cand.get("filerid", None)
-                if name or short:
-                    merge_names.append(format_lobbyist_label(name, short, fid))
-        if merge_names:
-            st.caption("Merged variants: " + ", ".join(merge_names[:4]))
-            st.caption("Use Autocomplete matches to change the selection.")
-        names_hint = short_to_names.get(st.session_state.lobbyshort, []) if st.session_state.lobbyshort else []
-        if names_hint:
-            st.caption("Also seen as: " + ", ".join(names_hint[:6]))
-    with f2:
-        if st.button(
-            "Clear filters",
-            width="stretch",
-            help="Reset search, match, and table filters to defaults.",
-        ):
-            reset_filters(default_session)
-    st.markdown(
-        '<div class="app-note"><strong>Interpretation:</strong> Match selection controls identity resolution. Confirm the selected lobbyist label before using profile-level outputs or exported evidence.</div>',
-        unsafe_allow_html=True,
-    )
     if st.session_state.lobbyshort and not st.session_state.lobby_filerid and not lobbyist_index.empty:
         dup = lobbyist_index[lobbyist_index["LobbyShort"].astype(str).str.strip() == st.session_state.lobbyshort]
         if dup["FilerID"].nunique(dropna=True) > 1 or dup["Lobby Name"].nunique() > 1:
             if not st.session_state.lobby_all_matches:
                 st.caption("Note: multiple name variants share this last name + first initial. Choose a specific match above to narrow results. Witness-list and bill activity remain combined.")
-
-    focus_label = "All Lobbyists"
-    if st.session_state.lobbyshort:
-        display_name = ""
-        if st.session_state.lobby_filerid and not lobbyist_index.empty:
-            filer_series = pd.to_numeric(lobbyist_index.get("FilerID", pd.Series(dtype=float)), errors="coerce")
-            match_row = lobbyist_index[
-                (lobbyist_index["LobbyShort"].astype(str).str.strip() == str(st.session_state.lobbyshort)) &
-                (filer_series == int(st.session_state.lobby_filerid))
-            ]
-            if not match_row.empty:
-                display_name = match_row["Lobby Name"].iloc[0]
-        if not display_name:
-            name_hint = short_to_names.get(st.session_state.lobbyshort, []) if isinstance(short_to_names, dict) else []
-            display_name = name_hint[0] if name_hint else st.session_state.lobbyshort
-        if display_name != st.session_state.lobbyshort:
-            focus_label = f"Lobbyist: {display_name} ({st.session_state.lobbyshort})"
-        else:
-            focus_label = f"Lobbyist: {st.session_state.lobbyshort}"
-    elif st.session_state.search_query.strip():
-        focus_label = f"Lobbyist search: {st.session_state.search_query.strip()}"
-
-    report_title = "Bill Report" if bill_mode and st.session_state.search_query.strip() else "Lobbyist Report"
-    focus_lookups = {
-        "name_to_short": name_to_short,
-        "short_to_names": short_to_names,
-        "filerid_to_short": filerid_to_short,
-    }
-
-    def _load_lobby_report_tables() -> dict[str, pd.DataFrame]:
-        return get_app_tables_readonly(
-            str(PATH),
-            (
-                "Lobby_TFL_Client_All",
-                "Wit_All",
-                "Bill_Status_All",
-                "Staff_All",
-                "Lobby_Sub_All",
-                "Bill_Sub_All",
-                "LaFood",
-                "LaEnt",
-                "LaTran",
-                "LaGift",
-                "LaEvnt",
-                "LaAwrd",
-                "LaCvr",
-                "LaDock",
-                "LaI4E",
-                "LaSub",
-            ),
-        )
-
-    focus_context = {
-        "type": "",
-        "report_title": report_title,
-        "lookups": focus_lookups,
-    }
-    if bill_mode and st.session_state.search_query.strip():
-        bill_id = ""
-        try:
-            bill_id = normalize_bill(st.session_state.search_query.strip())
-        except Exception:
-            bill_id = ""
-        focus_context.update(
-            {
-                "type": "bill",
-                "bill": bill_id or st.session_state.search_query.strip(),
-                "query": st.session_state.search_query.strip(),
-            }
-        )
-    elif st.session_state.lobbyshort:
-        focus_context.update(
-            {
-                "type": "lobbyist",
-                "lobbyshort": st.session_state.lobbyshort,
-                "display_name": display_name,
-            }
-        )
-
-    _ = _render_pdf_report_section(
-        key_prefix="lobby",
-        session_val=st.session_state.session,
-        scope_label=st.session_state.scope,
-        focus_label=focus_label,
-        tfl_session_val=tfl_session_val,
-        report_table_loader=_load_lobby_report_tables,
-        focus_context=focus_context,
-    )
 
     if bill_mode:
         st.subheader("Bill Search Results")

@@ -1458,8 +1458,8 @@ def render_member_workspace(ctx: dict[str, Any]) -> None:
                     kpi_card(
                         "Witness Rows",
                         f"{all_leg_stats.get('witness_rows', 0):,}",
-                        f"Lobbyists: {all_leg_stats.get('witness_lobbyists', 0):,}",
-                        help_text="Witness list rows tied to authored bills in the session.",
+                        f"Lobbyists: {all_leg_stats.get('session_lobbyists', all_leg_stats.get('witness_lobbyists', 0)):,}",
+                        help_text="Witness-list rows tied to authored bills in the session. Subtitle shows total distinct registered lobbyist IDs in the selected session.",
                     )
 
                 st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
@@ -3373,10 +3373,10 @@ def render_lobby_workspace(ctx: dict[str, Any]) -> None:
                         st.info("No witness-list rows found for this lobbyist/session. Try another session or clear the specific match.")
                     else:
                         st.session_state.bill_search = st.text_input(
-                            "Search bills (Bill / Author / Caption)",
+                            "Search bills (Bill / Author / Caption / Organization)",
                             value=st.session_state.bill_search,
                             placeholder="e.g., HB 4 or Bettencourt or housing",
-                            help="Filter bills by bill number, author, or caption text.",
+                            help="Filter bills by bill number, author, caption text, or organization.",
                         )
                         filtered = bills
                         if st.session_state.bill_search.strip():
@@ -3384,7 +3384,8 @@ def render_lobby_workspace(ctx: dict[str, Any]) -> None:
                             filtered = filtered[
                                 filtered["Bill"].astype(str).str.contains(q, case=False, na=False) |
                                 filtered["Author"].astype(str).str.contains(q, case=False, na=False) |
-                                filtered["Caption"].astype(str).str.contains(q, case=False, na=False)
+                                filtered["Caption"].astype(str).str.contains(q, case=False, na=False) |
+                                filtered["Organization"].astype(str).str.contains(q, case=False, na=False)
                             ]
 
                         f1, f2 = st.columns(2)
@@ -3486,7 +3487,7 @@ def render_lobby_workspace(ctx: dict[str, Any]) -> None:
                             if col in filtered.columns:
                                 filtered[col] = pd.to_numeric(filtered[col], errors="coerce").fillna(0)
 
-                        show_cols = ["Bill", "Author", "Caption", "Position", "Fiscal Impact H", "Fiscal Impact S", "Status"]
+                        show_cols = ["Bill", "Author", "Caption", "Position", "Organization", "Fiscal Impact H", "Fiscal Impact S", "Status"]
                         show_cols = [c for c in show_cols if c in filtered.columns]
 
                         st.caption(f"{len(filtered):,} bills")

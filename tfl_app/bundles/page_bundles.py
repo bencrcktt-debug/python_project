@@ -588,15 +588,25 @@ def build_bills_with_status(
     session_val: str,
 ) -> pd.DataFrame:
     if wit.empty:
-        return pd.DataFrame(columns=["Session", "Bill", "Position", "Author", "Caption", "Status", "Fiscal Impact H", "Fiscal Impact S"])
+        return pd.DataFrame(columns=["Session", "Bill", "Position", "Organization", "Author", "Caption", "Status", "Fiscal Impact H", "Fiscal Impact S"])
 
     bill_pos = bill_position_from_flags(wit)
     if bill_pos.empty:
-        return pd.DataFrame(columns=["Session", "Bill", "Position", "Author", "Caption", "Status", "Fiscal Impact H", "Fiscal Impact S"])
+        return pd.DataFrame(columns=["Session", "Bill", "Position", "Organization", "Author", "Caption", "Status", "Fiscal Impact H", "Fiscal Impact S"])
 
     bills = bill_pos
     if not bill_status_all.empty and {"Session", "Bill"}.issubset(bill_status_all.columns):
         bills = bill_pos.merge(bill_status_all, on=["Session", "Bill"], how="left")
+
+    if "org" in wit.columns:
+        orgs = wit.copy()
+        orgs["Organization"] = orgs.get("org", "").fillna("").astype(str).str.strip()
+        orgs = (
+            orgs.groupby(["Session", "Bill"])["Organization"]
+            .apply(lambda values: ", ".join(sorted({item for item in values if item})))
+            .reset_index()
+        )
+        bills = bills.merge(orgs, on=["Session", "Bill"], how="left")
 
     if not fiscal_impact.empty and {"Session", "Bill", "Version", "EstimatedTwoYearNetImpactGR"}.issubset(fiscal_impact.columns):
         fi = fiscal_impact[fiscal_impact["Session"].astype(str).str.strip() == str(session_val)]
@@ -611,7 +621,7 @@ def build_bills_with_status(
         )
         bills = bills.merge(fi_p, on=["Session", "Bill"], how="left")
 
-    bills = ensure_cols(bills, {"Author": "", "Caption": "", "Status": "", "Fiscal Impact H": 0, "Fiscal Impact S": 0})
+    bills = ensure_cols(bills, {"Organization": "", "Author": "", "Caption": "", "Status": "", "Fiscal Impact H": 0, "Fiscal Impact S": 0})
     return bills
 
 def build_policy_mentions(bills: pd.DataFrame, bill_sub_all: pd.DataFrame, session_val: str) -> pd.DataFrame:
@@ -1404,7 +1414,43 @@ def build_lobby_scope_bundle(df: pd.DataFrame, session_val: str | None, scope_va
     return LobbyScopeBundle(all_pivot, all_stats, trend_group, top_clients, lobby_display)
 
 
-def build_member_session_bundle(author_bills: pd.DataFrame, wit_all: pd.DataFrame, session_val: str) -> MemberSessionBundle:
+def _canonicalize_witness_lobbyshorts(
+    wit: pd.DataFrame,
+    *,
+    filerid_to_short: Mapping[int, str] | None = None,
+    name_to_short: Mapping[str, str] | None = None,
+) -> pd.Series:
+    canonical = wit.get("LobbyShort", pd.Series("", index=wit.index)).fillna("").astype(str).str.strip()
+
+    if filerid_to_short and "FilerID" in wit.columns:
+        fid = pd.to_numeric(wit["FilerID"], errors="coerce").fillna(-1).astype(int)
+        mapped = fid.map(filerid_to_short).fillna("").astype(str).str.strip()
+        canonical = mapped.where(mapped != "", canonical)
+
+    if name_to_short:
+        if "NameNorm" in wit.columns:
+            name_norm = wit["NameNorm"].fillna("").astype(str).str.strip()
+        elif "WitnessName" in wit.columns:
+            name_norm = norm_name_series(wit["WitnessName"].fillna("").astype(str))
+        elif "name" in wit.columns:
+            name_norm = norm_name_series(wit["name"].fillna("").astype(str))
+        else:
+            name_norm = pd.Series("", index=wit.index, dtype="object")
+        mapped = name_norm.map(name_to_short).fillna("").astype(str).str.strip()
+        canonical = mapped.where(mapped != "", canonical)
+
+    return canonical
+
+
+def build_member_session_bundle(
+    author_bills: pd.DataFrame,
+    wit_all: pd.DataFrame,
+    session_val: str,
+    *,
+    filerid_to_short: Mapping[int, str] | None = None,
+    name_to_short: Mapping[str, str] | None = None,
+    registered_lobbyshorts: set[str] | frozenset[str] | None = None,
+) -> MemberSessionBundle:
     if author_bills.empty:
         return MemberSessionBundle(pd.DataFrame(), {})
 
@@ -1439,6 +1485,8 @@ def build_member_session_bundle(author_bills: pd.DataFrame, wit_all: pd.DataFram
     )
     g = g.rename(columns={"Author": "Legislator"})
 
+    valid_lobbyshorts = {str(value).strip() for value in (registered_lobbyshorts or set()) if str(value).strip()}
+
     wit = pd.DataFrame(columns=["Bill", "LobbyShort"])
     if isinstance(wit_all, pd.DataFrame) and not wit_all.empty:
         wit = wit_all.copy()
@@ -1451,24 +1499,42 @@ def build_member_session_bundle(author_bills: pd.DataFrame, wit_all: pd.DataFram
         bill_set = set(bills["Bill"].dropna().astype(str).unique().tolist())
         if bill_set:
             wit = wit[wit["Bill"].astype(str).isin(bill_set)]
-        wit["LobbyShort"] = wit["LobbyShort"].fillna("").astype(str).str.strip()
-        wit = wit[wit["LobbyShort"] != ""]
+        wit["LobbyShort"] = _canonicalize_witness_lobbyshorts(
+            wit,
+            filerid_to_short=filerid_to_short,
+            name_to_short=name_to_short,
+        )
+        wit = wit[wit["LobbyShort"].astype(str).str.strip() != ""]
+        wit["LobbyShortCount"] = wit["LobbyShort"]
+        if registered_lobbyshorts is not None:
+            wit["LobbyShortCount"] = wit["LobbyShortCount"].where(
+                wit["LobbyShortCount"].astype(str).str.strip().isin(valid_lobbyshorts),
+                "",
+            )
 
     witness_rows = int(len(wit)) if not wit.empty else 0
-    witness_lobbyists = int(wit["LobbyShort"].nunique()) if not wit.empty else 0
+    if not wit.empty and "LobbyShortCount" in wit.columns:
+        witness_lobbyists = int(
+            wit.loc[wit["LobbyShortCount"].astype(str).str.strip() != "", "LobbyShortCount"].nunique()
+        )
+    else:
+        witness_lobbyists = 0
     witness_bills = int(wit["Bill"].nunique()) if not wit.empty else 0
 
     if not wit.empty:
         bill_authors = bills[["Bill", "Author"]].drop_duplicates()
         bill_authors["Bill"] = bill_authors["Bill"].astype(str)
-        wit_join = bill_authors.merge(wit[["Bill", "LobbyShort"]], on="Bill", how="left")
+        wit_join = bill_authors.merge(wit[["Bill", "LobbyShort", "LobbyShortCount"]], on="Bill", how="left")
         wit_join = wit_join[wit_join["LobbyShort"].astype(str).str.strip() != ""]
         if not wit_join.empty:
             wit_counts = (
                 wit_join.groupby("Author", as_index=False)
                 .agg(
                     WitnessRows=("LobbyShort", "size"),
-                    WitnessLobbyists=("LobbyShort", "nunique"),
+                    WitnessLobbyists=(
+                        "LobbyShortCount",
+                        lambda s: s.fillna("").astype(str).str.strip().replace("", pd.NA).dropna().nunique(),
+                    ),
                     WitnessBills=("Bill", "nunique"),
                 )
             )
@@ -1493,6 +1559,7 @@ def build_member_session_bundle(author_bills: pd.DataFrame, wit_all: pd.DataFram
         "failed": failed_total,
         "witness_rows": witness_rows,
         "witness_lobbyists": witness_lobbyists,
+        "session_lobbyists": int(len(valid_lobbyshorts)) if registered_lobbyshorts is not None else witness_lobbyists,
         "witness_bills": witness_bills,
     }
     return MemberSessionBundle(g.reset_index(drop=True), stats)

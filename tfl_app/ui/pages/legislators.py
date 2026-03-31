@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import html
 from typing import Any
 
-import pandas as pd
 from tfl_app.services import AppServices
 from tfl_app.ui.page_state import ensure_member_state
 
@@ -18,34 +16,24 @@ except ModuleNotFoundError:  # pragma: no cover - import smoke fallback
 def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> None:
     del ctx
     PATH = services.require("PATH")
-    _client_page = services.require("_client_page")
     _default_session_from_list = services.require("_default_session_from_list")
-    _lobby_page = services.require("_lobby_page")
     _page_fragments = services.require("_page_fragments")
     _remember_recent_member_search = services.require("_remember_recent_member_search")
     _render_evidence_guardrails = services.require("_render_evidence_guardrails")
     _render_journey = services.require("_render_journey")
     _render_page_intro = services.require("_render_page_intro")
-    _render_pdf_report_section = services.require("_render_pdf_report_section")
     _render_quickstart = services.require("_render_quickstart")
     _render_workspace_guide = services.require("_render_workspace_guide")
-    _render_workspace_links = services.require("_render_workspace_links")
     _session_label = services.require("_session_label")
-    _solutions_page = services.require("_solutions_page")
     _tfl_session_for_filter = services.require("_tfl_session_for_filter")
     data_health_table = services.require("data_health_table")
-    get_app_tables = services.require("get_app_tables")
-    get_app_tables_readonly = services.require("get_app_tables_readonly")
-    get_table_manifest = services.require("get_table_manifest")
-    get_member_session_bundle = services.require("get_member_session_bundle")
     require_app_state = services.require("require_app_state")
-    reset_member_filters = services.require("reset_member_filters")
     resolve_member_name = services.require("resolve_member_name")
 
     if True:
         _render_page_intro(
-        kicker="Legislator Workspace",
-        title="Legislator Evidence View",
+        kicker="",
+        title="Legislator Workspace",
         subtitle=(
             "Review authored bills, witness activity, lobbying links, and staff-to-lobbyist history for a selected session."
         ),
@@ -67,14 +55,6 @@ def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> 
             "Treat Staff Connections as contextual linkage, not proof of intent.",
         ],
         method_note="Witness and staff records come from separate sources and should be interpreted as linkage context.",
-    )
-    _render_workspace_links(
-        "member_top",
-        [
-            ("Open Lobbyists", _lobby_page, "Return to statewide lobbyist context and totals."),
-            ("Open Clients", _client_page, "Inspect entity-side funding and disclosures."),
-            ("Open Policy Context", _solutions_page, "Review drafting framework tied to observed patterns."),
-        ],
     )
     _render_quickstart(
         "members",
@@ -105,9 +85,6 @@ def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> 
         missing_path_message="Data path not configured. Set the DATA_PATH environment variable.",
         missing_file_message="Data path not found. Set DATA_PATH or place the parquet file in ./data.",
     )
-    name_to_short = app_state.name_to_short
-    short_to_names = app_state.short_to_names
-    filerid_to_short = app_state.filerid_to_short
     tfl_sessions = set(app_state.tfl_sessions)
 
     ensure_member_state()
@@ -236,77 +213,6 @@ def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> 
             )
 
     tfl_session_val = _tfl_session_for_filter(st.session_state.member_session, tfl_sessions)
-
-    active_parts = [f"Session: {_session_label(st.session_state.member_session)}"]
-    if st.session_state.member_name:
-        active_parts.append(f"Member: {st.session_state.member_name}")
-    chips_html = "".join([f'<span class="chip">{html.escape(c)}</span>' for c in active_parts])
-    st.markdown('<div id="filter-summary-marker"></div>', unsafe_allow_html=True)
-    f1, f2 = st.columns([3, 1])
-    with f1:
-        st.markdown(
-            f'<div class="filter-summary"><span class="filter-summary-label">Active filters</span>{chips_html}</div>',
-            unsafe_allow_html=True,
-        )
-        st.caption(f"Selected member: {st.session_state.member_name or '-'}")
-    with f2:
-        st.button(
-            "Clear filters",
-            width="stretch",
-            help="Reset legislator search and primary filters to defaults.",
-            on_click=reset_member_filters,
-            args=(default_session,),
-        )
-    st.markdown(
-        '<div class="app-note"><strong>Interpretation:</strong> Bills, witness rows, and staff records are linked for context. Correlation in these records does not establish motive or direction.</div>',
-        unsafe_allow_html=True,
-    )
-
-    focus_label = "All Legislators"
-    if st.session_state.member_name:
-        focus_label = f"Legislator: {st.session_state.member_name}"
-
-    def _load_member_report_tables() -> dict[str, pd.DataFrame]:
-        return get_app_tables_readonly(
-            str(PATH),
-            (
-                "Lobby_TFL_Client_All",
-                "Wit_All",
-                "Bill_Status_All",
-                "Staff_All",
-                "Bill_Sub_All",
-                "LaFood",
-                "LaEnt",
-                "LaTran",
-                "LaGift",
-                "LaEvnt",
-                "LaAwrd",
-                "LaCvr",
-                "LaDock",
-                "LaI4E",
-                "LaSub",
-            ),
-        )
-
-    focus_context = {
-        "type": "legislator" if st.session_state.member_name else "",
-        "name": st.session_state.member_name,
-        "report_title": "Legislator Report",
-        "lookups": {
-            "name_to_short": name_to_short,
-            "short_to_names": short_to_names,
-            "filerid_to_short": filerid_to_short,
-        },
-    }
-    _ = _render_pdf_report_section(
-        key_prefix="member",
-        session_val=st.session_state.member_session,
-        scope_label="Selected Session",
-        focus_label=focus_label,
-        tfl_session_val=tfl_session_val,
-        report_table_loader=_load_member_report_tables,
-        focus_context=focus_context,
-    )
     _page_fragments.merge_fragment_session_context("_member_workspace_ctx", {
         "PATH": str(PATH),
         "member_session": st.session_state.member_session,

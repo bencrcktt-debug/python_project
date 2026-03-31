@@ -13,6 +13,7 @@ def render_page_intro(kicker: str, title: str, subtitle: str, pills: list[str] |
     kicker_safe = html.escape(kicker or "", quote=True)
     title_safe = html.escape(title or "", quote=True)
     subtitle_safe = html.escape(subtitle or "", quote=True)
+    kicker_html = f'<div class="policy-kicker">{kicker_safe}</div>' if kicker_safe else ""
     pill_html = ""
     if pills:
         tokens = [f'<span class="policy-pill">{html.escape(str(p), quote=True)}</span>' for p in pills if str(p).strip()]
@@ -21,7 +22,7 @@ def render_page_intro(kicker: str, title: str, subtitle: str, pills: list[str] |
     st.markdown(
         f"""
 <div class="card policy-hero">
-  <div class="policy-kicker">{kicker_safe}</div>
+  {kicker_html}
   <div class="policy-title">{title_safe}</div>
   <p class="policy-subtitle">{subtitle_safe}</p>
   {pill_html}

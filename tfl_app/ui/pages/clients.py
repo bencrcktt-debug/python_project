@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import html
 from typing import Any
 
-import pandas as pd
 from tfl_app.services import AppServices
 from tfl_app.ui.page_state import ensure_client_state
 
@@ -19,33 +17,23 @@ def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> 
     del ctx
     PATH = services.require("PATH")
     _default_session_from_list = services.require("_default_session_from_list")
-    _lobby_page = services.require("_lobby_page")
-    _map_page = services.require("_map_page")
-    _member_page = services.require("_member_page")
     _page_fragments = services.require("_page_fragments")
     _remember_recent_client_search = services.require("_remember_recent_client_search")
     _render_evidence_guardrails = services.require("_render_evidence_guardrails")
     _render_journey = services.require("_render_journey")
     _render_page_intro = services.require("_render_page_intro")
-    _render_pdf_report_section = services.require("_render_pdf_report_section")
     _render_quickstart = services.require("_render_quickstart")
     _render_workspace_guide = services.require("_render_workspace_guide")
-    _render_workspace_links = services.require("_render_workspace_links")
     _session_label = services.require("_session_label")
     _tfl_session_for_filter = services.require("_tfl_session_for_filter")
     data_health_table = services.require("data_health_table")
-    get_app_tables = services.require("get_app_tables")
-    get_app_tables_readonly = services.require("get_app_tables_readonly")
-    get_table_manifest = services.require("get_table_manifest")
-    get_client_scope_bundle = services.require("get_client_scope_bundle")
     require_app_state = services.require("require_app_state")
-    reset_client_filters = services.require("reset_client_filters")
     resolve_client_name = services.require("resolve_client_name")
 
     if True:
         _render_page_intro(
-        kicker="Client Workspace",
-        title="Client Evidence View",
+        kicker="",
+        title="Client Workspace",
         subtitle=(
             "Trace each entity across contracted lobbyists, compensation ranges, bill activity, subject filings, and disclosures."
         ),
@@ -67,14 +55,6 @@ def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> 
             "Export filtered tables when documenting findings.",
         ],
         method_note="Entity naming varies across filings. Confirm resolved matches before citing profile-level totals.",
-    )
-    _render_workspace_links(
-        "client_top",
-        [
-            ("Open Lobbyists", _lobby_page, "Return to statewide baseline before entity comparisons."),
-            ("Open Map & Address", _map_page, "Test local overlap for matched entities and jurisdictions."),
-            ("Open Legislators", _member_page, "Connect entity exposure to authored bills and witnesses."),
-        ],
     )
     _render_quickstart(
         "clients",
@@ -106,9 +86,6 @@ def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> 
         missing_path_message="Data path not configured. Set the DATA_PATH environment variable.",
         missing_file_message="Data path not found. Set DATA_PATH or place the parquet file in ./data.",
     )
-    name_to_short = app_state.name_to_short
-    short_to_names = app_state.short_to_names
-    filerid_to_short = app_state.filerid_to_short
     tfl_sessions = set(app_state.tfl_sessions)
 
     ensure_client_state()
@@ -251,81 +228,6 @@ def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> 
             )
 
     tfl_session_val = _tfl_session_for_filter(st.session_state.client_session, tfl_sessions)
-
-    active_parts = [
-        f"Session: {_session_label(st.session_state.client_session)}",
-        f"Scope: {st.session_state.client_scope}",
-    ]
-    if st.session_state.client_name:
-        active_parts.append(f"Client: {st.session_state.client_name}")
-    chips_html = "".join([f'<span class="chip">{html.escape(c)}</span>' for c in active_parts])
-    st.markdown('<div id="filter-summary-marker"></div>', unsafe_allow_html=True)
-    f1, f2 = st.columns([3, 1])
-    with f1:
-        st.markdown(
-            f'<div class="filter-summary"><span class="filter-summary-label">Active filters</span>{chips_html}</div>',
-            unsafe_allow_html=True,
-        )
-        st.caption(f"Selected client: {st.session_state.client_name or '-'}")
-    with f2:
-        st.button(
-            "Clear filters",
-            width="stretch",
-            help="Reset client search and primary filters to defaults.",
-            on_click=reset_client_filters,
-            args=(default_session,),
-        )
-    st.markdown(
-        '<div class="app-note"><strong>Interpretation:</strong> Client totals reflect reported low-high compensation ranges, not audited exact spend. Keep session and scope aligned when comparing entities.</div>',
-        unsafe_allow_html=True,
-    )
-
-    focus_label = "All Clients"
-    if st.session_state.client_name:
-        focus_label = f"Client: {st.session_state.client_name}"
-
-    def _load_client_report_tables() -> dict[str, pd.DataFrame]:
-        return get_app_tables_readonly(
-            str(PATH),
-            (
-                "Lobby_TFL_Client_All",
-                "Wit_All",
-                "Bill_Status_All",
-                "Lobby_Sub_All",
-                "Staff_All",
-                "Bill_Sub_All",
-                "LaFood",
-                "LaEnt",
-                "LaTran",
-                "LaGift",
-                "LaEvnt",
-                "LaAwrd",
-                "LaCvr",
-                "LaDock",
-                "LaI4E",
-                "LaSub",
-            ),
-        )
-
-    focus_context = {
-        "type": "client" if st.session_state.client_name else "",
-        "name": st.session_state.client_name,
-        "report_title": "Client Report",
-        "lookups": {
-            "name_to_short": name_to_short,
-            "short_to_names": short_to_names,
-            "filerid_to_short": filerid_to_short,
-        },
-    }
-    _ = _render_pdf_report_section(
-        key_prefix="client",
-        session_val=st.session_state.client_session,
-        scope_label=st.session_state.client_scope,
-        focus_label=focus_label,
-        tfl_session_val=tfl_session_val,
-        report_table_loader=_load_client_report_tables,
-        focus_context=focus_context,
-    )
     _page_fragments.merge_fragment_session_context("_client_workspace_ctx", {
         "PATH": str(PATH),
         "client_scope": st.session_state.client_scope,

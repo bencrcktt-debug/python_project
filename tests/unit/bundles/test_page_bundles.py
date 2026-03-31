@@ -98,3 +98,66 @@ def test_build_member_session_bundle_accumulates_witness_counts() -> None:
     assert bell["WitnessLobbyists"] == 2
     assert bell["WitnessBills"] == 2
 
+
+def test_build_member_session_bundle_collapses_witness_aliases_to_canonical_lobbyist_id() -> None:
+    author_bills = pd.DataFrame(
+        [
+            {"Session": "89R", "Author": "Bell, Keith", "Bill": "HB 1", "Status": "Passed"},
+            {"Session": "89R", "Author": "Bell, Keith", "Bill": "HB 2", "Status": "Failed"},
+        ]
+    )
+    wit_all = pd.DataFrame(
+        [
+            {"Session": "89R", "Bill": "HB 1", "LobbyShort": "ABBOTTC", "name": "Abbott, Chris"},
+            {"Session": "89R", "Bill": "HB 2", "LobbyShort": "ALPHA", "name": "Abbott, Chris"},
+            {"Session": "89R", "Bill": "HB 2", "LobbyShort": "BETA", "name": "Bell, Jane"},
+        ]
+    )
+
+    bundle = page_bundles.build_member_session_bundle(
+        author_bills,
+        wit_all,
+        "89R",
+        name_to_short={
+            page_bundles.norm_name("Abbott, Chris"): "ALPHA",
+            page_bundles.norm_name("Bell, Jane"): "BETA",
+        },
+    )
+
+    bell = bundle.all_legislators.loc[bundle.all_legislators["Legislator"] == "Bell, Keith"].iloc[0]
+    assert bundle.stats["witness_rows"] == 3
+    assert bundle.stats["witness_lobbyists"] == 2
+    assert bundle.stats["session_lobbyists"] == 2
+    assert bell["WitnessRows"] == 3
+    assert bell["WitnessLobbyists"] == 2
+
+
+def test_build_member_session_bundle_counts_only_session_registered_lobbyist_ids() -> None:
+    author_bills = pd.DataFrame(
+        [
+            {"Session": "89R", "Author": "Bell, Keith", "Bill": "HB 1", "Status": "Passed"},
+            {"Session": "89R", "Author": "Bell, Keith", "Bill": "HB 2", "Status": "Failed"},
+        ]
+    )
+    wit_all = pd.DataFrame(
+        [
+            {"Session": "89R", "Bill": "HB 1", "LobbyShort": "ALPHA"},
+            {"Session": "89R", "Bill": "HB 1", "LobbyShort": "OLDSHORT"},
+            {"Session": "89R", "Bill": "HB 2", "LobbyShort": "BETA"},
+        ]
+    )
+
+    bundle = page_bundles.build_member_session_bundle(
+        author_bills,
+        wit_all,
+        "89R",
+        registered_lobbyshorts={"ALPHA", "BETA"},
+    )
+
+    bell = bundle.all_legislators.loc[bundle.all_legislators["Legislator"] == "Bell, Keith"].iloc[0]
+    assert bundle.stats["witness_rows"] == 3
+    assert bundle.stats["witness_lobbyists"] == 2
+    assert bundle.stats["session_lobbyists"] == 2
+    assert bell["WitnessRows"] == 3
+    assert bell["WitnessLobbyists"] == 2
+

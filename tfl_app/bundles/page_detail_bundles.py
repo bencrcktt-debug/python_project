@@ -544,7 +544,7 @@ def build_lobby_workspace_detail_bundle(
         "selected_names": list(selected_names or ()),
         "wit": _empty_df([]),
         "witness_match_note": "",
-        "bills": _empty_df(["Session", "Bill", "Position", "Author", "Caption", "Status", "Fiscal Impact H", "Fiscal Impact S"]),
+        "bills": _empty_df(["Session", "Bill", "Position", "Organization", "Author", "Caption", "Status", "Fiscal Impact H", "Fiscal Impact S"]),
         "mentions": _empty_df(["Subject", "Mentions", "Share"]),
         "bill_subjects": _empty_df(["Session", "Bill", "Subject"]),
         "lobby_sub_counts": _empty_df(["Topic", "Mentions"]),

@@ -311,6 +311,8 @@ def test_build_lobby_workspace_detail_bundle_precomputes_match_specific_views() 
     assert bundle.context["lobbyist_label"] == "Smith, John"
     assert bundle.context["witness_match_note"] == "Witness list filtered to the selected name."
     assert set(bundle.context["bills"]["Bill"]) == {"HB 1", "HB 3"}
+    bill_orgs = bundle.context["bills"].set_index("Bill")["Organization"].to_dict()
+    assert bill_orgs == {"HB 1": "City of Austin", "HB 3": "County of Travis"}
     assert bundle.context["tfl_clients"] == ["City of Austin", "County of Travis"]
     assert bundle.context["private_clients"] == []
     assert bundle.context["subject_non_empty"] > 0

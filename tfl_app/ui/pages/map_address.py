@@ -41,8 +41,8 @@ def render_page(*, services: AppServices, ctx: dict[str, Any] | None = None) -> 
 
         # -- page header --------------------------------------------------
         _render_page_intro(
-            kicker="Geospatial Intelligence Hub",
-            title="Map & Address",
+            kicker="",
+            title="Map & Address Workspace",
             subtitle=(
                 "Coverage atlas, address-level overlap forensics, and an "
                 "investigative case docket for taxpayer-funded entities."
