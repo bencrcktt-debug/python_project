@@ -41,10 +41,10 @@ WORKBOOK_TABLE_COLUMNS = {
     "LaGift": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst", "activityDescription", "periodStartDt", "activityExactAmount", "activityAmountRangeLow", "activityAmountRangeHigh", "activityAmountCd"],
     "LaEvnt": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst", "activityDescription", "activityDate", "periodStartDt"],
     "LaAwrd": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "recipientNameOrganization", "recipientNameLast", "recipientNameFirst", "activityDescription", "periodStartDt", "activityExactAmount", "activityAmountRangeLow", "activityAmountRangeHigh", "activityAmountCd"],
-    "LaCvr": ["Session", "filerIdent", "filerName", "filerSort", "filedDt", "periodStartDt", "sourceCategoryCd", "subjectMatterMemo", "docketsMemo", "filerNameOrganization"],
-    "LaDock": ["Session", "filerIdent", "filerName", "filerSort", "receivedDt", "periodStartDt", "designationText", "agencyName"],
-    "LaI4E": ["Session", "filerIdent", "filerName", "filerSort", "periodStartDt", "onbehalfName", "onbehalfMailingCity", "onbehalfPrimaryPhoneNumber"],
-    "LaSub": ["Session", "filerIdent", "filerName", "filerSort", "periodStartDt", "subjectMatterCodeValue", "subjectMatterDescr"],
+    "LaCvr": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "filedDt", "periodStartDt", "sourceCategoryCd", "subjectMatterMemo", "docketsMemo", "filerNameOrganization"],
+    "LaDock": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "receivedDt", "periodStartDt", "designationText", "agencyName"],
+    "LaI4E": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "periodStartDt", "onbehalfName", "onbehalfMailingCity", "onbehalfPrimaryPhoneNumber"],
+    "LaSub": ["Session", "applicableYear", "filerIdent", "filerName", "filerSort", "periodStartDt", "subjectMatterCodeValue", "subjectMatterDescr"],
 }
 
 PARQUET_FILE_MAP = {
