@@ -1271,6 +1271,22 @@ def render_bill_search_results(bill_query: str, session_val: str | None, tfl_ses
         return True
 
     pos = bill_position_from_flags(d)
+
+    if "org" in d.columns:
+        org_agg = (
+            d[["Session", "Bill", "LobbyShort", "org"]]
+            .copy()
+            .assign(org=lambda x: x["org"].fillna("").astype(str).str.strip())
+        )
+        org_agg = org_agg[org_agg["org"] != ""]
+        if not org_agg.empty:
+            org_agg = (
+                org_agg.groupby(["Session", "Bill", "LobbyShort"], as_index=False)["org"]
+                .agg(lambda vals: "; ".join(sorted(set(vals))))
+                .rename(columns={"org": "Organization"})
+            )
+            pos = pos.merge(org_agg, on=["Session", "Bill", "LobbyShort"], how="left")
+
     bs = bill_status_all.copy()
     bs["Session"] = bs["Session"].astype(str).str.strip()
     if session_val is not None:
@@ -1291,7 +1307,7 @@ def render_bill_search_results(bill_query: str, session_val: str | None, tfl_ses
     merged = merged.merge(tfl_flag, on="LobbyShort", how="left")
     merged["Has TFL Client"] = merged["Has TFL Client"].fillna(0).astype(int).map({1: "Yes", 0: "No"})
 
-    show_cols = ["Session", "Bill", "Lobbyist", "Has TFL Client", "Position", "Author", "Caption", "Status"]
+    show_cols = ["Session", "Bill", "Lobbyist", "Organization", "Has TFL Client", "Position", "Author", "Caption", "Status"]
     show_cols = [c for c in show_cols if c in merged.columns]
     merged["_tfl_sort"] = merged["Has TFL Client"].map({"Yes": 1, "No": 0}).fillna(0)
     view = merged[show_cols + ["_tfl_sort"]].sort_values(
