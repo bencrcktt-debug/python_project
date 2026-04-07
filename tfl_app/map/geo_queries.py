@@ -65,7 +65,6 @@ def _canonical_subdivision_text(value: str) -> str:
         (r"\bD\.?A\.?R\.?T\.?\b", " DALLAS AREA RAPID TRANSIT "),
         (r"\bC\.?A\.?D\.?\b", " APPRAISAL DISTRICT "),
         (r"\bL\.?G\.?C\.?\b", " LOCAL GOVERNMENT CORPORATION "),
-        (r"\bCORPERATION\b", " CORPORATION "),
         (r"\bHOSP\.?\s+DIST\.?\b", " HOSPITAL DISTRICT "),
         (r"\bNAV\.?\s+DIST\.?\b", " NAVIGATION DISTRICT "),
         (r"\bDIST\.?\b", " DISTRICT "),
@@ -74,7 +73,32 @@ def _canonical_subdivision_text(value: str) -> str:
     ]
     for pattern, replacement in replacements:
         text = re.sub(pattern, replacement, text)
+    misspellings = [
+        (r"\bGROUNDATER\b", "GROUNDWATER"),
+        (r"\bDISTR[IT]{1,2}CT\b(?<!\bDISTRICT\b)", "DISTRICT"),
+        (r"\bDISTSRICT\b", "DISTRICT"),
+        (r"\bCONVERSATION\b", "CONSERVATION"),
+        (r"\bAQUIFIER\b", "AQUIFER"),
+        (r"\bCREEEK\b", "CREEK"),
+        (r"\bAUTHORTIY\b", "AUTHORITY"),
+        (r"\bCORPERATION\b", "CORPORATION"),
+        (r"\bINDEPENDEND\b", "INDEPENDENT"),
+        (r"\bINDEPENDENDENT\b", "INDEPENDENT"),
+        (r"\bLONGIVEW\b", "LONGVIEW"),
+        (r"\bBANCH\b", "BRANCH"),
+        (r"\bBURLESOM\b", "BURLESON"),
+        (r"\bBEXAS\b", "BEXAR"),
+    ]
+    for pattern, replacement in misspellings:
+        text = re.sub(pattern, replacement, text)
     text = re.sub(r"[^A-Z0-9 ]+", " ", text)
+    abbreviations = [
+        (r"\bFT\b", "FORT"),
+    ]
+    for pattern, replacement in abbreviations:
+        text = re.sub(pattern, replacement, text)
+    text = re.sub(r"\s+TEXAS\s*$", "", text)
+    text = re.sub(r"\s+TX\s*$", "", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
@@ -110,6 +134,8 @@ def _canonical_water_district_type(value: str) -> str:
         return "Water Control & Improvement District"
     if "NAVIGATION DISTRICT" in text:
         return "Navigation District"
+    if re.search(r"\bWATER\s+AUTHORITY\b|\bAQUIFER\s+AUTHORITY\b|\bWASTE\s+DISPOSAL\s+AUTHORITY\b|\bSUBSIDENCE\s+DISTRICT\b", text):
+        return "River Authority"
     return ""
 
 

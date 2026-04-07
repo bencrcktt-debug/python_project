@@ -42,6 +42,10 @@ SUBDIVISION_TYPE_COLORS = {
     "Emergency Services District": "#B15C2E",
     "Appraisal District": "#6D5A90",
     "Local Government Corporation": "#4E7A52",
+    "Water Supply Corporation": "#2980B9",
+    "Electric Cooperative": "#D4AC0D",
+    "Airport": "#6C7A89",
+    "University": "#8E44AD",
 }
 WATER_DISTRICT_TYPE_ROOT_PATTERNS = {
     "Municipal Utility District": [r"\bMUNICIPAL\s+UTILITY\s+DISTRICT\b", r"\bDISTRICT\b"],
@@ -79,6 +83,10 @@ SPECIAL_NAME_ANCHORED_ENTITY_TYPES = {
     "Local Government Corporation",
     "Transit Authority",
     "Port Authority",
+    "Water Supply Corporation",
+    "Electric Cooperative",
+    "Airport",
+    "University",
 }
 COUNTY_BIASED_SPECIAL_ENTITY_TYPES = {
     "Hospital District",
@@ -89,6 +97,9 @@ CITY_BIASED_SPECIAL_ENTITY_TYPES = {
     "Local Government Corporation",
     "Transit Authority",
     "Port Authority",
+    "Electric Cooperative",
+    "Airport",
+    "University",
 }
 
 
@@ -140,7 +151,19 @@ def _canonical_county_name(value: str) -> str:
 
 def _looks_like_county_name(value: str) -> bool:
     text = _canonical_county_name(value)
-    return bool(text) and ("COUNTY" in text)
+    if not text or "COUNTY" not in text:
+        return False
+    if re.search(
+        r"\b(ASSOCIATION|COALITION|COMMITTEE|BOARD|CHAMBER|FEDERATION"
+        r"|RETIREMENT|EMPLOYEES|MEDICAL|SOCIETY|SCHOOLS|NETWORK"
+        r"|GENERATION|FOUNDATION|FINANCE|LLC|INC|ADVISORY|LEGISLATIVE"
+        r"|COLISEUM|HOSPITAL|SHERIFFS?|DEPUTIES?|CLERKS?"
+        r"|TREASURERS?|JUDGES?|COMMISSIONERS?"
+        r"|COLLEGE|ATTORNEYS?|DBA)\b",
+        text,
+    ):
+        return False
+    return True
 
 
 @functools.lru_cache(maxsize=512)
@@ -191,6 +214,8 @@ def classify_requested_entity_type(value: str) -> str:
         return "Emergency Services District"
     if "GROUNDWATER CONSERVATION DISTRICT" in text:
         return "Groundwater Conservation District"
+    if re.search(r"\bUNDERGROUND\s+WATER\b", text):
+        return "Groundwater Conservation District"
     if re.search(r"\bLOCAL\s+GOVERNMENT\s+CORPORATION\b|\bDEVELOPMENT\s+CORPORATION\b", text):
         return "Local Government Corporation"
     if "DRAINAGE DISTRICT" in text:
@@ -207,6 +232,14 @@ def classify_requested_entity_type(value: str) -> str:
         return "Regional District"
     if "RIVER AUTHORITY" in text:
         return "River Authority"
+    if re.search(r"\bWATER\s+AUTHORITY\b", text):
+        return "River Authority"
+    if re.search(r"\bMUNICIPAL\s+WATER\s+DISTRICT\b", text):
+        return "River Authority"
+    if re.search(r"\bAQUIFER\s+AUTHORITY\b", text):
+        return "River Authority"
+    if re.search(r"\bWASTE\s+DISPOSAL\s+AUTHORITY\b", text):
+        return "River Authority"
     if re.search(r"\bSOIL\s+(AND\s+)?WATER\s+CONTROL\s+DISTRICT\b", text):
         return "Soil & Water Control District"
     if "SPECIAL UTILITY DISTRICT" in text:
@@ -217,6 +250,22 @@ def classify_requested_entity_type(value: str) -> str:
         return "Regional Mobility Authority"
     if re.search(r"\bWATER\s+CONTROL\s+(AND\s+)?IMPROVEMENT\s+DISTRICT\b", text):
         return "Water Control & Improvement District"
+    if re.search(r"\bFLOOD\s+CONTROL\s+DISTRICT\b", text):
+        return "Water Control & Improvement District"
+    if re.search(r"\bSUBSIDENCE\s+DISTRICT\b", text):
+        return "Groundwater Conservation District"
+    if re.search(r"\bCONSERVATION\s+(AND\s+)?(RECLAMATION\s+)?DISTRICT\b", text):
+        return "Groundwater Conservation District"
+    if re.search(r"\bWATER\s+SUPPLY\b", text):
+        return "Water Supply Corporation"
+    if re.search(r"\bWATER\s+SYSTEM\b", text):
+        return "Water Supply Corporation"
+    if re.search(r"\bMANAGEMENT\s+DISTRICT\b", text):
+        return "Municipal Management District"
+    if re.search(r"\bIMPROVEMENT\s+DISTRICT\b", text):
+        return "Municipal Management District"
+    if re.search(r"\bTOLL\s*(ROAD|WAY)\s+AUTHORITY\b", text):
+        return "Regional Mobility Authority"
     if "NAVIGATION DISTRICT" in text:
         return "Navigation District"
     if (
@@ -233,6 +282,20 @@ def classify_requested_entity_type(value: str) -> str:
         return "Housing Authority"
     if "APPRAISAL DISTRICT" in text:
         return "Appraisal District"
+    if re.search(r"\bHOSPITAL\s+AUTHORITY\b", text):
+        return "Hospital District"
+    if re.search(r"\bHEALTH\s+SYSTEM\b", text) and not re.search(r"\bASSOCIATION\b|\bINC\b|\bLLC\b", text):
+        return "Hospital District"
+    if re.search(r"\bMEDICAL\s+CENTER\b", text) and not re.search(r"\bASSOCIATION\b|\bINC\b|\bLLC\b", text):
+        return "Hospital District"
+    if re.search(r"\bELECTRIC\s+COOPERATIVE\b|\bELECTRIC\s+COOP\b|\bRURAL\s+ELECTRIC\b", text):
+        return "Electric Cooperative"
+    if re.search(r"\bAIRPORT\b", text) and not re.search(r"\bASSOCIATION\b|\bINC\b|\bLLC\b", text):
+        return "Airport"
+    if re.search(r"\bUNIVERSITY\b", text) and not re.search(r"\bASSOCIATION\b|\bINC\b|\bLLC\b|\bCHAPTER\b|\bFOUNDATION\b", text):
+        return "University"
+    if re.search(r"\bCOLLEGE\b", text) and not re.search(r"\bASSOCIATION\b|\bINC\b|\bLLC\b|\bCHAPTER\b|\bPHYSICIAN\b|\bOBSTETRICIAN\b|\bFOUNDATION\b|\bBOARD\b", text):
+        return "University"
     if _looks_like_school_district_name(value):
         return "School District"
     if _looks_like_county_name(value):
@@ -244,7 +307,18 @@ def classify_requested_entity_type(value: str) -> str:
 
 def _looks_like_city_name(value: str) -> bool:
     text = _canonical_city_name(value)
-    return bool(text) and bool(re.search(r"\b(CITY|TOWN|VILLAGE)\b", text))
+    if not text:
+        return False
+    if not re.search(r"\b(CITY|TOWN|VILLAGE)\b", text):
+        return False
+    if re.search(
+        r"\b(COMMITTEE|STEERING|CHAMBER|COMMERCE|RETIREMENT|EMPLOYEES"
+        r"|HOSPITAL|PLAN|TRUST|ASSOCIATION|COALITION|FOUNDATION"
+        r"|SYSTEM|DBA)\b",
+        text,
+    ):
+        return False
+    return True
 
 
 def _looks_like_entity_type(value: str, entity_type: str) -> bool:

@@ -483,6 +483,31 @@ def build_tfl_water_district_type_matches(tfl_client_names: tuple[str, ...]) -> 
         subset = water[water["type_label"].astype(str) == subtype]
         if subset.empty:
             continue
+
+        extra_builder = None
+        if subtype == "River Authority":
+            def _water_aliases(row) -> list[str]:
+                raw = str(getattr(row, "district_name", "")).strip()
+                if not raw:
+                    return []
+                aliases: list[str] = []
+                base = re.sub(r"\bRIVER\s+AUTHORITY\b", "", raw, flags=re.IGNORECASE).strip(" -")
+                if base:
+                    aliases.extend([
+                        f"{base} Water Authority",
+                        f"{base} Regional Water Authority",
+                        f"{base} Municipal Water District",
+                        f"{base} Water District",
+                    ])
+                base2 = re.sub(r"\bWATER\s+AUTHORITY\b", "", raw, flags=re.IGNORECASE).strip(" -")
+                if base2 and base2.lower() != base.lower():
+                    aliases.extend([
+                        f"{base2} River Authority",
+                        f"{base2} Water District",
+                    ])
+                return [a for a in aliases if a.strip()]
+            extra_builder = _water_aliases
+
         piece = _build_layer_subdivision_matches(
             tfl_client_names=tfl_client_names,
             layer_df=subset,
@@ -491,6 +516,7 @@ def build_tfl_water_district_type_matches(tfl_client_names: tuple[str, ...]) -> 
             layer_code_cols=["district_code"],
             root_patterns=root_patterns,
             include_client_fn=lambda client, target=subtype: _looks_like_entity_type(client, target),
+            extra_candidate_builder=extra_builder,
             source_name="TCEQ Water Districts (FeatureServer/0)",
             source_url=TCEQ_WATER_DISTRICTS_LAYER_URL,
         )
@@ -512,8 +538,11 @@ def build_tfl_groundwater_district_matches(tfl_client_names: tuple[str, ...]) ->
         subdivision_type="Groundwater Conservation District",
         layer_name_cols=["district_name"],
         layer_code_cols=["district_code"],
-        root_patterns=[r"\bGROUNDWATER\s+CONSERVATION\s+DISTRICT\b", r"\bDISTRICT\b"],
+        root_patterns=[r"\bGROUNDWATER\s+CONSERVATION\s+DISTRICT\b", r"\bUNDERGROUND\s+WATER\b", r"\bUNDERGROUND\s+CONSERVATION\s+DISTRICT\b", r"\bCONSERVATION\s+DISTRICT\b", r"\bDISTRICT\b"],
         include_client_fn=lambda client: _looks_like_entity_type(client, "Groundwater Conservation District"),
+        extra_candidate_builder=lambda row: [
+            re.sub(r"\bGROUNDWATER\s+CONSERVATION\s+DISTRICT\b", "Underground Water Conservation District", str(getattr(row, "district_name", "")), flags=re.IGNORECASE).strip(),
+        ],
         source_name="TCEQ Groundwater Conservation Districts (FeatureServer/0)",
         source_url=TCEQ_GROUNDWATER_DISTRICTS_LAYER_URL,
     )
@@ -524,15 +553,29 @@ def build_tfl_regional_mobility_authority_matches(tfl_client_names: tuple[str, .
     districts = fetch_texas_rma_centroids()
     if districts.empty:
         return pd.DataFrame(columns=["subdivision_type", "subdivision_name", "subdivision_code", "lon", "lat", "match_count", "match_clients", "match_clients_preview", "source_name", "source_url"])
+    def _rma_aliases(row) -> list[str]:
+        raw = str(getattr(row, "district_name", "")).strip()
+        if not raw:
+            return []
+        aliases: list[str] = [raw.replace("RMA", "Regional Mobility Authority").strip()]
+        base = re.sub(r"\bREGIONAL\s+MOBILITY\s+AUTHORITY\b", "", raw, flags=re.IGNORECASE).strip(" -")
+        if base:
+            aliases.extend([
+                f"{base} Toll Road Authority",
+                f"{base} Tollway Authority",
+                f"{base} Grand Parkway Toll Road Authority",
+            ])
+        return [a for a in aliases if a.strip()]
+
     return _build_layer_subdivision_matches(
         tfl_client_names=tfl_client_names,
         layer_df=districts,
         subdivision_type="Regional Mobility Authority",
         layer_name_cols=["district_name"],
         layer_code_cols=["district_code"],
-        root_patterns=[r"\bREGIONAL\s+MOBILITY\s+AUTHORITY\b", r"\bAUTHORITY\b", r"\bRMA\b"],
+        root_patterns=[r"\bREGIONAL\s+MOBILITY\s+AUTHORITY\b", r"\bTOLL\s*ROAD\s+AUTHORITY\b", r"\bTOLLWAY\s+AUTHORITY\b", r"\bAUTHORITY\b", r"\bRMA\b"],
         include_client_fn=lambda client: _looks_like_entity_type(client, "Regional Mobility Authority"),
-        extra_candidate_builder=lambda row: [str(getattr(row, "district_name", "")).replace("RMA", "Regional Mobility Authority").strip()],
+        extra_candidate_builder=_rma_aliases,
         source_name="Texas Regional Mobility Authorities (FeatureServer/0)",
         source_url=TEXAS_RMA_LAYER_URL,
     )
@@ -650,6 +693,55 @@ def build_tfl_political_subdivision_matches(tfl_client_names: tuple[str, ...]) -
                 parts.append(result)
         except Exception:
             continue
+
+    already_matched: set[str] = set()
+    for part in parts:
+        for clients_list in part.get("match_clients", []):
+            if isinstance(clients_list, list):
+                already_matched.update(clients_list)
+
+    geocode_candidates: list[tuple[str, str]] = []
+    for client in sorted({str(name).strip() for name in tfl_client_names if str(name).strip()}):
+        if client in already_matched:
+            continue
+        etype = classify_requested_entity_type(client)
+        if not etype:
+            continue
+        if etype in SPECIAL_NAME_ANCHORED_ENTITY_TYPES:
+            continue
+        geocode_candidates.append((client, etype))
+
+    if geocode_candidates:
+        geocoded_rows: list[dict[str, Any]] = []
+        max_workers = min(8, len(geocode_candidates))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(geocode_texas_entity_arcgis, client): (client, etype) for client, etype in geocode_candidates}
+            for future in as_completed(futures):
+                client, etype = futures[future]
+                try:
+                    result = future.result() or {}
+                except Exception:
+                    continue
+                score = float(result.get("score", 0.0)) if result else 0.0
+                if not result or score < 70:
+                    continue
+                geocoded_rows.append(
+                    {
+                        "subdivision_type": etype,
+                        "subdivision_name": client,
+                        "subdivision_code": str(result.get("postal", "")).strip(),
+                        "lon": float(result.get("lon", 0.0)),
+                        "lat": float(result.get("lat", 0.0)),
+                        "match_count": 1,
+                        "match_clients": [client],
+                        "match_clients_preview": client,
+                        "source_name": "ArcGIS geocoded entity centroid (Texas)",
+                        "source_url": ARCGIS_GEOCODER_URL,
+                    }
+                )
+        if geocoded_rows:
+            parts.append(pd.DataFrame(geocoded_rows, columns=cols))
+
     if not parts:
         return pd.DataFrame(columns=cols)
     out = pd.concat(parts, ignore_index=True)
