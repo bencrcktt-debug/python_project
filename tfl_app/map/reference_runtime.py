@@ -23,16 +23,16 @@ from tfl_app.config.map_sources import (
 )
 from tfl_app.map.reference_fetchers import (
     arcgis_get_json,
-    fetch_nctcog_transit_provider_centroids as _fetch_nctcog_transit_provider_centroids_remote,
-    fetch_tceq_groundwater_district_centroids as _fetch_tceq_groundwater_district_centroids_remote,
-    fetch_tceq_water_district_centroids as _fetch_tceq_water_district_centroids_remote,
-    fetch_tea_county_centroids as _fetch_tea_county_centroids_remote,
-    fetch_tea_school_district_centroids as _fetch_tea_school_district_centroids_remote,
-    fetch_texas_city_centroids as _fetch_texas_city_centroids_remote,
-    fetch_texas_junior_college_centroids as _fetch_texas_junior_college_centroids_remote,
-    fetch_texas_navigation_district_centroids as _fetch_texas_navigation_district_centroids_remote,
-    fetch_texas_rma_centroids as _fetch_texas_rma_centroids_remote,
-    fetch_txdot_seaport_centroids as _fetch_txdot_seaport_centroids_remote,
+    fetch_nctcog_transit_provider_centroids as _fetch_nctcog_transit_provider_centroids_remote,  # noqa: F401 - used via globals()
+    fetch_tceq_groundwater_district_centroids as _fetch_tceq_groundwater_district_centroids_remote,  # noqa: F401
+    fetch_tceq_water_district_centroids as _fetch_tceq_water_district_centroids_remote,  # noqa: F401
+    fetch_tea_county_centroids as _fetch_tea_county_centroids_remote,  # noqa: F401
+    fetch_tea_school_district_centroids as _fetch_tea_school_district_centroids_remote,  # noqa: F401
+    fetch_texas_city_centroids as _fetch_texas_city_centroids_remote,  # noqa: F401
+    fetch_texas_junior_college_centroids as _fetch_texas_junior_college_centroids_remote,  # noqa: F401
+    fetch_texas_navigation_district_centroids as _fetch_texas_navigation_district_centroids_remote,  # noqa: F401
+    fetch_texas_rma_centroids as _fetch_texas_rma_centroids_remote,  # noqa: F401
+    fetch_txdot_seaport_centroids as _fetch_txdot_seaport_centroids_remote,  # noqa: F401
 )
 from tfl_app.map.reference_snapshots import (
     REFERENCE_SNAPSHOT_DIR,
